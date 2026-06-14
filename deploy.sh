@@ -229,6 +229,9 @@ if [ "$RUN_USER" = "root" ]; then
 fi
 echo "Running service as user: $RUN_USER"
 
+echo "Ensuring file ownership for $RUN_USER..."
+sudo chown -R "$RUN_USER":"$RUN_USER" "$TARGET_DIR"
+
 sudo bash -c "cat > $SERVICE_FILE" <<EOF
 [Unit]
 Description=Bilingual Book Reader & AI Proxy Service
