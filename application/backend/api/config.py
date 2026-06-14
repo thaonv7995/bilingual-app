@@ -7,6 +7,7 @@ BACKEND_DIR = API_DIR.parent
 APPLICATION_DIR = BACKEND_DIR.parent
 WORKSPACE_ROOT = APPLICATION_DIR.parent
 BOOKS_DIR = WORKSPACE_ROOT / "books"
+WEB_APP_DIR = APPLICATION_DIR / "web-app"
 
 # Security & JWT settings
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "bilingual_reader_super_secret_key")

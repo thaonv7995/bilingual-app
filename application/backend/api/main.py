@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from api.database import init_db, User, Book
 from api.auth import get_password_hash
-from api.config import WORKSPACE_ROOT, BOOKS_DIR
+from api.config import WORKSPACE_ROOT, BOOKS_DIR, WEB_APP_DIR
 from api.routes import auth, books, admin, chat
 from books_core.paths import BookPaths
 
@@ -89,38 +89,38 @@ def sync_books_directory_to_db(db: Session):
 
 # --- Serve Web Frontend ---
 # Serve root files first (index.html, favicon.png, config.js, app.js, reader.css, sw.js, and libs/)
-app.mount("/libs", StaticFiles(directory=WORKSPACE_ROOT / "libs"), name="libs")
+app.mount("/libs", StaticFiles(directory=WEB_APP_DIR / "libs"), name="libs")
 
 @app.get("/favicon.png")
 def get_favicon():
-    return FileResponse(WORKSPACE_ROOT / "favicon.png")
+    return FileResponse(WEB_APP_DIR / "favicon.png")
 
 @app.get("/config.js")
 def get_config():
-    return FileResponse(WORKSPACE_ROOT / "config.js")
+    return FileResponse(WEB_APP_DIR / "config.js")
 
 @app.get("/app.js")
 def get_app_js():
-    return FileResponse(WORKSPACE_ROOT / "app.js")
+    return FileResponse(WEB_APP_DIR / "app.js")
 
 @app.get("/reader.css")
 def get_reader_css():
-    return FileResponse(WORKSPACE_ROOT / "reader.css")
+    return FileResponse(WEB_APP_DIR / "reader.css")
 
 @app.get("/sw.js")
 def get_sw():
-    return FileResponse(WORKSPACE_ROOT / "sw.js")
+    return FileResponse(WEB_APP_DIR / "sw.js")
 
 @app.get("/admin.html")
 @app.get("/admin")
 def get_admin():
-    return FileResponse(WORKSPACE_ROOT / "admin.html")
+    return FileResponse(WEB_APP_DIR / "admin.html")
 
 @app.get("/admin.js")
 def get_admin_js():
-    return FileResponse(WORKSPACE_ROOT / "admin.js")
+    return FileResponse(WEB_APP_DIR / "admin.js")
 
 @app.get("/")
 @app.get("/index.html")
 def get_index():
-    return FileResponse(WORKSPACE_ROOT / "index.html")
+    return FileResponse(WEB_APP_DIR / "index.html")

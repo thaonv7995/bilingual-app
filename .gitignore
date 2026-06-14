@@ -14,7 +14,8 @@ Thumbs.db
 *.sqlite3
 
 # Local Environment & Secrets Configuration
-config.js
+application/web-app/config.js
+!application/web-app/config.example.js
 .env
 .env.*
 !.env.example
