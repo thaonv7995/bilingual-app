@@ -767,9 +767,7 @@ struct ReaderView: View {
                                                     .clipShape(UnevenRoundedCorners(tl: 16, tr: 16, bl: 16, br: 4))
                                                     .shadow(color: Color(hex: "6366f1").opacity(0.2), radius: 4, x: 0, y: 2)
                                             } else {
-                                                Text(renderMarkdown(msg.content))
-                                                    .font(.system(size: 14))
-                                                    .lineSpacing(3)
+                                                MarkdownView(text: msg.content)
                                                     .padding(.horizontal, 14)
                                                     .padding(.vertical, 10)
                                                     .background(Color.white.opacity(0.06))
@@ -1439,6 +1437,199 @@ struct SuggestedPromptRow: View {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.white.opacity(0.08), lineWidth: 1)
             )
+        }
+    }
+}
+
+struct MarkdownBlock: Identifiable {
+    let id = UUID()
+    enum BlockType {
+        case header(level: Int)
+        case bulletList
+        case numberedList(index: Int)
+        case code(language: String?)
+        case paragraph
+    }
+    let type: BlockType
+    let content: String
+}
+
+struct MarkdownView: View {
+    let text: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(parseBlocks(text)) { block in
+                renderBlock(block)
+            }
+        }
+    }
+    
+    private func parseBlocks(_ text: String) -> [MarkdownBlock] {
+        var blocks: [MarkdownBlock] = []
+        let lines = text.components(separatedBy: .newlines)
+        
+        var inCodeBlock = false
+        var codeContent = ""
+        var codeLanguage: String? = nil
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            if line.starts(with: "```") {
+                if inCodeBlock {
+                    // End of code block
+                    blocks.append(MarkdownBlock(type: .code(language: codeLanguage), content: codeContent.trimmingCharacters(in: .whitespacesAndNewlines)))
+                    inCodeBlock = false
+                    codeContent = ""
+                    codeLanguage = nil
+                } else {
+                    // Start of code block
+                    inCodeBlock = true
+                    let lang = line.dropFirst(3).trimmingCharacters(in: .whitespacesAndNewlines)
+                    codeLanguage = lang.isEmpty ? nil : lang
+                }
+                continue
+            }
+            
+            if inCodeBlock {
+                codeContent += line + "\n"
+                continue
+            }
+            
+            if trimmed.isEmpty {
+                continue
+            }
+            
+            // Check for Headers
+            if trimmed.starts(with: "#") {
+                let parts = trimmed.split(separator: " ", maxSplits: 1)
+                if let first = parts.first, first.allSatisfy({ $0 == "#" }) {
+                    let level = first.count
+                    let content = parts.count > 1 ? String(parts[1]) : ""
+                    blocks.append(MarkdownBlock(type: .header(level: level), content: content))
+                    continue
+                }
+            }
+            
+            // Check for Bullet List
+            if trimmed.starts(with: "* ") || trimmed.starts(with: "- ") {
+                let content = String(trimmed.dropFirst(2))
+                blocks.append(MarkdownBlock(type: .bulletList, content: content))
+                continue
+            }
+            
+            // Check for Numbered List (e.g., "1. ")
+            if let firstWord = trimmed.split(separator: " ").first,
+               firstWord.hasSuffix("."),
+               let index = Int(firstWord.dropLast()) {
+                let content = trimmed.dropFirst(firstWord.count + 1).trimmingCharacters(in: .whitespacesAndNewlines)
+                blocks.append(MarkdownBlock(type: .numberedList(index: index), content: content))
+                continue
+            }
+            
+            // Default to paragraph
+            blocks.append(MarkdownBlock(type: .paragraph, content: trimmed))
+        }
+        
+        // If we finished but are still in code block
+        if inCodeBlock && !codeContent.isEmpty {
+            blocks.append(MarkdownBlock(type: .code(language: codeLanguage), content: codeContent.trimmingCharacters(in: .whitespacesAndNewlines)))
+        }
+        
+        return blocks
+    }
+    
+    @ViewBuilder
+    private func renderBlock(_ block: MarkdownBlock) -> some View {
+        switch block.type {
+        case .header(let level):
+            Text(parseInline(block.content))
+                .font(.system(size: headerFontSize(level), weight: .bold))
+                .foregroundColor(.white)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+            
+        case .bulletList:
+            HStack(alignment: .top, spacing: 6) {
+                Text("•")
+                    .foregroundColor(Color(hex: "14b8a6"))
+                    .font(.system(size: 14, weight: .bold))
+                Text(parseInline(block.content))
+                    .font(.system(size: 14))
+                    .foregroundColor(.white.opacity(0.9))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.leading, 8)
+            
+        case .numberedList(let index):
+            HStack(alignment: .top, spacing: 6) {
+                Text("\(index).")
+                    .foregroundColor(Color(hex: "14b8a6"))
+                    .font(.system(size: 14, weight: .bold))
+                Text(parseInline(block.content))
+                    .font(.system(size: 14))
+                    .foregroundColor(.white.opacity(0.9))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.leading, 8)
+            
+        case .code:
+            VStack(alignment: .leading, spacing: 0) {
+                // Header bar
+                HStack {
+                    Text(block.content.lowercased().starts(with: "redis") == true ? "redis" : "code")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.gray)
+                    Spacer()
+                    Button(action: {
+                        UIPasteboard.general.string = block.content
+                    }) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10))
+                            .foregroundColor(.gray)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.04))
+                
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(block.content)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(Color(hex: "e2e8f0"))
+                        .padding(12)
+                }
+            }
+            .background(Color.black.opacity(0.3))
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08), lineWidth: 1))
+            .padding(.vertical, 4)
+            
+        case .paragraph:
+            Text(parseInline(block.content))
+                .font(.system(size: 14))
+                .foregroundColor(.white.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+    
+    private func headerFontSize(_ level: Int) -> CGFloat {
+        switch level {
+        case 1: return 20
+        case 2: return 18
+        case 3: return 16
+        default: return 14
+        }
+    }
+    
+    private func parseInline(_ text: String) -> AttributedString {
+        do {
+            var options = AttributedString.MarkdownParsingOptions()
+            options.interpretedSyntax = .inlineOnlyPreservingWhitespace
+            return try AttributedString(markdown: text, options: options)
+        } catch {
+            return AttributedString(text)
         }
     }
 }
