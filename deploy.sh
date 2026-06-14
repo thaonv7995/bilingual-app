@@ -82,11 +82,19 @@ if [ "$IS_SOURCE_TREE" = "false" ]; then
         echo "Target directory: $TARGET_DIR"
         echo "Git repository: $REPO_URL"
         
-        # Clone repository
-        if [ -d "$TARGET_DIR" ]; then
-            echo "Target directory already exists. Updating it instead..."
+        # Clone or update repository
+        if [ -d "$TARGET_DIR/.git" ]; then
+            echo "Target directory already exists and is a git repository. Pulling latest updates..."
+            cd "$TARGET_DIR"
+            sudo git fetch --all
+            CURRENT_BRANCH=$(sudo git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+            sudo git pull origin "$CURRENT_BRANCH"
         else
             echo "Cloning repository..."
+            if [ -d "$TARGET_DIR" ]; then
+                echo "Warning: Target directory exists but is not a git repository. Clearing it for a clean clone..."
+                sudo rm -rf "$TARGET_DIR"
+            fi
             sudo git clone "$REPO_URL" "$TARGET_DIR"
         fi
         
