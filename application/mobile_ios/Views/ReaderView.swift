@@ -139,10 +139,12 @@ struct ReaderView: View {
                                             let layout = isLargeScreen ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
                                             layout {
                                                 renderWebView(lang: "en", p: p, isDoubleSided: false)
-                                                    .padding(.horizontal, 16)
+                                                    .padding(.leading, isLargeScreen ? 24 : 16)
+                                                    .padding(.trailing, isLargeScreen ? 8 : 16)
                                                     .padding(.vertical, 6)
                                                 renderWebView(lang: "vi", p: p, isDoubleSided: false)
-                                                    .padding(.horizontal, 16)
+                                                    .padding(.leading, isLargeScreen ? 8 : 16)
+                                                    .padding(.trailing, isLargeScreen ? 24 : 16)
                                                     .padding(.vertical, 6)
                                             }
                                             .tag(p)
