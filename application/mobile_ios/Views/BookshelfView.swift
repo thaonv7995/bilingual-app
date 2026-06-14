@@ -162,7 +162,6 @@ struct BookCard: View {
             // Book Cover Wrapper
             ZStack {
                 Color(hex: "1e293b")
-                    .aspectRatio(0.7, contentMode: .fit)
                 
                 let localCoverURL = BookCacheManager.shared.localBookDir(slug: book.slug)
                     .appendingPathComponent("output")
@@ -202,7 +201,7 @@ struct BookCard: View {
                     }
                 }
             }
-            .frame(height: 220)
+            .aspectRatio(0.7, contentMode: .fit)
             .overlay(
                 // Bottom Gradient & Information Overlay
                 VStack {

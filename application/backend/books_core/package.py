@@ -16,6 +16,9 @@ def pack_book(book_dir: str | Path, output_path: str | Path | None = None) -> di
     - manifest.json (contains metadata from book.json and slug)
     - output/ (all rendered pages and assets)
     """
+    import shutil
+    from books_core.library_cover import cover_file, ensure_cover
+
     book_path = Path(book_dir).expanduser().resolve()
     if not book_path.is_dir():
         raise NotADirectoryError(f"Book directory does not exist: {book_path}")
@@ -31,6 +34,77 @@ def pack_book(book_dir: str | Path, output_path: str | Path | None = None) -> di
     metadata = book.load_book_json()
     metadata["slug"] = book_path.name
     
+    # Process author
+    if not metadata.get("author"):
+        # Try to read from PDF metadata
+        pdf_author = None
+        if book.source_pdf.is_file():
+            try:
+                import fitz
+                with fitz.open(book.source_pdf) as doc:
+                    pdf_author = doc.metadata.get("author")
+            except Exception:
+                pass
+        if pdf_author and pdf_author.lower() not in ("unknown", "none", ""):
+            metadata["author"] = pdf_author.strip()
+        else:
+            # Try to infer from slug (e.g. animal-farm-by-george-orwell -> George Orwell)
+            slug = book_path.name
+            if "-by-" in slug:
+                inferred = slug.split("-by-")[-1].replace("-", " ").title()
+                metadata["author"] = inferred
+            else:
+                metadata["author"] = "Unknown"
+        
+        # Save the inferred author back to book.json so it's persisted
+        try:
+            book_json_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    # Ensure cover image exists at output/assets/images/page_0001_cover_logo.png
+    target_cover = output_dir / "assets" / "images" / "page_0001_cover_logo.png"
+    
+    src_cover = None
+    # 1. Search for Priority 1: assets/cover.jpg
+    for base in (output_dir / "assets", book_path / "assets"):
+        p = base / "cover.jpg"
+        if p.is_file():
+            src_cover = p
+            break
+            
+    # 2. Search for Priority 2: assets/cover.png
+    if not src_cover:
+        for base in (output_dir / "assets", book_path / "assets"):
+            p = base / "cover.png"
+            if p.is_file():
+                src_cover = p
+                break
+                
+    # If not found, try to generate it using ensure_cover(book)
+    if not src_cover:
+        try:
+            src_cover = ensure_cover(book)
+        except Exception:
+            pass
+            
+    # 3. Search for Priority 3: assets/images/page_0001_cover_logo.png
+    if not src_cover:
+        for base in (output_dir / "assets", book_path / "assets"):
+            p = base / "images" / "page_0001_cover_logo.png"
+            if p.is_file():
+                src_cover = p
+                break
+                
+    # If still not found, use existing target_cover as fallback
+    if not src_cover and target_cover.is_file():
+        src_cover = target_cover
+        
+    # Copy to target_cover if we found a source cover and it is not already there
+    if src_cover and src_cover.is_file() and src_cover.resolve() != target_cover.resolve():
+        target_cover.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(src_cover, target_cover)
+            
     # Determine output archive path
     if output_path is None:
         output_bkb = book_path.parent / f"{book_path.name}.bkb"
