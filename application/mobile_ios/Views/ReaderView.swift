@@ -20,7 +20,8 @@ struct ReaderView: View {
     @State private var activeSelectionLang: String = ""
     @State private var selectedHighlightId: String? = nil
     @State private var highlightNote: String = ""
-    @State private var selectedColor: String = "#fef08a" // yellow default
+    @State private var selectedColor: String = "#fde68a" // yellow default
+    @State private var activeSentenceId: String? = nil
     
     // AI Chat States
     @State private var isChatOpen = false
@@ -34,11 +35,10 @@ struct ReaderView: View {
     @State private var isChatPending = false
     
     let highlightColors = [
-        ("#fef08a", Color.yellow),
-        ("#bbf7d0", Color.green),
-        ("#fbcfe8", Color.pink),
-        ("#bfdbfe", Color.blue),
-        ("#fed7aa", Color.orange)
+        ("#fde68a", Color(hex: "fde68a")), // Yellow
+        ("#93c5fd", Color(hex: "93c5fd")), // Blue
+        ("#f9a8d4", Color(hex: "f9a8d4")), // Pink
+        ("#86efac", Color(hex: "86efac"))  // Green
     ]
     
     var body: some View {
@@ -111,6 +111,7 @@ struct ReaderView: View {
                                         urlString: enUrlString,
                                         lang: "en",
                                         page: page,
+                                        activeSentenceId: activeSentenceId,
                                         onScroll: { scrollTop in
                                             NotificationCenter.default.post(
                                                 name: NSNotification.Name("ScrollTo_vi"),
@@ -120,6 +121,9 @@ struct ReaderView: View {
                                         },
                                         onHighlightMessage: { msg in
                                             handleHighlightMessage(msg, lang: "en")
+                                        },
+                                        onSentenceClicked: { sentenceId in
+                                            self.activeSentenceId = sentenceId
                                         }
                                     )
                                     .background(Color(hex: "0f172a"))
@@ -139,6 +143,7 @@ struct ReaderView: View {
                                         urlString: viUrlString,
                                         lang: "vi",
                                         page: page,
+                                        activeSentenceId: activeSentenceId,
                                         onScroll: { scrollTop in
                                             NotificationCenter.default.post(
                                                 name: NSNotification.Name("ScrollTo_en"),
@@ -148,6 +153,9 @@ struct ReaderView: View {
                                         },
                                         onHighlightMessage: { msg in
                                             handleHighlightMessage(msg, lang: "vi")
+                                        },
+                                        onSentenceClicked: { sentenceId in
+                                            self.activeSentenceId = sentenceId
                                         }
                                     )
                                     .background(Color(hex: "0f172a"))
@@ -342,7 +350,7 @@ struct ReaderView: View {
             self.activeSelectionLang = lang
             self.selectedHighlightId = nil
             self.highlightNote = ""
-            self.selectedColor = "#fef08a"
+            self.selectedColor = "#fde68a"
         case .highlightClicked(let id):
             self.selectedHighlightId = id
             self.activeSelection = nil
@@ -360,6 +368,7 @@ struct ReaderView: View {
         self.activeSelection = nil
         self.selectedHighlightId = nil
         self.highlightNote = ""
+        self.activeSentenceId = nil
     }
     
     private func fetchHighlights() {

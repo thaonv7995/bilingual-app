@@ -18,9 +18,11 @@ struct BilingualWebView: UIViewRepresentable {
     let urlString: String
     let lang: String
     let page: Int
+    let activeSentenceId: String?
     @ObservedObject var api = APIService.shared
     let onScroll: (CGFloat) -> Void
     let onHighlightMessage: (HighlightMessage) -> Void
+    let onSentenceClicked: (String?) -> Void
     
     func makeUIView(context: Context) -> WKWebView {
         let preferences = WKPreferences()
@@ -31,6 +33,10 @@ struct BilingualWebView: UIViewRepresentable {
         let contentController = WKUserContentController()
         contentController.add(context.coordinator, name: "iosListener")
         
+        let isEnglish = lang == "en"
+        let highlightColor = isEnglish ? "rgba(56, 189, 248, 0.22)" : "rgba(250, 204, 21, 0.24)"
+        let hoverColor = isEnglish ? "rgba(56, 189, 248, 0.08)" : "rgba(250, 204, 21, 0.08)"
+        
         // Inject highlighting core script
         let jsSource = """
         const STYLE_ID = 'reader-highlight-style';
@@ -38,16 +44,37 @@ struct BilingualWebView: UIViewRepresentable {
             const style = document.createElement('style');
             style.id = STYLE_ID;
             style.innerHTML = `
-                mark.reader-highlight {
-                    background-color: #fef08a;
-                    color: black !important;
+                .sentence-node {
+                    transition: background-color 0.2s ease;
+                    border-radius: 3px;
                     cursor: pointer;
-                    border-radius: 2px;
-                    padding: 1px 0;
-                    transition: background-color 0.2s;
+                    display: inline;
                 }
-                mark.reader-highlight[data-has-note="true"] {
-                    border-bottom: 2px dashed #3b82f6;
+                .sentence-node:hover {
+                    background-color: \(hoverColor);
+                }
+                .sentence-node.highlight-sync {
+                    background-color: \(highlightColor) !important;
+                }
+                mark.reader-highlight {
+                    border-radius: 3px;
+                    padding: 0 1px;
+                    cursor: pointer;
+                    position: relative;
+                    color: inherit;
+                    box-decoration-break: clone;
+                    -webkit-box-decoration-break: clone;
+                }
+                mark.reader-highlight[data-has-note="true"]::after {
+                    content: '';
+                    position: absolute;
+                    top: -3px;
+                    right: -3px;
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 50%;
+                    background: #2563eb;
+                    border: 1px solid #fff;
                 }
             `;
             document.head.appendChild(style);
@@ -148,6 +175,18 @@ struct BilingualWebView: UIViewRepresentable {
             return { paragraphIndex, startOffset, endOffset, text: range.toString() };
         };
 
+        window.highlightSentence = function(sentenceId) {
+            document.querySelectorAll('.sentence-node.highlight-sync').forEach(el => {
+                el.classList.remove('highlight-sync');
+            });
+            if (sentenceId) {
+                const targetNode = document.querySelector(`.sentence-node[data-sentence-id="${sentenceId}"]`);
+                if (targetNode) {
+                    targetNode.classList.add('highlight-sync');
+                }
+            }
+        };
+
         document.addEventListener('mouseup', handleSelectionEnd);
         document.addEventListener('touchend', handleSelectionEnd);
 
@@ -175,6 +214,26 @@ struct BilingualWebView: UIViewRepresentable {
                             selectionInfo: selectionInfo
                         }));
                     }
+                    return;
+                }
+
+                // Sentence node tap detection
+                let sentenceNode = null;
+                if (selectedText.length > 0) {
+                    const node = selection.anchorNode;
+                    if (node) {
+                        sentenceNode = node.parentElement.closest('.sentence-node');
+                    }
+                } else {
+                    sentenceNode = e.target.closest('.sentence-node');
+                }
+
+                if (sentenceNode) {
+                    const sentenceId = sentenceNode.dataset.sentenceId;
+                    window.webkit.messageHandlers.iosListener.postMessage(JSON.stringify({
+                        type: 'sentenceClicked',
+                        sentenceId: sentenceId
+                    }));
                 } else {
                     window.webkit.messageHandlers.iosListener.postMessage(JSON.stringify({
                         type: 'clearSelection'
@@ -190,6 +249,7 @@ struct BilingualWebView: UIViewRepresentable {
         
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        context.coordinator.webView = webView
         webView.scrollView.showsVerticalScrollIndicator = false
         webView.scrollView.showsHorizontalScrollIndicator = false
         
@@ -217,6 +277,11 @@ struct BilingualWebView: UIViewRepresentable {
                     let js = "window.applyStoredHighlights(\(jsonStr));"
                     uiView.evaluateJavaScript(js, completionHandler: nil)
                 }
+                
+                // Highlight active sentence dynamically
+                let sentenceId = activeSentenceId ?? ""
+                let activeJs = "if (window.highlightSentence) { window.highlightSentence('\(sentenceId)'); }"
+                uiView.evaluateJavaScript(activeJs, completionHandler: nil)
             }
         }
     }
@@ -227,6 +292,7 @@ struct BilingualWebView: UIViewRepresentable {
     
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var parent: BilingualWebView
+        weak var webView: WKWebView?
         var lastReceivedScrollTop: CGFloat = 0
         var isUpdatingScroll = false
         
@@ -237,7 +303,7 @@ struct BilingualWebView: UIViewRepresentable {
         @objc func handleScrollTo(_ notification: Notification) {
             guard let userInfo = notification.userInfo,
                   let scrollTop = userInfo["scrollTop"] as? CGFloat,
-                  let webView = notification.object as? WKWebView else { return }
+                  let webView = self.webView else { return }
             
             if abs(lastReceivedScrollTop - scrollTop) > 1 {
                 lastReceivedScrollTop = scrollTop
@@ -274,6 +340,12 @@ struct BilingualWebView: UIViewRepresentable {
                 let js = "window.applyStoredHighlights(\(jsonStr));"
                 webView.evaluateJavaScript(js, completionHandler: nil)
             }
+            
+            // Highlight active sentence on finish loading
+            if let activeId = parent.activeSentenceId {
+                let activeJs = "if (window.highlightSentence) { window.highlightSentence('\(activeId)'); }"
+                webView.evaluateJavaScript(activeJs, completionHandler: nil)
+            }
         }
         
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -300,8 +372,13 @@ struct BilingualWebView: UIViewRepresentable {
                             if let id = json["id"] as? String {
                                 parent.onHighlightMessage(.highlightClicked(id: id))
                             }
+                        } else if type == "sentenceClicked" {
+                            if let sId = json["sentenceId"] as? String {
+                                parent.onSentenceClicked(sId)
+                            }
                         } else if type == "clearSelection" {
                             parent.onHighlightMessage(.clearSelection)
+                            parent.onSentenceClicked(nil)
                         }
                     }
                 }
