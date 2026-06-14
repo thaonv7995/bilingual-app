@@ -10,20 +10,20 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
-PYVER="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+PYVER="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 SITE=".venv/lib/python${PYVER}/site-packages"
 
-echo "Cleaning broken books-core editable files..."
+# Cleaning broken books-core editable files...
 rm -f "${SITE}"/__editable__* "${SITE}"/__editable___books_core* 2>/dev/null || true
 rm -rf "${SITE}"/books_core*.dist-info 2>/dev/null || true
 
-if ! pip install --force-reinstall -e backend; then
+if ! python3 -m pip install --force-reinstall -e backend; then
   echo "Editable install failed; repairing PyMuPDF and retrying without dependency reinstall..."
-  pip install --ignore-installed --no-deps "pymupdf>=1.24.0"
-  pip install --no-deps -e backend
+  python3 -m pip install --ignore-installed --no-deps "pymupdf>=1.24.0"
+  python3 -m pip install --no-deps -e backend
 fi
 
-python - <<'PY'
+python3 - <<'PY'
 from pathlib import Path
 import site
 
@@ -41,7 +41,7 @@ site_dir = Path(site.getsitepackages()[0])
 PY
 
 cat > .venv/bin/books-cli <<'PY'
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from pathlib import Path
 import sys
 
@@ -52,5 +52,5 @@ raise SystemExit(main())
 PY
 chmod +x .venv/bin/books-cli
 
-PYTHONPATH="$ROOT/backend" python -c "import books_cli, books_core; print('OK: books-cli ready')"
+PYTHONPATH="$ROOT/backend" python3 -c "import books_cli, books_core; print('OK: books-cli ready')"
 books-cli --help | head -3

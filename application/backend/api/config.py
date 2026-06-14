@@ -1,0 +1,15 @@
+import os
+from pathlib import Path
+
+# Paths
+API_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = API_DIR.parent
+APPLICATION_DIR = BACKEND_DIR.parent
+WORKSPACE_ROOT = APPLICATION_DIR.parent
+BOOKS_DIR = WORKSPACE_ROOT / "books"
+
+# Security & JWT settings
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "bilingual_reader_super_secret_key")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_SECONDS = 15 * 60  # 15 minutes
+REFRESH_TOKEN_EXPIRE_SECONDS = 30 * 24 * 60 * 60  # 30 days
