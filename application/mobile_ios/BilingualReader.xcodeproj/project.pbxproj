@@ -15,6 +15,7 @@
 		46E6F6DD0BC8E058BC652705 /* BilingualReaderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */; };
 		8CBD3ECD5460D98952AEEDCF /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AD4860B8B690109EFB9878A /* LoginView.swift */; };
 		A0827BBC64B63C39E54883D2 /* Book.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD24421EAA5774ABB6536580 /* Book.swift */; };
+		A80052D358A61956D1231899 /* BookPagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */; };
 		B73ADA8B14F6A58D0A2C0728 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB39B254369C911E5008B8A0 /* APIService.swift */; };
 /* End PBXBuildFile section */
 
@@ -24,6 +25,7 @@
 		58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualReaderApp.swift; sourceTree = "<group>"; };
 		6AD4860B8B690109EFB9878A /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		83C106C930837C2F0DA5DB0C /* BilingualReader.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BilingualReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPagerView.swift; sourceTree = "<group>"; };
 		AB39B254369C911E5008B8A0 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
 		B0A58A03C7B604756D005FE5 /* AdminPortalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminPortalView.swift; sourceTree = "<group>"; };
 		CD24421EAA5774ABB6536580 /* Book.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Book.swift; sourceTree = "<group>"; };
@@ -85,6 +87,7 @@
 			children = (
 				B0A58A03C7B604756D005FE5 /* AdminPortalView.swift */,
 				D57B156C7DBCD09A96394153 /* BilingualWebView.swift */,
+				9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */,
 				159815F66B6C0D29720BE1A9 /* BookshelfView.swift */,
 				6AD4860B8B690109EFB9878A /* LoginView.swift */,
 				FB921731167CE40A439D7728 /* ReaderView.swift */,
@@ -164,6 +167,7 @@
 				46E6F6DD0BC8E058BC652705 /* BilingualReaderApp.swift in Sources */,
 				45013FC446C2D70BCB2CD11E /* BilingualWebView.swift in Sources */,
 				A0827BBC64B63C39E54883D2 /* Book.swift in Sources */,
+				A80052D358A61956D1231899 /* BookPagerView.swift in Sources */,
 				3DA094D67BA2E7AE2EBEBECA /* BookshelfView.swift in Sources */,
 				8CBD3ECD5460D98952AEEDCF /* LoginView.swift in Sources */,
 				04D65506177CC1C5E2EEC4D6 /* ReaderView.swift in Sources */,
@@ -181,7 +185,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSAppTransportSecurity = "[\"NSAllowsArbitraryLoads\": true]";
-				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageName\": \"SplashIcon\", \"UIColorName\": \"SplashBackground\", \"UIImageRespectsSafeAreaInsets\": false]";
+				INFOPLIST_KEY_UILaunchScreen = "[\"UIColorName\": \"SplashBackground\", \"UIImageRespectsSafeAreaInsets\": false, \"UIImageName\": \"SplashIcon\"]";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -321,7 +325,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSAppTransportSecurity = "[\"NSAllowsArbitraryLoads\": true]";
-				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageName\": \"SplashIcon\", \"UIColorName\": \"SplashBackground\", \"UIImageRespectsSafeAreaInsets\": false]";
+				INFOPLIST_KEY_UILaunchScreen = "[\"UIColorName\": \"SplashBackground\", \"UIImageRespectsSafeAreaInsets\": false, \"UIImageName\": \"SplashIcon\"]";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

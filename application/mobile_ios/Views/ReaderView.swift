@@ -67,6 +67,11 @@ struct ReaderView: View {
                         
                         Spacer()
                         
+                        Text("\(page)/\(book.pageCount)")
+                            .foregroundColor(Color.gray)
+                            .font(.system(size: 13, weight: .medium))
+                            .padding(.trailing, 8)
+                        
                         Button(action: { isChatOpen.toggle() }) {
                             Image(systemName: "bubble.left.and.bubble.right.fill")
                                 .foregroundColor(.white)
@@ -125,75 +130,43 @@ struct ReaderView: View {
                                     }
                                 )
                                 
+                                let isLandscape = geometry.size.width > geometry.size.height
+                                let isLargeAndLandscape = isLargeScreen && isLandscape
+                                
                                 if viewMode == "split" {
-                                    let layout = isLargeScreen ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
-                                    layout {
-                                        TabView(selection: pageBinding) {
-                                            ForEach(1...max(1, book.pageCount), id: \.self) { p in
-                                                renderWebView(lang: "en", p: p, isLargeScreen: isLargeScreen)
-                                                    .padding(16)
-                                                    .tag(p)
-                                            }
-                                        }
-                                        .tabViewStyle(.page(indexDisplayMode: .never))
-                                        
-                                        TabView(selection: pageBinding) {
-                                            ForEach(1...max(1, book.pageCount), id: \.self) { p in
-                                                renderWebView(lang: "vi", p: p, isLargeScreen: isLargeScreen)
-                                                    .padding(16)
-                                                    .tag(p)
-                                            }
-                                        }
-                                        .tabViewStyle(.page(indexDisplayMode: .never))
-                                    }
-                                } else {
                                     TabView(selection: pageBinding) {
                                         ForEach(1...max(1, book.pageCount), id: \.self) { p in
-                                            renderWebView(lang: viewMode, p: p, isLargeScreen: isLargeScreen)
-                                                .padding(16)
-                                                .tag(p)
+                                            let layout = isLargeScreen ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
+                                            layout {
+                                                renderWebView(lang: "en", p: p, isDoubleSided: false)
+                                                    .padding(.horizontal, 16)
+                                                    .padding(.vertical, 6)
+                                                renderWebView(lang: "vi", p: p, isDoubleSided: false)
+                                                    .padding(.horizontal, 16)
+                                                    .padding(.vertical, 6)
+                                            }
+                                            .tag(p)
                                         }
                                     }
                                     .tabViewStyle(.page(indexDisplayMode: .never))
+                                } else {
+                                    BookPagerView(
+                                        pageCount: max(1, book.pageCount),
+                                        currentPage: pageBinding,
+                                        isDoubleSided: isLargeAndLandscape
+                                    ) { p in
+                                        let isLeft = p % 2 == 1
+                                        renderWebView(lang: viewMode, p: p, isDoubleSided: isLargeAndLandscape)
+                                            .padding(.top, 6)
+                                            .padding(.bottom, 6)
+                                            .padding(.leading, isLargeAndLandscape ? (isLeft ? 16 : 0) : 16)
+                                            .padding(.trailing, isLargeAndLandscape ? (isLeft ? 0 : 16) : 16)
+                                    }
+                                    .id(isLargeAndLandscape)
                                 }
                             }
                         }
-                        
-                        // Bottom Navigation Bar
-                        HStack(alignment: .center) {
-                            Button(action: {
-                                withAnimation(.easeInOut) {
-                                    if page > 1 { page -= 1 }
-                                }
-                            }) {
-                                Text("◀ Trang trước")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(page <= 1 ? .gray : .white)
-                            }
-                            .disabled(page <= 1)
-                            
-                            Spacer()
-                            
-                            Text("Trang \(page) / \(book.pageCount)")
-                                .foregroundColor(.gray)
-                                .font(.system(size: 13))
-                            
-                            Spacer()
-                            
-                            Button(action: {
-                                withAnimation(.easeInOut) {
-                                    if page < book.pageCount { page += 1 }
-                                }
-                            }) {
-                                Text("Trang tiếp ▶")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(page >= book.pageCount ? .gray : .white)
-                            }
-                            .disabled(page >= book.pageCount)
-                        }
-                        .frame(height: 44)
-                        .padding(.horizontal, 16)
-                        .background(Color(hex: "0f172a"))
+                        .ignoresSafeArea(edges: .bottom)
                     }
                     .frame(maxWidth: .infinity)
                     
@@ -224,9 +197,13 @@ struct ReaderView: View {
     
     // --- Highlights UI / logic ---
     @ViewBuilder
-    private func renderWebView(lang: String, p: Int, isLargeScreen: Bool) -> some View {
+    private func renderWebView(lang: String, p: Int, isDoubleSided: Bool) -> some View {
         let padPage = String(format: "%04d", p)
         let urlString = "\(api.serverUrl)/books/\(book.slug)/output/\(lang)/page_\(padPage).html?token=\(api.token)"
+        
+        let activeSelectionLang = self.activeSelectionLang
+        let activeSelection = self.activeSelection
+        let selectedHighlightId = self.selectedHighlightId
         
         BilingualWebView(
             urlString: urlString,
@@ -248,7 +225,7 @@ struct ReaderView: View {
                 self.activeSentenceId = sentenceId
             }
         )
-        .modifier(PaperSheetModifier(isLargeScreen: isLargeScreen, viewMode: viewMode))
+        .modifier(PaperSheetModifier(viewMode: viewMode, page: p, isDoubleSided: isDoubleSided))
         .overlay(
             Group {
                 if activeSelectionLang == lang && (activeSelection != nil || selectedHighlightId != nil) {
@@ -717,19 +694,80 @@ struct ReaderView: View {
     }
 }
 
+struct UnevenRoundedCorners: Shape {
+    var tl: CGFloat = 0.0
+    var tr: CGFloat = 0.0
+    var bl: CGFloat = 0.0
+    var br: CGFloat = 0.0
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+
+        let w = rect.size.width
+        let h = rect.size.height
+
+        let tr = min(min(self.tr, h/2), w/2)
+        let tl = min(min(self.tl, h/2), w/2)
+        let bl = min(min(self.bl, h/2), w/2)
+        let br = min(min(self.br, h/2), w/2)
+
+        path.move(to: CGPoint(x: w / 2.0, y: 0))
+        path.addLine(to: CGPoint(x: w - tr, y: 0))
+        path.addArc(center: CGPoint(x: w - tr, y: tr), radius: tr,
+                    startAngle: Angle(degrees: -90), endAngle: Angle(degrees: 0), clockwise: false)
+        path.addLine(to: CGPoint(x: w, y: h - br))
+        path.addArc(center: CGPoint(x: w - br, y: h - br), radius: br,
+                    startAngle: Angle(degrees: 0), endAngle: Angle(degrees: 90), clockwise: false)
+        path.addLine(to: CGPoint(x: bl, y: h))
+        path.addArc(center: CGPoint(x: bl, y: h - bl), radius: bl,
+                    startAngle: Angle(degrees: 90), endAngle: Angle(degrees: 180), clockwise: false)
+        path.addLine(to: CGPoint(x: 0, y: tl))
+        path.addArc(center: CGPoint(x: tl, y: tl), radius: tl,
+                    startAngle: Angle(degrees: 180), endAngle: Angle(degrees: 270), clockwise: false)
+        path.closeSubpath()
+
+        return path
+    }
+}
+
 struct PaperSheetModifier: ViewModifier {
-    var isLargeScreen: Bool
     var viewMode: String
+    var page: Int
+    var isDoubleSided: Bool
     
     func body(content: Content) -> some View {
-        if isLargeScreen && viewMode != "split" {
+        if isDoubleSided && viewMode != "split" {
+            let isLeft = page % 2 == 1
             content
                 .background(Color(hex: "F9F7F1"))
-                .cornerRadius(4)
-                .shadow(color: .black.opacity(0.15), radius: 5, x: 0, y: 3)
-                .aspectRatio(1 / 1.414, contentMode: .fit)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(hex: "0f172a"))
+                .overlay(
+                    Group {
+                        if isLeft {
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.03), .black.opacity(0.12)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: 40)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        } else {
+                            LinearGradient(
+                                colors: [.black.opacity(0.12), .black.opacity(0.03), .clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: 40)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                )
+                .clipShape(UnevenRoundedCorners(
+                    tl: isLeft ? 6 : 0,
+                    tr: isLeft ? 0 : 6,
+                    bl: isLeft ? 6 : 0,
+                    br: isLeft ? 0 : 6
+                ))
+                .shadow(color: .black.opacity(0.15), radius: 5, x: isLeft ? -2 : 2, y: 3)
         } else {
             content
                 .background(Color(hex: "F9F7F1"))
