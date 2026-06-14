@@ -15,6 +15,12 @@ enum HighlightMessage {
     case clearSelection
 }
 
+class NoSelectionMenuWebView: WKWebView {
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        return false
+    }
+}
+
 struct BilingualWebView: UIViewRepresentable {
     let urlString: String
     let lang: String
@@ -272,13 +278,125 @@ struct BilingualWebView: UIViewRepresentable {
                 }
             }, 50);
         }
+
+        function splitIntoSentences(text) {
+            if (!text) return [];
+            const sentences = [];
+            let currentStart = 0;
+            const boundaryRegex = /([.!?])(\\s+|$)/g;
+            let match;
+            const abbrevs = [
+                'mr', 'mrs', 'dr', 'ms', 'prof', 'sr', 'jr', 'vs', 'etc', 'eg', 'ie', 'al',
+                'st', 'av', 'rd', 'capt', 'gen', 'col', 'lt', 'sgt', 'rep', 'sen', 'oct', 'nov', 'dec',
+                'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'tp', 'ts', 'ths', 'gs', 'hcm'
+            ];
+            while ((match = boundaryRegex.exec(text)) !== null) {
+                const boundaryIdx = match.index;
+                const precedingText = text.substring(currentStart, boundaryIdx);
+                const lastWordMatch = precedingText.match(/(\\b\\w+)$/);
+                const lastWord = lastWordMatch ? lastWordMatch[1].toLowerCase() : '';
+                if (abbrevs.includes(lastWord)) {
+                    continue;
+                }
+                const sentenceEnd = boundaryIdx + 1 + match[2].length;
+                const sentenceText = text.substring(currentStart, sentenceEnd);
+                if (sentenceText.length > 0) {
+                    sentences.push(sentenceText);
+                }
+                currentStart = sentenceEnd;
+            }
+            if (currentStart < text.length) {
+                const remaining = text.substring(currentStart);
+                if (remaining.length > 0) {
+                    sentences.push(remaining);
+                }
+            }
+            return sentences;
+        }
+
+        function segmentParagraph(pElement, pIdx) {
+            const text = pElement.textContent;
+            const sentences = splitIntoSentences(text);
+            if (sentences.length <= 1) {
+                const span = pElement.ownerDocument.createElement('span');
+                span.className = 'sentence-node';
+                span.dataset.sentenceId = `p-${pIdx}-s-0`;
+                while (pElement.firstChild) {
+                    span.appendChild(pElement.firstChild);
+                }
+                pElement.appendChild(span);
+                return;
+            }
+            const sentenceSpans = sentences.map((sText, sIdx) => {
+                const span = pElement.ownerDocument.createElement('span');
+                span.className = 'sentence-node';
+                span.dataset.sentenceId = `p-${pIdx}-s-${sIdx}`;
+                return span;
+            });
+            let currentSentenceIdx = 0;
+            let currentSentenceRemainingLen = sentences[0].length;
+            const childNodes = Array.from(pElement.childNodes);
+            pElement.innerHTML = '';
+            childNodes.forEach(node => {
+                if (node.nodeType === 3) {
+                    let nodeText = node.textContent;
+                    while (nodeText.length > 0 && currentSentenceIdx < sentences.length) {
+                        if (nodeText.length <= currentSentenceRemainingLen) {
+                            const textNode = pElement.ownerDocument.createTextNode(nodeText);
+                            sentenceSpans[currentSentenceIdx].appendChild(textNode);
+                            currentSentenceRemainingLen -= nodeText.length;
+                            nodeText = '';
+                        } else {
+                            const part = nodeText.substring(0, currentSentenceRemainingLen);
+                            const textNode = pElement.ownerDocument.createTextNode(part);
+                            sentenceSpans[currentSentenceIdx].appendChild(textNode);
+                            nodeText = nodeText.substring(currentSentenceRemainingLen);
+                            currentSentenceIdx++;
+                            if (currentSentenceIdx < sentences.length) {
+                                currentSentenceRemainingLen = sentences[currentSentenceIdx].length;
+                            }
+                        }
+                    }
+                } else if (node.nodeType === 1) {
+                    sentenceSpans[currentSentenceIdx].appendChild(node);
+                    currentSentenceRemainingLen -= node.textContent.length;
+                    if (currentSentenceRemainingLen <= 0 && currentSentenceIdx < sentences.length - 1) {
+                        currentSentenceIdx++;
+                        currentSentenceRemainingLen = sentences[currentSentenceIdx].length;
+                    }
+                }
+            });
+            sentenceSpans.forEach(span => {
+                if (span.textContent.length > 0) {
+                    pElement.appendChild(span);
+                }
+            });
+        }
+
+        function segmentDocSentences(doc) {
+            const article = doc.querySelector('article') || doc.body;
+            if (!article) return;
+            const paragraphs = article.querySelectorAll('p, .chapter-start, .no-indent, h1, h2, h3, li');
+            paragraphs.forEach((p, idx) => {
+                if (!p.querySelector('.sentence-node')) {
+                    segmentParagraph(p, idx);
+                }
+            });
+        }
+
+        // Run sentence segmentation on current document
+        try {
+            segmentDocSentences(document);
+        } catch(e) {
+            console.error("Failed to segment sentences: ", e);
+        }
         """
         let userScript = WKUserScript(source: jsSource, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         contentController.addUserScript(userScript)
         
         configuration.userContentController = contentController
         
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = NoSelectionMenuWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
         webView.scrollView.showsVerticalScrollIndicator = false
@@ -299,6 +417,7 @@ struct BilingualWebView: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: WKWebView, context: Context) {
+        context.coordinator.parent = self
         if context.coordinator.loadedUrlString != urlString {
             context.coordinator.loadedUrlString = urlString
             if let url = URL(string: urlString) {

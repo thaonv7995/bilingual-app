@@ -18,12 +18,15 @@ struct ReaderView: View {
     // Highlights States
     @State private var activeSelection: SelectionInfo? = nil
     @State private var activeSelectionLang: String = ""
+    @State private var activeSelectionPage: Int? = nil
     @State private var selectedHighlightId: String? = nil
     @State private var activeRect: CGRect? = nil
     @State private var showNoteInput: Bool = false
     @State private var highlightNote: String = ""
     @State private var selectedColor: String = "#fde68a" // yellow default
     @State private var activeSentenceId: String? = nil
+    @State private var activeSentencePage: Int? = nil
+    @State private var activeSentenceLang: String? = nil
     
     // AI Chat States
     @State private var isChatOpen = false
@@ -131,6 +134,7 @@ struct ReaderView: View {
                                         if newPage != self.page {
                                             self.page = newPage
                                             self.saveProgress()
+                                            self.clearSelectionState()
                                         }
                                     }
                                 )
@@ -302,11 +306,15 @@ struct ReaderView: View {
         let activeSelection = self.activeSelection
         let selectedHighlightId = self.selectedHighlightId
         
+        let isBilingual = viewMode == "split"
+        let shouldHighlightActiveSentence = isBilingual ? (p == activeSentencePage) : (p == activeSentencePage && lang == activeSentenceLang)
+        let targetSentenceId = shouldHighlightActiveSentence ? activeSentenceId : nil
+        
         BilingualWebView(
             urlString: urlString,
             lang: lang,
             page: p,
-            activeSentenceId: activeSentenceId,
+            activeSentenceId: targetSentenceId,
             onScroll: { scrollTop in
                 let otherLang = lang == "en" ? "vi" : "en"
                 NotificationCenter.default.post(
@@ -316,16 +324,18 @@ struct ReaderView: View {
                 )
             },
             onHighlightMessage: { msg in
-                handleHighlightMessage(msg, lang: lang)
+                handleHighlightMessage(msg, lang: lang, page: p)
             },
             onSentenceClicked: { sentenceId in
                 self.activeSentenceId = sentenceId
+                self.activeSentencePage = p
+                self.activeSentenceLang = lang
             }
         )
         .modifier(PaperSheetModifier(viewMode: viewMode, page: p, isDoubleSided: isDoubleSided))
         .overlay(
             Group {
-                if activeSelectionLang == lang && (activeSelection != nil || selectedHighlightId != nil) {
+                if activeSelectionLang == lang && activeSelectionPage == p && (activeSelection != nil || selectedHighlightId != nil) {
                     if let rect = activeRect {
                         highlightPopupMenu()
                             .position(x: rect.midX, y: max(30, rect.minY - 30))
@@ -397,36 +407,51 @@ struct ReaderView: View {
             Group {
                 if showNoteInput {
                     VStack(spacing: 8) {
-                        TextField("Nhập ghi chú...", text: $highlightNote)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .foregroundColor(.black)
-                            .frame(width: 200)
+                        TextField("Nhập ghi chú...", text: $highlightNote, axis: .vertical)
+                            .lineLimit(3...6)
+                            .padding(6)
+                            .foregroundColor(Color(hex: "422006"))
+                            .font(.system(.body, design: .serif))
+                            .accentColor(Color(hex: "b45309"))
+                        
                         HStack {
                             Spacer()
                             Button("Lưu") { saveHighlight() }
-                                .font(.system(size: 13, weight: .bold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color(hex: "6366f1"))
+                                .font(.system(size: 12, weight: .bold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color(hex: "b45309"))
                                 .foregroundColor(.white)
-                                .cornerRadius(6)
+                                .cornerRadius(4)
                         }
                     }
-                    .padding(10)
-                    .background(Color(hex: "1e293b"))
-                    .cornerRadius(12)
-                    .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 3)
-                    .offset(y: 60)
+                    .padding(8)
+                    .frame(width: 200)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "fef9c3"), Color(hex: "fde68a"), Color(hex: "fcd34d")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .cornerRadius(4)
+                    .shadow(color: .black.opacity(0.25), radius: 4, x: 1, y: 2)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color(hex: "d97706").opacity(0.35), lineWidth: 1)
+                    )
+                    .offset(y: 85)
                 }
             }
         )
     }
     
-    private func handleHighlightMessage(_ msg: HighlightMessage, lang: String) {
+    private func handleHighlightMessage(_ msg: HighlightMessage, lang: String, page: Int) {
         switch msg {
         case .textSelected(let selectionInfo):
             self.activeSelection = selectionInfo
             self.activeSelectionLang = lang
+            self.activeSelectionPage = page
             self.selectedHighlightId = nil
             self.highlightNote = ""
             self.selectedColor = "#fde68a"
@@ -436,10 +461,14 @@ struct ReaderView: View {
             self.selectedHighlightId = id
             self.activeSelection = nil
             self.activeRect = rect
-            self.showNoteInput = false
             if let existing = api.highlights.first(where: { $0.id == id }) {
                 self.selectedColor = existing.color
                 self.highlightNote = existing.note ?? ""
+                self.activeSelectionPage = existing.page
+                self.activeSelectionLang = existing.lang
+                self.showNoteInput = !(existing.note ?? "").isEmpty
+            } else {
+                self.showNoteInput = false
             }
         case .clearSelection:
             clearSelectionState()
@@ -449,8 +478,11 @@ struct ReaderView: View {
     private func clearSelectionState() {
         self.activeSelection = nil
         self.selectedHighlightId = nil
+        self.activeSelectionPage = nil
         self.highlightNote = ""
         self.activeSentenceId = nil
+        self.activeSentencePage = nil
+        self.activeSentenceLang = nil
         self.activeRect = nil
         self.showNoteInput = false
     }
