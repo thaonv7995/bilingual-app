@@ -594,17 +594,22 @@ window.revokeKey = async function(id) {
 
 // --- Initial Session Check ---
 if (token) {
+  console.log("Found token, verifying with /api/auth/me...");
   apiCall("/api/auth/me")
     .then(user => {
+      console.log("Auth me response:", user);
       if (user.is_admin) {
         showAdmin();
       } else {
+        console.warn("User is not admin, logging out.");
         logout();
       }
     })
-    .catch(() => {
+    .catch((err) => {
+      console.error("Initial session check failed:", err);
       logout();
     });
 } else {
+  console.log("No token found, showing login.");
   showLogin();
 }
