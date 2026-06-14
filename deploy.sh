@@ -92,6 +92,7 @@ if [ "$IS_SOURCE_TREE" = "false" ] && [ "$ACTION" = "install" ]; then
     # Run the local installer
     echo "Triggering local installation..."
     cd "$TARGET_DIR"
+    sudo chmod +x deploy.sh
     sudo ./deploy.sh install "$TARGET_DIR"
     exit 0
 fi
