@@ -29,6 +29,7 @@ struct BilingualWebView: UIViewRepresentable {
     let urlString: String
     let lang: String
     let page: Int
+    let viewMode: String
     let activeSentenceId: String?
     @ObservedObject var api = APIService.shared
     let onScroll: (CGFloat) -> Void
@@ -536,6 +537,8 @@ struct BilingualWebView: UIViewRepresentable {
         }
         
         @objc func handleScrollTo(_ notification: Notification) {
+            guard parent.viewMode == "split" else { return }
+            
             guard let userInfo = notification.userInfo,
                   let scrollTop = userInfo["scrollTop"] as? CGFloat,
                   let webView = self.webView else { return }

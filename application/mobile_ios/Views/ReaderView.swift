@@ -85,6 +85,9 @@ struct ReaderView: View {
     var body: some View {
         GeometryReader { geometry in
             let isLargeScreen = geometry.size.width > 700
+            let isLandscape = geometry.size.width > geometry.size.height
+            let isLargeAndLandscape = isLargeScreen && isLandscape
+            let useDoubleSided = isLargeAndLandscape && !isChatOpen && viewMode != "split"
             
             HStack(spacing: 0) {
                 // Main Reading Pane
@@ -110,33 +113,58 @@ struct ReaderView: View {
                         
                         Spacer()
                         
+                        let canPrev = useDoubleSided ? (page > 2) : (page > 1)
+                        let canNext = {
+                            if useDoubleSided {
+                                let left = page % 2 == 1 ? page : max(1, page - 1)
+                                return left + 1 < book.pageCount
+                            } else {
+                                return page < book.pageCount
+                            }
+                        }()
+                        let pageText: String = {
+                            if useDoubleSided {
+                                let left = page % 2 == 1 ? page : max(1, page - 1)
+                                let right = left + 1
+                                if right <= book.pageCount {
+                                    return "Trang \(left)-\(right)/\(book.pageCount)"
+                                } else {
+                                    return "Trang \(left)/\(book.pageCount)"
+                                }
+                            } else {
+                                return "Trang \(page)/\(book.pageCount)"
+                            }
+                        }()
+
                         HStack(spacing: 0) {
                             Button(action: {
-                                if page > 1 { page -= 1 }
+                                let step = useDoubleSided ? 2 : 1
+                                if page > 1 { page = max(1, page - step) }
                             }) {
                                 Image(systemName: "chevron.left")
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(.white)
-                                    .opacity(page > 1 ? 1.0 : 0.25)
+                                    .opacity(canPrev ? 1.0 : 0.25)
                                     .frame(width: 32, height: 28)
                             }
-                            .disabled(page <= 1)
+                            .disabled(!canPrev)
                             
-                            Text("Trang \(page)/\(book.pageCount)")
+                            Text(pageText)
                                 .font(.system(size: 12, weight: .bold))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 8)
                             
                             Button(action: {
-                                if page < book.pageCount { page += 1 }
+                                let step = useDoubleSided ? 2 : 1
+                                if page < book.pageCount { page = min(book.pageCount, page + step) }
                             }) {
                                 Image(systemName: "chevron.right")
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(.white)
-                                    .opacity(page < book.pageCount ? 1.0 : 0.25)
+                                    .opacity(canNext ? 1.0 : 0.25)
                                     .frame(width: 32, height: 28)
                             }
-                            .disabled(page >= book.pageCount)
+                            .disabled(!canNext)
                         }
                         .background(Color(hex: "1e293b"))
                         .cornerRadius(6)
@@ -202,9 +230,7 @@ struct ReaderView: View {
                                     }
                                 )
                                 
-                                let isLandscape = geometry.size.width > geometry.size.height
-                                let isLargeAndLandscape = isLargeScreen && isLandscape
-                                let useDoubleSided = isLargeAndLandscape && !isChatOpen
+                                
                                 
                                 let readingPaneWidth = isLargeScreen && isChatOpen ? geometry.size.width - chatWidth : geometry.size.width
                                 let isReadingPaneLarge = readingPaneWidth > 700
@@ -381,14 +407,17 @@ struct ReaderView: View {
             urlString: urlString,
             lang: lang,
             page: p,
+            viewMode: viewMode,
             activeSentenceId: targetSentenceId,
             onScroll: { scrollTop in
-                let otherLang = lang == "en" ? "vi" : "en"
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("ScrollTo_\(otherLang)"),
-                    object: nil,
-                    userInfo: ["scrollTop": scrollTop]
-                )
+                if viewMode == "split" {
+                    let otherLang = lang == "en" ? "vi" : "en"
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("ScrollTo_\(otherLang)"),
+                        object: nil,
+                        userInfo: ["scrollTop": scrollTop]
+                    )
+                }
             },
             onHighlightMessage: { msg in
                 handleHighlightMessage(msg, lang: lang, page: p)
