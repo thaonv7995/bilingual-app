@@ -159,8 +159,8 @@ struct ReaderView: View {
                                         renderWebView(lang: viewMode, p: p, isDoubleSided: isLargeAndLandscape)
                                             .padding(.top, 6)
                                             .padding(.bottom, 6)
-                                            .padding(.leading, isLargeAndLandscape ? (isLeft ? 16 : 0) : 16)
-                                            .padding(.trailing, isLargeAndLandscape ? (isLeft ? 0 : 16) : 16)
+                                            .padding(.leading, isLargeAndLandscape ? (isLeft ? 32 : 0) : 16)
+                                            .padding(.trailing, isLargeAndLandscape ? (isLeft ? 0 : 32) : 16)
                                     }
                                     .id(isLargeAndLandscape)
                                 }
