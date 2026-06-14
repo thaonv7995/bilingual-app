@@ -299,11 +299,13 @@ struct BilingualWebView: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        if let url = URL(string: urlString) {
-            let request = URLRequest(url: url)
-            if uiView.url != url {
+        if context.coordinator.loadedUrlString != urlString {
+            context.coordinator.loadedUrlString = urlString
+            if let url = URL(string: urlString) {
+                let request = URLRequest(url: url)
                 uiView.load(request)
-            } else {
+            }
+        } else {
                 // Apply highlights dynamically when list changes
                 let filtered = api.highlights.filter { $0.page == page && $0.lang == lang }
                 if let data = try? JSONEncoder().encode(filtered),
@@ -318,8 +320,8 @@ struct BilingualWebView: UIViewRepresentable {
                 uiView.evaluateJavaScript(activeJs, completionHandler: nil)
             }
         }
-    }
     
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
@@ -329,6 +331,7 @@ struct BilingualWebView: UIViewRepresentable {
         weak var webView: WKWebView?
         var lastReceivedScrollTop: CGFloat = 0
         var isUpdatingScroll = false
+        var loadedUrlString: String?
         
         init(_ parent: BilingualWebView) {
             self.parent = parent

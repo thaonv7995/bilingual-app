@@ -64,7 +64,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                 let rightVC = context.coordinator.createVC(page: rightPage)
                 
                 if uiViewController.spineLocation == .mid {
-                    uiViewController.setViewControllers([leftVC, rightVC], direction: dir, animated: true)
+                    uiViewController.setViewControllers([leftVC, rightVC], direction: dir, animated: false)
                 }
             }
         } else {
@@ -83,7 +83,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                 let vc = context.coordinator.createVC(page: currentPage)
                 
                 if uiViewController.spineLocation == .min || uiViewController.spineLocation == .max {
-                    uiViewController.setViewControllers([vc], direction: dir, animated: true)
+                    uiViewController.setViewControllers([vc], direction: dir, animated: false)
                 }
             }
         }

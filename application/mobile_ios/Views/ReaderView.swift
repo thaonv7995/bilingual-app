@@ -133,7 +133,8 @@ struct ReaderView: View {
                                 let isLandscape = geometry.size.width > geometry.size.height
                                 let isLargeAndLandscape = isLargeScreen && isLandscape
                                 
-                                if viewMode == "split" {
+                                ZStack {
+                                    // Chế độ Song ngữ
                                     TabView(selection: pageBinding) {
                                         ForEach(1...max(1, book.pageCount), id: \.self) { p in
                                             let layout = isLargeScreen ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
@@ -151,20 +152,42 @@ struct ReaderView: View {
                                         }
                                     }
                                     .tabViewStyle(.page(indexDisplayMode: .never))
-                                } else {
+                                    .opacity(viewMode == "split" ? 1 : 0)
+                                    .allowsHitTesting(viewMode == "split")
+                                    
+                                    // Chế độ Đơn ngữ (Tiếng Anh)
                                     BookPagerView(
                                         pageCount: max(1, book.pageCount),
                                         currentPage: pageBinding,
                                         isDoubleSided: isLargeAndLandscape
                                     ) { p in
                                         let isLeft = p % 2 == 1
-                                        renderWebView(lang: viewMode, p: p, isDoubleSided: isLargeAndLandscape)
+                                        renderWebView(lang: "en", p: p, isDoubleSided: isLargeAndLandscape)
                                             .padding(.top, 6)
                                             .padding(.bottom, 6)
                                             .padding(.leading, isLargeAndLandscape ? (isLeft ? 32 : 0) : 16)
                                             .padding(.trailing, isLargeAndLandscape ? (isLeft ? 0 : 32) : 16)
                                     }
-                                    .id(isLargeAndLandscape)
+                                    .id("en_\(isLargeAndLandscape)")
+                                    .opacity(viewMode == "en" ? 1 : 0)
+                                    .allowsHitTesting(viewMode == "en")
+                                    
+                                    // Chế độ Đơn ngữ (Tiếng Việt)
+                                    BookPagerView(
+                                        pageCount: max(1, book.pageCount),
+                                        currentPage: pageBinding,
+                                        isDoubleSided: isLargeAndLandscape
+                                    ) { p in
+                                        let isLeft = p % 2 == 1
+                                        renderWebView(lang: "vi", p: p, isDoubleSided: isLargeAndLandscape)
+                                            .padding(.top, 6)
+                                            .padding(.bottom, 6)
+                                            .padding(.leading, isLargeAndLandscape ? (isLeft ? 32 : 0) : 16)
+                                            .padding(.trailing, isLargeAndLandscape ? (isLeft ? 0 : 32) : 16)
+                                    }
+                                    .id("vi_\(isLargeAndLandscape)")
+                                    .opacity(viewMode == "vi" ? 1 : 0)
+                                    .allowsHitTesting(viewMode == "vi")
                                 }
                             }
                         }
