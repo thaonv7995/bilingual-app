@@ -110,10 +110,41 @@ struct ReaderView: View {
                         
                         Spacer()
                         
-                        Text("\(page)/\(book.pageCount)")
-                            .foregroundColor(Color.gray)
-                            .font(.system(size: 13, weight: .medium))
-                            .padding(.trailing, 8)
+                        HStack(spacing: 0) {
+                            Button(action: {
+                                if page > 1 { page -= 1 }
+                            }) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .opacity(page > 1 ? 1.0 : 0.25)
+                                    .frame(width: 32, height: 28)
+                            }
+                            .disabled(page <= 1)
+                            
+                            Text("Trang \(page)/\(book.pageCount)")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                            
+                            Button(action: {
+                                if page < book.pageCount { page += 1 }
+                            }) {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .opacity(page < book.pageCount ? 1.0 : 0.25)
+                                    .frame(width: 32, height: 28)
+                            }
+                            .disabled(page >= book.pageCount)
+                        }
+                        .background(Color(hex: "1e293b"))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        )
+                        .padding(.trailing, 8)
                         
                         Button(action: { isChatOpen.toggle() }) {
                             Image(systemName: "bubble.left.and.bubble.right.fill")
