@@ -32,6 +32,7 @@ struct ReaderView: View {
     @State private var aiBaseURL: String = "https://api.openai.com/v1"
     @State private var aiApiKey: String = ""
     @State private var aiModel: String = "gpt-4o-mini"
+    @State private var bilingualLayoutMode: String = "en-vi"
     @State private var chatMessages: [ChatMessage] = []
     @State private var chatInputText: String = ""
     @State private var isChatPending = false
@@ -145,16 +146,29 @@ struct ReaderView: View {
                                     // Chế độ Song ngữ
                                     TabView(selection: pageBinding) {
                                         ForEach(1...max(1, book.pageCount), id: \.self) { p in
-                                            let layout = isReadingPaneLarge ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
+                                            let isHorizontal = (bilingualLayoutMode == "en-over-vi" || bilingualLayoutMode == "vi-over-en") ? false : isReadingPaneLarge
+                                            let isEnFirst = bilingualLayoutMode.hasPrefix("en")
+                                            let layout = isHorizontal ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
                                             layout {
-                                                renderWebView(lang: "en", p: p, isDoubleSided: false)
-                                                    .padding(.leading, isReadingPaneLarge ? 28 : 16)
-                                                    .padding(.trailing, isReadingPaneLarge ? 4 : 16)
-                                                    .padding(.vertical, 6)
-                                                renderWebView(lang: "vi", p: p, isDoubleSided: false)
-                                                    .padding(.leading, isReadingPaneLarge ? 4 : 16)
-                                                    .padding(.trailing, isReadingPaneLarge ? 28 : 16)
-                                                    .padding(.vertical, 6)
+                                                if isEnFirst {
+                                                    renderWebView(lang: "en", p: p, isDoubleSided: false)
+                                                        .padding(.leading, isHorizontal ? 28 : 16)
+                                                        .padding(.trailing, isHorizontal ? 4 : 16)
+                                                        .padding(.vertical, 6)
+                                                    renderWebView(lang: "vi", p: p, isDoubleSided: false)
+                                                        .padding(.leading, isHorizontal ? 4 : 16)
+                                                        .padding(.trailing, isHorizontal ? 28 : 16)
+                                                        .padding(.vertical, 6)
+                                                } else {
+                                                    renderWebView(lang: "vi", p: p, isDoubleSided: false)
+                                                        .padding(.leading, isHorizontal ? 28 : 16)
+                                                        .padding(.trailing, isHorizontal ? 4 : 16)
+                                                        .padding(.vertical, 6)
+                                                    renderWebView(lang: "en", p: p, isDoubleSided: false)
+                                                        .padding(.leading, isHorizontal ? 4 : 16)
+                                                        .padding(.trailing, isHorizontal ? 28 : 16)
+                                                        .padding(.vertical, 6)
+                                                }
                                             }
                                             .tag(p)
                                         }
@@ -942,6 +956,27 @@ struct ReaderView: View {
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
                 
+                // Section 3: Bilingual Layout Mode
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Bố cục song ngữ")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
+                    
+                    HStack(spacing: 8) {
+                        LayoutOptionButton(mode: "en-vi", badge1: "EN", badge2: "VI", isVertical: false, selectedMode: $bilingualLayoutMode)
+                        LayoutOptionButton(mode: "vi-en", badge1: "VI", badge2: "EN", isVertical: false, selectedMode: $bilingualLayoutMode)
+                        LayoutOptionButton(mode: "en-over-vi", badge1: "EN", badge2: "VI", isVertical: true, selectedMode: $bilingualLayoutMode)
+                        LayoutOptionButton(mode: "vi-over-en", badge1: "VI", badge2: "EN", isVertical: true, selectedMode: $bilingualLayoutMode)
+                    }
+                }
+                .padding()
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+                
                 // Save Button
                 Button(action: {
                     saveAISettings()
@@ -1076,6 +1111,7 @@ struct ReaderView: View {
         self.aiBaseURL = UserDefaults.standard.string(forKey: "aiBaseURL") ?? "https://api.openai.com/v1"
         self.aiApiKey = UserDefaults.standard.string(forKey: "aiApiKey") ?? ""
         self.aiModel = UserDefaults.standard.string(forKey: "aiModel") ?? "gpt-4o-mini"
+        self.bilingualLayoutMode = UserDefaults.standard.string(forKey: "bilingualLayoutMode") ?? "en-vi"
         
         if let data = UserDefaults.standard.data(forKey: "chatHistory_\(book.slug)"),
            let decoded = try? JSONDecoder().decode([ChatMessage].self, from: data) {
@@ -1088,6 +1124,7 @@ struct ReaderView: View {
         UserDefaults.standard.set(aiBaseURL, forKey: "aiBaseURL")
         UserDefaults.standard.set(aiApiKey, forKey: "aiApiKey")
         UserDefaults.standard.set(aiModel, forKey: "aiModel")
+        UserDefaults.standard.set(bilingualLayoutMode, forKey: "bilingualLayoutMode")
     }
     
     private func saveChatHistory() {

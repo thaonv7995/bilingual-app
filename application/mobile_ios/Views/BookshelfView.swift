@@ -5,7 +5,8 @@ struct BookshelfView: View {
     @State private var books: [Book] = []
     @State private var isLoading = false
     @State private var selectedBook: Book?
-    @State private var showAdminPortal = false
+    @State private var showSettings = false
+    @State private var rotationDegrees: Double = 0.0
     
     // Adaptive grid columns for iPhone/iPad layouts
     let columns = [
@@ -51,31 +52,52 @@ struct BookshelfView: View {
             .navigationTitle("Tủ Sách Song Ngữ")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        api.logout()
-                    }) {
-                        Text("Đăng xuất")
-                            .foregroundColor(.red)
-                    }
-                }
-                
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 16) {
-                        if api.isAdmin {
-                            Button(action: {
-                                showAdminPortal = true
-                            }) {
-                                Image(systemName: "slider.horizontal.3")
-                                    .foregroundColor(.white)
-                            }
+                    HStack(spacing: 10) {
+                        Button(action: {
+                            showSettings = true
+                        }) {
+                            Image(systemName: "gearshape")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.9))
+                                .frame(width: 32, height: 32)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                )
                         }
                         
                         Button(action: {
                             Task { await loadBooks() }
                         }) {
                             Image(systemName: "arrow.clockwise")
-                                .foregroundColor(.white)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.9))
+                                .rotationEffect(.degrees(rotationDegrees))
+                                .frame(width: 32, height: 32)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                )
+                        }
+                        
+                        Button(action: {
+                            api.logout()
+                        }) {
+                            Image(systemName: "power")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(Color(hex: "ef4444"))
+                                .frame(width: 32, height: 32)
+                                .background(Color(hex: "ef4444").opacity(0.1))
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color(hex: "ef4444").opacity(0.25), lineWidth: 1)
+                                )
                         }
                     }
                 }
@@ -83,11 +105,23 @@ struct BookshelfView: View {
             .fullScreenCover(item: $selectedBook) { book in
                 ReaderView(book: book)
             }
-            .sheet(isPresented: $showAdminPortal) {
-                AdminPortalView()
+            .sheet(isPresented: $showSettings) {
+                AISettingsView()
+                    .applySheetBackground(Color(hex: "0f172a"))
             }
             .onAppear {
                 Task { await loadBooks() }
+            }
+            .onChange(of: isLoading) { loading in
+                if loading {
+                    withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
+                        rotationDegrees = 360
+                    }
+                } else {
+                    withAnimation(.spring()) {
+                        rotationDegrees = 0
+                    }
+                }
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
@@ -167,6 +201,17 @@ struct BookCard: View {
                     .padding(.top, 2)
             }
             .padding(.horizontal, 4)
+        }
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func applySheetBackground(_ color: Color) -> some View {
+        if #available(iOS 16.4, *) {
+            self.presentationBackground(color)
+        } else {
+            self
         }
     }
 }
