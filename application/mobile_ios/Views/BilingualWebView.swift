@@ -427,16 +427,22 @@ struct BilingualWebView: UIViewRepresentable {
         } else {
                 // Apply highlights dynamically when list changes
                 let filtered = api.highlights.filter { $0.page == page && $0.lang == lang }
-                if let data = try? JSONEncoder().encode(filtered),
-                   let jsonStr = String(data: data, encoding: .utf8) {
-                    let js = "window.applyStoredHighlights(\(jsonStr));"
-                    uiView.evaluateJavaScript(js, completionHandler: nil)
+                if filtered != context.coordinator.lastAppliedHighlights {
+                    context.coordinator.lastAppliedHighlights = filtered
+                    if let data = try? JSONEncoder().encode(filtered),
+                       let jsonStr = String(data: data, encoding: .utf8) {
+                        let js = "window.applyStoredHighlights(\(jsonStr));"
+                        uiView.evaluateJavaScript(js, completionHandler: nil)
+                    }
                 }
                 
                 // Highlight active sentence dynamically
-                let sentenceId = activeSentenceId ?? ""
-                let activeJs = "if (window.highlightSentence) { window.highlightSentence('\(sentenceId)'); }"
-                uiView.evaluateJavaScript(activeJs, completionHandler: nil)
+                if activeSentenceId != context.coordinator.lastAppliedSentenceId {
+                    context.coordinator.lastAppliedSentenceId = activeSentenceId
+                    let sentenceId = activeSentenceId ?? ""
+                    let activeJs = "if (window.highlightSentence) { window.highlightSentence('\(sentenceId)'); }"
+                    uiView.evaluateJavaScript(activeJs, completionHandler: nil)
+                }
             }
         }
     
@@ -451,6 +457,8 @@ struct BilingualWebView: UIViewRepresentable {
         var lastReceivedScrollTop: CGFloat = 0
         var isUpdatingScroll = false
         var loadedUrlString: String?
+        var lastAppliedHighlights: [Highlight] = []
+        var lastAppliedSentenceId: String? = nil
         
         init(_ parent: BilingualWebView) {
             self.parent = parent
@@ -491,6 +499,7 @@ struct BilingualWebView: UIViewRepresentable {
             
             // Reapply highlights immediately after finish loading
             let filtered = parent.api.highlights.filter { $0.page == parent.page && $0.lang == parent.lang }
+            self.lastAppliedHighlights = filtered
             if let data = try? JSONEncoder().encode(filtered),
                let jsonStr = String(data: data, encoding: .utf8) {
                 let js = "window.applyStoredHighlights(\(jsonStr));"
@@ -499,8 +508,11 @@ struct BilingualWebView: UIViewRepresentable {
             
             // Highlight active sentence on finish loading
             if let activeId = parent.activeSentenceId {
+                self.lastAppliedSentenceId = activeId
                 let activeJs = "if (window.highlightSentence) { window.highlightSentence('\(activeId)'); }"
                 webView.evaluateJavaScript(activeJs, completionHandler: nil)
+            } else {
+                self.lastAppliedSentenceId = nil
             }
         }
         

@@ -40,7 +40,7 @@ struct Book: Codable, Identifiable {
     }
 }
 
-struct Highlight: Codable, Identifiable {
+struct Highlight: Codable, Identifiable, Equatable {
     let id: String
     let page: Int
     let lang: String
