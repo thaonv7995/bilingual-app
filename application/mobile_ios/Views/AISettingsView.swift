@@ -92,14 +92,21 @@ struct AISettingsView: View {
                                         .textInputAutocapitalization(.none)
                                     
                                     Button(action: {
+                                        print("[Debug] Base URL paste button tapped")
                                         if let pasteboardString = UIPasteboard.general.string {
-                                            aiBaseURL = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            print("[Debug] Pasteboard content: \(pasteboardString)")
+                                            aiBaseURL += pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        } else {
+                                            print("[Debug] Pasteboard is nil or empty")
                                         }
                                     }) {
                                         Image(systemName: "doc.on.clipboard")
                                             .font(.system(size: 14))
                                             .foregroundColor(Color(hex: "14b8a6"))
+                                            .frame(width: 32, height: 32)
+                                            .contentShape(Rectangle())
                                     }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
                                 .padding(12)
                                 .background(Color.white.opacity(0.05))
@@ -120,14 +127,21 @@ struct AISettingsView: View {
                                         .textInputAutocapitalization(.none)
                                     
                                     Button(action: {
+                                        print("[Debug] API Key paste button tapped")
                                         if let pasteboardString = UIPasteboard.general.string {
-                                            aiApiKey = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            print("[Debug] Pasteboard content: \(pasteboardString)")
+                                            aiApiKey += pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        } else {
+                                            print("[Debug] Pasteboard is nil or empty")
                                         }
                                     }) {
                                         Image(systemName: "doc.on.clipboard")
                                             .font(.system(size: 14))
                                             .foregroundColor(Color(hex: "14b8a6"))
+                                            .frame(width: 32, height: 32)
+                                            .contentShape(Rectangle())
                                     }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
                                 .padding(12)
                                 .background(Color.white.opacity(0.05))
@@ -148,14 +162,21 @@ struct AISettingsView: View {
                                         .textInputAutocapitalization(.none)
                                     
                                     Button(action: {
+                                        print("[Debug] Model Name paste button tapped")
                                         if let pasteboardString = UIPasteboard.general.string {
-                                            aiModel = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            print("[Debug] Pasteboard content: \(pasteboardString)")
+                                            aiModel += pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        } else {
+                                            print("[Debug] Pasteboard is nil or empty")
                                         }
                                     }) {
                                         Image(systemName: "doc.on.clipboard")
                                             .font(.system(size: 14))
                                             .foregroundColor(Color(hex: "14b8a6"))
+                                            .frame(width: 32, height: 32)
+                                            .contentShape(Rectangle())
                                     }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
                                 .padding(12)
                                 .background(Color.white.opacity(0.05))
