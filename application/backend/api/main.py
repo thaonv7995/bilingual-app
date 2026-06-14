@@ -65,6 +65,11 @@ def sync_books_directory_to_db(db: Session):
                 # Check if book already in DB
                 db_book = db.query(Book).filter(Book.slug == item.name).first()
                 cover_val = metadata.get("cover") or ""
+                if not cover_val:
+                    for possible_cover in ["assets/images/page_0001_cover_logo.png", "assets/cover.jpg", "assets/cover.png"]:
+                        if (item / "output" / possible_cover).is_file():
+                            cover_val = possible_cover
+                            break
                 
                 if not db_book:
                     new_book = Book(

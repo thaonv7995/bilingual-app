@@ -147,6 +147,11 @@ def upload_bkb(
         metadata = book_paths.load_book_json()
         
         cover_val = metadata.get("cover") or ""
+        if not cover_val:
+            for possible_cover in ["assets/images/page_0001_cover_logo.png", "assets/cover.jpg", "assets/cover.png"]:
+                if (BOOKS_DIR / book_slug / "output" / possible_cover).is_file():
+                    cover_val = possible_cover
+                    break
         db_book = db.query(Book).filter(Book.slug == book_slug).first()
         if not db_book:
             db_book = Book(
