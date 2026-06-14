@@ -76,6 +76,8 @@ class APIService: ObservableObject {
     }
     
     func logout() {
+        let savedToken = token
+        
         token = ""
         refreshToken = ""
         isAuthenticated = false
@@ -88,11 +90,11 @@ class APIService: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "username")
         UserDefaults.standard.removeObject(forKey: "isAdmin")
         
-        // Notify server
-        if let url = URL(string: "\(serverUrl)/api/auth/logout") {
+        // Notify server with the saved (valid) token
+        if !savedToken.isEmpty, let url = URL(string: "\(serverUrl)/api/auth/logout") {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("Bearer \(savedToken)", forHTTPHeaderField: "Authorization")
             URLSession.shared.dataTask(with: request).resume()
         }
     }

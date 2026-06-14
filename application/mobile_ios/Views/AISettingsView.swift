@@ -95,7 +95,7 @@ struct AISettingsView: View {
                                         print("[Debug] Base URL paste button tapped")
                                         if let pasteboardString = UIPasteboard.general.string {
                                             print("[Debug] Pasteboard content: \(pasteboardString)")
-                                            aiBaseURL += pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            aiBaseURL = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
                                         } else {
                                             print("[Debug] Pasteboard is nil or empty")
                                         }
@@ -130,7 +130,7 @@ struct AISettingsView: View {
                                         print("[Debug] API Key paste button tapped")
                                         if let pasteboardString = UIPasteboard.general.string {
                                             print("[Debug] Pasteboard content: \(pasteboardString)")
-                                            aiApiKey += pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            aiApiKey = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
                                         } else {
                                             print("[Debug] Pasteboard is nil or empty")
                                         }
@@ -165,7 +165,7 @@ struct AISettingsView: View {
                                         print("[Debug] Model Name paste button tapped")
                                         if let pasteboardString = UIPasteboard.general.string {
                                             print("[Debug] Pasteboard content: \(pasteboardString)")
-                                            aiModel += pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            aiModel = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
                                         } else {
                                             print("[Debug] Pasteboard is nil or empty")
                                         }

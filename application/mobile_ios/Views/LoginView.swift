@@ -142,6 +142,9 @@ struct LoginView: View {
         Task {
             do {
                 _ = try await api.login(usernameInput: usernameInput, passwordInput: passwordInput)
+                await MainActor.run {
+                    isLoading = false
+                }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription

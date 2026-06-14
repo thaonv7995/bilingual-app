@@ -201,7 +201,8 @@ struct BookCard: View {
                     }
                 }
             }
-            .frame(width: 154, height: 220)
+            .aspectRatio(154.0/220.0, contentMode: .fit)
+            .frame(maxWidth: .infinity)
             .overlay(
                 // Bottom Gradient & Information Overlay
                 VStack {
@@ -283,7 +284,7 @@ struct BookCard: View {
                     .foregroundColor(.white)
                     .lineLimit(2)
             }
-            .frame(width: 154, height: 40, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 40, alignment: .topLeading)
             .padding(.horizontal, 4)
             .contentShape(Rectangle())
             .onTapGesture {

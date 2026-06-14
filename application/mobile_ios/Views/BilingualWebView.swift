@@ -496,6 +496,10 @@ struct BilingualWebView: UIViewRepresentable {
         }
     }
     
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+        NotificationCenter.default.removeObserver(coordinator)
+        uiView.configuration.userContentController.removeAllScriptMessageHandlers()
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)

@@ -528,9 +528,10 @@ struct ReaderView: View {
     private func saveHighlight() {
         let slug = book.slug
         if let selection = activeSelection {
+            let highlightPage = activeSelectionPage ?? page
             let newHighlight = Highlight(
                 id: UUID().uuidString.lowercased(),
-                page: page,
+                page: highlightPage,
                 lang: activeSelectionLang,
                 color: selectedColor,
                 text: selection.text,
@@ -978,7 +979,7 @@ struct ReaderView: View {
                                 print("[Debug] Reader Base URL paste button tapped")
                                 if let pasteboardString = UIPasteboard.general.string {
                                     print("[Debug] Pasteboard content: \(pasteboardString)")
-                                    aiBaseURL += pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    aiBaseURL = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
                                 } else {
                                     print("[Debug] Pasteboard is nil or empty")
                                 }
@@ -1013,7 +1014,7 @@ struct ReaderView: View {
                                 print("[Debug] Reader API Key paste button tapped")
                                 if let pasteboardString = UIPasteboard.general.string {
                                     print("[Debug] Pasteboard content: \(pasteboardString)")
-                                    aiApiKey += pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    aiApiKey = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
                                 } else {
                                     print("[Debug] Pasteboard is nil or empty")
                                 }
@@ -1048,7 +1049,7 @@ struct ReaderView: View {
                                 print("[Debug] Reader Model Name paste button tapped")
                                 if let pasteboardString = UIPasteboard.general.string {
                                     print("[Debug] Pasteboard content: \(pasteboardString)")
-                                    aiModel += pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    aiModel = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
                                 } else {
                                     print("[Debug] Pasteboard is nil or empty")
                                 }
@@ -1608,11 +1609,11 @@ struct MarkdownView: View {
             }
             .padding(.leading, 8)
             
-        case .code:
+        case .code(let language):
             VStack(alignment: .leading, spacing: 0) {
                 // Header bar
                 HStack {
-                    Text(block.content.lowercased().starts(with: "redis") == true ? "redis" : "code")
+                    Text(language ?? "code")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundColor(.gray)
                     Spacer()
