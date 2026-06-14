@@ -66,35 +66,85 @@ if [ "$ACTION" = "delete" ] || [ "$ACTION" = "uninstall" ]; then
     exit 0
 fi
 
-# ==================== ACTION: INSTALL (BOOTSTRAP PHASE) ====================
-if [ "$IS_SOURCE_TREE" = "false" ] && [ "$ACTION" = "install" ]; then
-    echo "============================================="
-    echo "Bootstrapping Bilingual Book Reader Installation..."
-    echo "============================================="
-    
-    if [ -z "$REPO_URL" ]; then
-        echo "Error: Git repository URL is required for bootstrap installation."
-        echo "Usage: curl -sSL <script_url> | bash -s -- install [target_dir] [repo_url]"
+# ==================== ACTION: REMOTE BOOTSTRAP (RUN VIA CURL) ====================
+if [ "$IS_SOURCE_TREE" = "false" ]; then
+    if [ "$ACTION" = "install" ]; then
+        echo "============================================="
+        echo "Bootstrapping Bilingual Book Reader Installation..."
+        echo "============================================="
+        
+        if [ -z "$REPO_URL" ]; then
+            echo "Error: Git repository URL is required for bootstrap installation."
+            echo "Usage: curl -sSL <script_url> | bash -s -- install [target_dir] [repo_url]"
+            exit 1
+        fi
+        
+        echo "Target directory: $TARGET_DIR"
+        echo "Git repository: $REPO_URL"
+        
+        # Clone repository
+        if [ -d "$TARGET_DIR" ]; then
+            echo "Target directory already exists. Updating it instead..."
+        else
+            echo "Cloning repository..."
+            sudo git clone "$REPO_URL" "$TARGET_DIR"
+        fi
+        
+        # Run local installer
+        echo "Triggering local installation..."
+        cd "$TARGET_DIR"
+        sudo chmod +x deploy.sh
+        sudo ./deploy.sh install "$TARGET_DIR"
+        exit 0
+        
+    elif [ "$ACTION" = "update" ]; then
+        echo "============================================="
+        echo "Bootstrapping Bilingual Book Reader Update..."
+        echo "============================================="
+        
+        if [ ! -d "$TARGET_DIR" ]; then
+            echo "Error: Target directory $TARGET_DIR does not exist. Please run install first."
+            exit 1
+        fi
+        
+        echo "Target directory: $TARGET_DIR"
+        
+        # Update repository
+        echo "Pulling latest changes from Git..."
+        cd "$TARGET_DIR"
+        sudo git fetch --all
+        CURRENT_BRANCH=$(sudo git rev-parse --abbrev-ref HEAD)
+        sudo git pull origin "$CURRENT_BRANCH"
+        
+        # Run local update installer
+        echo "Triggering local update..."
+        sudo chmod +x deploy.sh
+        sudo ./deploy.sh update "$TARGET_DIR"
+        exit 0
+        
+    elif [ "$ACTION" = "delete" ] || [ "$ACTION" = "uninstall" ]; then
+        echo "============================================="
+        echo "Bootstrapping Bilingual Book Reader Uninstall..."
+        echo "============================================="
+        
+        if [ ! -d "$TARGET_DIR" ]; then
+            echo "Error: Target directory $TARGET_DIR does not exist, nothing to uninstall."
+            exit 0
+        fi
+        
+        echo "Target directory: $TARGET_DIR"
+        
+        # Run local uninstaller
+        echo "Triggering local uninstall..."
+        cd "$TARGET_DIR"
+        sudo chmod +x deploy.sh
+        sudo ./deploy.sh delete "$TARGET_DIR"
+        exit 0
+    else
+        echo "Error: Unknown action '$ACTION' for remote bootstrap execution."
+        show_help
         exit 1
     fi
-    
-    echo "Target directory: $TARGET_DIR"
-    echo "Git repository: $REPO_URL"
-    
-    # Clone repository
-    if [ -d "$TARGET_DIR" ]; then
-        echo "Target directory already exists. Updating it instead..."
-    else
-        echo "Cloning repository..."
-        sudo git clone "$REPO_URL" "$TARGET_DIR"
-    fi
-    
-    # Run the local installer
-    echo "Triggering local installation..."
-    cd "$TARGET_DIR"
-    sudo chmod +x deploy.sh
-    sudo ./deploy.sh install "$TARGET_DIR"
-    exit 0
 fi
 
 # ==================== LOCAL OPERATIONS (SOURCE TREE REQUIRED) ====================

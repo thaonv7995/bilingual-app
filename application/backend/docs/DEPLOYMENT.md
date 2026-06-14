@@ -38,21 +38,19 @@ curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy
 *Hãy chắc chắn máy chủ Debian đã cấu hình SSH key để truy cập hoặc sử dụng Personal Access Token trong HTTPS URL nếu repository là private.*
 
 ### 🔄 Cập nhật (Update to latest version)
-To update the source code to the latest commit on GitHub, re-install any new dependencies, and restart the backend service:
+To update the source code to the latest commit on GitHub, update python virtualenv dependencies, and restart the background systemd service using a single command:
 
 ```bash
-cd /opt/bilingual-app
-sudo ./deploy.sh update
+curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- update /opt/bilingual-app
 ```
 
 ### 🗑️ Gỡ cài đặt (Delete / Uninstall)
-To stop and disable the background service, remove systemd configurations, and clean up the installation directory:
+To stop and disable the background service, clean up systemd files, and delete the target directory:
 
 ```bash
-cd /opt/bilingual-app
-sudo ./deploy.sh delete
+curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- delete /opt/bilingual-app
 ```
-*Lưu ý: Lệnh delete sẽ hiển thị dấu nhắc hỏi bạn có muốn xóa thư mục mã nguồn tại `/opt/bilingual-app` hay không.*
+*Lưu ý: Lệnh delete sẽ hiển thị dấu nhắc hỏi bạn xác nhận trước khi xóa thư mục mã nguồn tại `/opt/bilingual-app`.*
 
 ---
 
