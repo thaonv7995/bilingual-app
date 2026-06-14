@@ -35,6 +35,10 @@ struct ReaderView: View {
     @State private var chatMessages: [ChatMessage] = []
     @State private var chatInputText: String = ""
     @State private var isChatPending = false
+    @State private var chatWidth: CGFloat = 350
+    @State private var dragStartingWidth: CGFloat = 350
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging: Bool = false
     
     let highlightColors = [
         ("#fde68a", Color(hex: "fde68a")), // Yellow
@@ -132,20 +136,24 @@ struct ReaderView: View {
                                 
                                 let isLandscape = geometry.size.width > geometry.size.height
                                 let isLargeAndLandscape = isLargeScreen && isLandscape
+                                let useDoubleSided = isLargeAndLandscape && !isChatOpen
+                                
+                                let readingPaneWidth = isLargeScreen && isChatOpen ? geometry.size.width - chatWidth : geometry.size.width
+                                let isReadingPaneLarge = readingPaneWidth > 700
                                 
                                 ZStack {
                                     // Chế độ Song ngữ
                                     TabView(selection: pageBinding) {
                                         ForEach(1...max(1, book.pageCount), id: \.self) { p in
-                                            let layout = isLargeScreen ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
+                                            let layout = isReadingPaneLarge ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
                                             layout {
                                                 renderWebView(lang: "en", p: p, isDoubleSided: false)
-                                                    .padding(.leading, isLargeScreen ? 28 : 16)
-                                                    .padding(.trailing, isLargeScreen ? 4 : 16)
+                                                    .padding(.leading, isReadingPaneLarge ? 28 : 16)
+                                                    .padding(.trailing, isReadingPaneLarge ? 4 : 16)
                                                     .padding(.vertical, 6)
                                                 renderWebView(lang: "vi", p: p, isDoubleSided: false)
-                                                    .padding(.leading, isLargeScreen ? 4 : 16)
-                                                    .padding(.trailing, isLargeScreen ? 28 : 16)
+                                                    .padding(.leading, isReadingPaneLarge ? 4 : 16)
+                                                    .padding(.trailing, isReadingPaneLarge ? 28 : 16)
                                                     .padding(.vertical, 6)
                                             }
                                             .tag(p)
@@ -159,16 +167,16 @@ struct ReaderView: View {
                                     BookPagerView(
                                         pageCount: max(1, book.pageCount),
                                         currentPage: pageBinding,
-                                        isDoubleSided: isLargeAndLandscape
+                                        isDoubleSided: useDoubleSided
                                     ) { p in
                                         let isLeft = p % 2 == 1
-                                        renderWebView(lang: "en", p: p, isDoubleSided: isLargeAndLandscape)
+                                        renderWebView(lang: "en", p: p, isDoubleSided: useDoubleSided)
                                             .padding(.top, 6)
                                             .padding(.bottom, 6)
-                                            .padding(.leading, isLargeAndLandscape ? (isLeft ? 32 : 0) : 16)
-                                            .padding(.trailing, isLargeAndLandscape ? (isLeft ? 0 : 32) : 16)
+                                            .padding(.leading, useDoubleSided ? (isLeft ? 32 : 0) : 16)
+                                            .padding(.trailing, useDoubleSided ? (isLeft ? 0 : 32) : 16)
                                     }
-                                    .id("en_\(isLargeAndLandscape)")
+                                    .id("en_\(useDoubleSided)")
                                     .opacity(viewMode == "en" ? 1 : 0)
                                     .allowsHitTesting(viewMode == "en")
                                     
@@ -176,16 +184,16 @@ struct ReaderView: View {
                                     BookPagerView(
                                         pageCount: max(1, book.pageCount),
                                         currentPage: pageBinding,
-                                        isDoubleSided: isLargeAndLandscape
+                                        isDoubleSided: useDoubleSided
                                     ) { p in
                                         let isLeft = p % 2 == 1
-                                        renderWebView(lang: "vi", p: p, isDoubleSided: isLargeAndLandscape)
+                                        renderWebView(lang: "vi", p: p, isDoubleSided: useDoubleSided)
                                             .padding(.top, 6)
                                             .padding(.bottom, 6)
-                                            .padding(.leading, isLargeAndLandscape ? (isLeft ? 32 : 0) : 16)
-                                            .padding(.trailing, isLargeAndLandscape ? (isLeft ? 0 : 32) : 16)
+                                            .padding(.leading, useDoubleSided ? (isLeft ? 32 : 0) : 16)
+                                            .padding(.trailing, useDoubleSided ? (isLeft ? 0 : 32) : 16)
                                     }
-                                    .id("vi_\(isLargeAndLandscape)")
+                                    .id("vi_\(useDoubleSided)")
                                     .opacity(viewMode == "vi" ? 1 : 0)
                                     .allowsHitTesting(viewMode == "vi")
                                 }
@@ -197,9 +205,59 @@ struct ReaderView: View {
                     
                     // Slide-in AI Assistant Sidebar (For large screens)
                     if isChatOpen && isLargeScreen {
-                        Divider().background(Color.white.opacity(0.1))
+                        // Drag Resize Handle
+                        HStack(spacing: 0) {
+                            Divider().background(Color.white.opacity(0.1))
+                            
+                            // Visual Grip Zone
+                            ZStack {
+                                Color(hex: "0b0f19")
+                                    .frame(width: 12)
+                                
+                                // Drag Line
+                                Rectangle()
+                                    .fill(isDragging ? Color(hex: "14b8a6") : Color(hex: "14b8a6").opacity(0.2))
+                                    .frame(width: isDragging ? 2.5 : 1.5)
+                                    .shadow(color: isDragging ? Color(hex: "14b8a6").opacity(0.6) : .clear, radius: 4)
+                                
+                                // Tactile visual indicator dots
+                                VStack(spacing: 4) {
+                                    ForEach(0..<3) { _ in
+                                        Circle()
+                                            .fill(isDragging ? Color.white : Color.gray.opacity(0.6))
+                                            .frame(width: 3, height: 3)
+                                    }
+                                }
+                            }
+                            .contentShape(Rectangle())
+                            .offset(x: dragOffset)
+                            .gesture(
+                                DragGesture(minimumDistance: 0)
+                                    .onChanged { gesture in
+                                        isDragging = true
+                                        let proposedWidth = dragStartingWidth - gesture.translation.width
+                                        let maxWidth = geometry.size.width * 0.55
+                                        let clampedWidth = min(max(proposedWidth, 280), maxWidth)
+                                        dragOffset = dragStartingWidth - clampedWidth
+                                    }
+                                    .onEnded { gesture in
+                                        let proposedWidth = dragStartingWidth - gesture.translation.width
+                                        let maxWidth = geometry.size.width * 0.55
+                                        let finalWidth = min(max(proposedWidth, 280), maxWidth)
+                                        
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                            chatWidth = finalWidth
+                                        }
+                                        dragStartingWidth = finalWidth
+                                        isDragging = false
+                                        dragOffset = 0
+                                    }
+                            )
+                        }
+                        .ignoresSafeArea(edges: [.top, .bottom])
+                        
                         aiAssistantPanel()
-                            .frame(width: 320)
+                            .frame(width: chatWidth)
                             .transition(.move(edge: .trailing))
                     }
                 }
@@ -454,62 +512,206 @@ struct ReaderView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                HStack(spacing: 8) {
-                    Image(systemName: "sparkles")
-                        .foregroundColor(.purple)
-                    Text("Trợ lý AI")
-                        .font(.headline)
-                        .foregroundColor(.white)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(Color(hex: "14b8a6"))
+                            .shadow(color: Color(hex: "14b8a6").opacity(0.5), radius: 4)
+                        Text("Trợ lý AI")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    Text("Trợ lý phân tích sách thông minh")
+                        .font(.system(size: 10))
+                        .foregroundColor(.gray)
                 }
                 
                 Spacer()
                 
                 // Settings Toggle
                 Button(action: {
-                    isAISettingsOpen.toggle()
+                    withAnimation(.spring()) {
+                        isAISettingsOpen.toggle()
+                    }
                 }) {
-                    Image(systemName: "gearshape")
-                        .foregroundColor(.gray)
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(isAISettingsOpen ? Color(hex: "14b8a6") : .white.opacity(0.8))
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(isAISettingsOpen ? 0.15 : 0.08))
+                        .clipShape(Circle())
                 }
                 
                 // Clear History Button
                 Button(action: {
-                    chatMessages = []
-                    saveChatHistory()
+                    withAnimation(.spring()) {
+                        chatMessages = []
+                        saveChatHistory()
+                    }
                 }) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.red.opacity(0.8))
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
                 }
-                .padding(.horizontal, 8)
             }
-            .padding()
-            .background(Color(hex: "111827"))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color(hex: "0b0f19"))
+            .overlay(
+                Rectangle()
+                    .frame(height: 1)
+                    .foregroundColor(Color.white.opacity(0.06)),
+                alignment: .bottom
+            )
             
             if isAISettingsOpen {
                 aiSettingsForm()
-                    .transition(.slide)
+                    .transition(.move(edge: .trailing))
             } else {
                 // Messages List
                 ScrollViewReader { proxy in
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 14) {
                             if chatMessages.isEmpty {
-                                Text("Hãy hỏi AI bất cứ điều gì liên quan đến cuốn sách này. Bạn có thể bôi đen văn bản trong trang sách và nhấn 'Hỏi AI' để phân tích nhanh!")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                                    .padding(.top, 40)
-                                    .multilineTextAlignment(.center)
+                                VStack(spacing: 20) {
+                                    Spacer().frame(height: 20)
+                                    
+                                    // Glowing AI Icon
+                                    ZStack {
+                                        Circle()
+                                            .fill(RadialGradient(
+                                                colors: [Color(hex: "14b8a6").opacity(0.25), .clear],
+                                                center: .center,
+                                                startRadius: 0,
+                                                endRadius: 50
+                                            ))
+                                            .frame(width: 100, height: 100)
+                                        
+                                        Image(systemName: "sparkles")
+                                            .font(.system(size: 38))
+                                            .foregroundColor(Color(hex: "14b8a6"))
+                                            .shadow(color: Color(hex: "14b8a6").opacity(0.6), radius: 8)
+                                    }
+                                    
+                                    VStack(spacing: 8) {
+                                        Text("Chào mừng bạn!")
+                                            .font(.headline)
+                                            .fontWeight(.bold)
+                                            .foregroundColor(.white)
+                                        
+                                        Text("Tôi là Trợ lý AI. Tôi có thể giúp bạn phân tích, tóm tắt, giải thích thuật ngữ hoặc dịch nghĩa cuốn sách này.")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                            .multilineTextAlignment(.center)
+                                            .lineSpacing(4)
+                                            .padding(.horizontal, 20)
+                                    }
+                                    
+                                    Spacer().frame(height: 10)
+                                    
+                                    // Suggested Prompt cards
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        Text("GỢI Ý CÂU HỎI NHANH")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.gray.opacity(0.8))
+                                            .padding(.horizontal, 4)
+                                        
+                                        SuggestedPromptRow(
+                                            icon: "📝",
+                                            title: "Tóm tắt trang này",
+                                            prompt: "Tóm tắt nội dung chính của trang đang đọc..."
+                                        ) {
+                                            chatInputText = "Tóm tắt nội dung chính và các ý chính của trang sách này giúp tôi."
+                                            sendChat()
+                                        }
+                                        
+                                        SuggestedPromptRow(
+                                            icon: "🔍",
+                                            title: "Giải thích thuật ngữ",
+                                            prompt: "Tìm và giải thích các từ khó, khái niệm..."
+                                        ) {
+                                            chatInputText = "Hãy tìm các thuật ngữ phức tạp, khái niệm quan trọng hoặc từ khó trong trang này và giải thích ngắn gọn."
+                                            sendChat()
+                                        }
+                                        
+                                        SuggestedPromptRow(
+                                            icon: "💡",
+                                            title: "Ý chính bài học",
+                                            prompt: "Rút ra thông điệp chính cốt lõi..."
+                                        ) {
+                                            chatInputText = "Bài học hoặc thông điệp cốt lõi nhất mà tác giả muốn truyền đạt ở trang này là gì?"
+                                            sendChat()
+                                        }
+                                        
+                                        SuggestedPromptRow(
+                                            icon: "🌐",
+                                            title: "Dịch & Phân tích",
+                                            prompt: "Dịch các câu phức tạp trong trang..."
+                                        ) {
+                                            chatInputText = "Dịch các câu học thuật hoặc câu khó trong trang này sang tiếng Việt và giải nghĩa chi tiết cấu trúc."
+                                            sendChat()
+                                        }
+                                    }
+                                }
+                                .padding(.bottom, 20)
                             } else {
                                 ForEach(chatMessages, id: \.id) { msg in
-                                    HStack {
+                                    HStack(alignment: .bottom, spacing: 8) {
+                                        if msg.role == "assistant" {
+                                            // AI Avatar
+                                            LinearGradient(
+                                                colors: [Color(hex: "0d9488"), Color(hex: "2dd4bf")],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                            .frame(width: 28, height: 28)
+                                            .clipShape(Circle())
+                                            .overlay(
+                                                Image(systemName: "sparkles")
+                                                    .font(.system(size: 11, weight: .bold))
+                                                    .foregroundColor(.white)
+                                            )
+                                            .shadow(color: Color(hex: "14b8a6").opacity(0.3), radius: 3)
+                                            .padding(.bottom, 2)
+                                        }
+                                        
                                         if msg.role == "user" { Spacer() }
                                         
-                                        Text(msg.content)
-                                            .font(.subheadline)
-                                            .padding(10)
-                                            .background(msg.role == "user" ? Color(hex: "4f46e5") : Color(hex: "1f2937"))
-                                            .foregroundColor(.white)
-                                            .cornerRadius(12)
+                                        VStack(alignment: msg.role == "user" ? .trailing : .leading, spacing: 4) {
+                                            if msg.role == "user" {
+                                                Text(msg.content)
+                                                    .font(.system(size: 14))
+                                                    .padding(.horizontal, 14)
+                                                    .padding(.vertical, 10)
+                                                    .background(
+                                                        LinearGradient(
+                                                            colors: [Color(hex: "818cf8"), Color(hex: "6366f1")],
+                                                            startPoint: .topLeading,
+                                                            endPoint: .bottomTrailing
+                                                        )
+                                                    )
+                                                    .foregroundColor(.white)
+                                                    .clipShape(UnevenRoundedCorners(tl: 16, tr: 16, bl: 16, br: 4))
+                                                    .shadow(color: Color(hex: "6366f1").opacity(0.2), radius: 4, x: 0, y: 2)
+                                            } else {
+                                                Text(renderMarkdown(msg.content))
+                                                    .font(.system(size: 14))
+                                                    .lineSpacing(3)
+                                                    .padding(.horizontal, 14)
+                                                    .padding(.vertical, 10)
+                                                    .background(Color.white.opacity(0.06))
+                                                    .foregroundColor(.white)
+                                                    .clipShape(UnevenRoundedCorners(tl: 16, tr: 16, bl: 4, br: 16))
+                                                    .overlay(
+                                                        RoundedRectangle(cornerRadius: 16)
+                                                            .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                                                    )
+                                            }
+                                        }
                                         
                                         if msg.role == "assistant" { Spacer() }
                                     }
@@ -517,11 +719,38 @@ struct ReaderView: View {
                                 }
                                 
                                 if isChatPending {
-                                    HStack {
-                                        ProgressView().tint(.white)
-                                        Text("AI đang suy nghĩ...")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
+                                    HStack(alignment: .bottom, spacing: 8) {
+                                        // AI Avatar
+                                        LinearGradient(
+                                            colors: [Color(hex: "0d9488"), Color(hex: "2dd4bf")],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                        .frame(width: 28, height: 28)
+                                        .clipShape(Circle())
+                                        .overlay(
+                                            Image(systemName: "sparkles")
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundColor(.white)
+                                        )
+                                        .shadow(color: Color(hex: "14b8a6").opacity(0.3), radius: 3)
+                                        .padding(.bottom, 2)
+                                        
+                                        HStack(spacing: 8) {
+                                            BouncingDotsView()
+                                                .frame(height: 12)
+                                            Text("AI đang suy nghĩ...")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.gray)
+                                        }
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 10)
+                                        .background(Color.white.opacity(0.06))
+                                        .clipShape(UnevenRoundedCorners(tl: 16, tr: 16, bl: 4, br: 16))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 16)
+                                                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                                        )
                                         Spacer()
                                     }
                                 }
@@ -529,77 +758,226 @@ struct ReaderView: View {
                         }
                         .padding()
                     }
+                    .scrollDismissesKeyboard(.interactively)
                     .onChange(of: chatMessages.count) { _ in
                         if let last = chatMessages.last {
-                            proxy.scrollTo(last.id, anchor: .bottom)
+                            withAnimation {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
+                        }
+                    }
+                    .onChange(of: isChatPending) { pending in
+                        if pending {
+                            withAnimation {
+                                proxy.scrollTo("pending_anchor", anchor: .bottom)
+                            }
                         }
                     }
                 }
                 .background(Color(hex: "0b0f19"))
                 
                 // Input panel
-                HStack(spacing: 8) {
-                    TextField("Hỏi trợ lý...", text: $chatInputText)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .foregroundColor(.black)
-                        .frame(height: 36)
+                HStack(spacing: 10) {
+                    TextField("Hỏi trợ lý...", text: $chatInputText, axis: .vertical)
+                                        .lineLimit(1...5)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white)
+                                        .tint(Color(hex: "14b8a6"))
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .background(Color.white.opacity(0.05))
+                                        .cornerRadius(18)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 18)
+                                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                        )
                     
                     Button(action: {
                         sendChat()
                     }) {
                         Image(systemName: "paperplane.fill")
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(.white)
-                            .padding(8)
-                            .background(Color(hex: "6366f1"))
-                            .cornerRadius(8)
+                            .frame(width: 36, height: 36)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color(hex: "818cf8"), Color(hex: "6366f1")],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .clipShape(Circle())
+                            .shadow(color: Color(hex: "6366f1").opacity(0.3), radius: 6, x: 0, y: 2)
                     }
                     .disabled(chatInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isChatPending)
                 }
-                .padding()
-                .background(Color(hex: "111827"))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color(hex: "0b0f19"))
+                .overlay(
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(Color.white.opacity(0.06)),
+                    alignment: .top
+                )
             }
         }
     }
     
     @ViewBuilder
     private func aiSettingsForm() -> some View {
-        Form {
-            Section(header: Text("AI MODEL CONFIG").foregroundColor(.white)) {
-                Picker("Provider", selection: $aiProvider) {
-                    Text("OpenAI").tag("openai")
-                    Text("Gemini").tag("gemini")
-                    Text("Custom").tag("custom")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("CẤU HÌNH AI AGENT")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.gray)
+                    .padding(.top, 10)
+                
+                // Section 1: Provider Picker
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Nhà cung cấp")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                    
+                    HStack(spacing: 4) {
+                        ForEach(["openai", "gemini", "custom"], id: \.self) { provider in
+                            let isSelected = aiProvider == provider
+                            let displayName = provider == "openai" ? "OpenAI" : (provider == "gemini" ? "Gemini" : "Custom")
+                            
+                            Button(action: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    aiProvider = provider
+                                    if provider == "openai" {
+                                        aiBaseURL = "https://api.openai.com/v1"
+                                        aiModel = "gpt-4o-mini"
+                                    } else if provider == "gemini" {
+                                        aiBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
+                                        aiModel = "gemini-1.5-flash"
+                                    }
+                                }
+                            }) {
+                                Text(displayName)
+                                    .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                                    .foregroundColor(isSelected ? .white : .gray.opacity(0.8))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(isSelected ? Color.white.opacity(0.08) : Color.clear)
+                                    )
+                            }
+                        }
+                    }
+                    .padding(4)
+                    .background(Color.white.opacity(0.03))
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
                 }
-                .onChange(of: aiProvider) { val in
-                    if val == "openai" {
-                        aiBaseURL = "https://api.openai.com/v1"
-                        aiModel = "gpt-4o-mini"
-                    } else if val == "gemini" {
-                        aiBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
-                        aiModel = "gemini-1.5-flash"
+                .padding()
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+                
+                // Section 2: Input fields
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Base URL")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.gray)
+                        
+                        TextField("Base URL", text: $aiBaseURL, prompt: Text("Nhập URL cơ sở...").foregroundColor(.gray.opacity(0.5)))
+                            .font(.system(size: 14))
+                            .foregroundColor(.white)
+                            .padding(12)
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.none)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("API Key")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.gray)
+                        
+                        SecureField("API Key", text: $aiApiKey, prompt: Text("Nhập API Key của bạn...").foregroundColor(.gray.opacity(0.5)))
+                            .font(.system(size: 14))
+                            .foregroundColor(.white)
+                            .padding(12)
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.none)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Tên Model")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.gray)
+                        
+                        TextField("Model Name", text: $aiModel, prompt: Text("Ví dụ: gpt-4o-mini").foregroundColor(.gray.opacity(0.5)))
+                            .font(.system(size: 14))
+                            .foregroundColor(.white)
+                            .padding(12)
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.none)
                     }
                 }
+                .padding()
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
                 
-                TextField("Base URL", text: $aiBaseURL)
-                TextField("API Key", text: $aiApiKey)
-                TextField("Model Name", text: $aiModel)
-            }
-            .listRowBackground(Color(hex: "1f2937"))
-            
-            Button("Lưu cấu hình") {
-                saveAISettings()
-                withAnimation {
-                    isAISettingsOpen = false
+                // Save Button
+                Button(action: {
+                    saveAISettings()
+                    withAnimation(.spring()) {
+                        isAISettingsOpen = false
+                    }
+                }) {
+                    Text("Lưu cấu hình")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            LinearGradient(
+                                colors: [Color(hex: "0d9488"), Color(hex: "14b8a6")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .cornerRadius(14)
+                        .shadow(color: Color(hex: "14b8a6").opacity(0.25), radius: 8, x: 0, y: 4)
                 }
+                .padding(.top, 10)
             }
-            .frame(maxWidth: .infinity, alignment: .center)
-            .listRowBackground(Color.purple)
-            .foregroundColor(.white)
-            .fontWeight(.bold)
+            .padding(16)
         }
         .background(Color(hex: "0b0f19"))
-        .onAppear {
-            UITableView.appearance().backgroundColor = .clear
+    }
+    
+    private func renderMarkdown(_ text: String) -> AttributedString {
+        do {
+            var options = AttributedString.MarkdownParsingOptions()
+            options.interpretedSyntax = .inlineOnlyPreservingWhitespace
+            return try AttributedString(markdown: text, options: options)
+        } catch {
+            return AttributedString(text)
         }
     }
     
@@ -801,3 +1179,86 @@ struct PaperSheetModifier: ViewModifier {
         }
     }
 }
+
+struct BouncingDotsView: View {
+    @State private var offset1: CGFloat = 0
+    @State private var offset2: CGFloat = 0
+    @State private var offset3: CGFloat = 0
+    
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(Color(hex: "14b8a6").opacity(0.8))
+                .frame(width: 6, height: 6)
+                .offset(y: offset1)
+            Circle()
+                .fill(Color(hex: "14b8a6").opacity(0.8))
+                .frame(width: 6, height: 6)
+                .offset(y: offset2)
+            Circle()
+                .fill(Color(hex: "14b8a6").opacity(0.8))
+                .frame(width: 6, height: 6)
+                .offset(y: offset3)
+        }
+        .onAppear {
+            animateDots()
+        }
+    }
+    
+    private func animateDots() {
+        let animation = Animation.easeInOut(duration: 0.5).repeatForever(autoreverses: true)
+        withAnimation(animation) {
+            offset1 = -6
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            withAnimation(animation) {
+                offset2 = -6
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation(animation) {
+                offset3 = -6
+            }
+        }
+    }
+}
+
+struct SuggestedPromptRow: View {
+    let icon: String
+    let title: String
+    let prompt: String
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Text(icon)
+                    .font(.system(size: 20))
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    Text(prompt)
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.gray.opacity(0.7))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.04))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+        }
+    }
+}
+
