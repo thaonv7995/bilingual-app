@@ -23,37 +23,40 @@ content_router = APIRouter(prefix="/books", tags=["books content"])
 
 # --- Helper function for cookie & header authentication ---
 def get_user_from_request(request: Request, db: Session) -> Optional[User]:
-    # 1. Try Authorization Header
-    auth_header = request.headers.get("Authorization")
-    token = None
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.split(" ")[1]
-    
-    # 2. Try Cookie (important for iframes/images)
-    if not token:
-        token = request.cookies.get("jwt_token")
-        
-    # 3. Try Query Parameter (fallback for iframe page loads)
-    if not token:
-        token = request.query_params.get("token")
-
-    if token:
-        payload = decode_access_token(token)
-        if payload:
-            username = payload.get("sub")
-            if username:
-                user = db.query(User).filter(User.username == username).first()
-                if user:
-                    return user
-                    
-    # 4. Try X-API-Key
+    # 1. Try X-API-Key first
     api_key = request.headers.get("X-API-Key")
     if api_key:
         from api.database import APIKey
         key_record = db.query(APIKey).filter(APIKey.key_value == api_key, APIKey.is_active == True).first()
         if key_record:
             return User(username=f"apikey_{key_record.name}", is_admin=True)
-            
+
+    # Helper to decode and fetch user
+    def get_user_from_jwt(t: str) -> Optional[User]:
+        payload = decode_access_token(t)
+        if payload and "sub" in payload:
+            return db.query(User).filter(User.username == payload["sub"]).first()
+        return None
+
+    # 2. Try Authorization Header
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        user = get_user_from_jwt(token)
+        if user: return user
+    
+    # 3. Try Query Parameter
+    token_query = request.query_params.get("token")
+    if token_query:
+        user = get_user_from_jwt(token_query)
+        if user: return user
+
+    # 4. Try Cookie (important for iframes/images)
+    token_cookie = request.cookies.get("jwt_token")
+    if token_cookie:
+        user = get_user_from_jwt(token_cookie)
+        if user: return user
+        
     return None
 
 # --- Intercepting static book files for access control ---

@@ -42,200 +42,180 @@ struct ReaderView: View {
     ]
     
     var body: some View {
-        GeometryReader { geometry in
-            let isLargeScreen = geometry.size.width > 700
-            
-            HStack(spacing: 0) {
-                // Main Reading Pane
-                VStack(spacing: 0) {
-                    // Reader Top Navigation Bar
-                    HStack(spacing: 12) {
-                        Button(action: {
-                            dismiss()
-                        }) {
-                            HStack {
-                                Image(systemName: "chevron.left")
-                                Text("Thư viện")
+        NavigationView {
+            GeometryReader { geometry in
+                let isLargeScreen = geometry.size.width > 700
+                
+                HStack(spacing: 0) {
+                    // Main Reading Pane
+                    VStack(spacing: 0) {
+                        // Reading Area
+                        ZStack {
+                            Color(hex: "0f172a").ignoresSafeArea()
+                            
+                            if isLoading {
+                                ProgressView().tint(.white)
+                            } else {
+                                let layout = (viewMode == "split" && !isLargeScreen) ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
+                                
+                                layout {
+                                    let padPage = String(format: "%04d", page)
+                                    
+                                    // English WebView
+                                    if viewMode == "en" || viewMode == "split" {
+                                        let enUrlString = "\(api.serverUrl)/books/\(book.slug)/output/en/page_\(padPage).html?token=\(api.token)"
+                                        BilingualWebView(
+                                            urlString: enUrlString,
+                                            lang: "en",
+                                            page: page,
+                                            activeSentenceId: activeSentenceId,
+                                            onScroll: { scrollTop in
+                                                NotificationCenter.default.post(
+                                                    name: NSNotification.Name("ScrollTo_vi"),
+                                                    object: nil,
+                                                    userInfo: ["scrollTop": scrollTop]
+                                                )
+                                            },
+                                            onHighlightMessage: { msg in
+                                                handleHighlightMessage(msg, lang: "en")
+                                            },
+                                            onSentenceClicked: { sentenceId in
+                                                self.activeSentenceId = sentenceId
+                                            }
+                                        )
+                                        .background(Color(hex: "0f172a"))
+                                    }
+                                    
+                                    // Split Divider Line
+                                    if viewMode == "split" {
+                                        Rectangle()
+                                            .fill(Color.white.opacity(0.1))
+                                            .frame(
+                                                width: (viewMode == "split" && !isLargeScreen) ? nil : 2,
+                                                height: (viewMode == "split" && !isLargeScreen) ? 2 : nil
+                                            )
+                                    }
+                                    
+                                    // Vietnamese WebView
+                                    if viewMode == "vi" || viewMode == "split" {
+                                        let viUrlString = "\(api.serverUrl)/books/\(book.slug)/output/vi/page_\(padPage).html?token=\(api.token)"
+                                        BilingualWebView(
+                                            urlString: viUrlString,
+                                            lang: "vi",
+                                            page: page,
+                                            activeSentenceId: activeSentenceId,
+                                            onScroll: { scrollTop in
+                                                NotificationCenter.default.post(
+                                                    name: NSNotification.Name("ScrollTo_en"),
+                                                    object: nil,
+                                                    userInfo: ["scrollTop": scrollTop]
+                                                )
+                                            },
+                                            onHighlightMessage: { msg in
+                                                handleHighlightMessage(msg, lang: "vi")
+                                            },
+                                            onSentenceClicked: { sentenceId in
+                                                self.activeSentenceId = sentenceId
+                                            }
+                                        )
+                                        .background(Color(hex: "0f172a"))
+                                    }
+                                }
+                                .gesture(
+                                    DragGesture(minimumDistance: 40)
+                                        .onEnded { value in
+                                            if value.translation.width < -50 {
+                                                if page < book.pageCount { page += 1 }
+                                            } else if value.translation.width > 50 {
+                                                if page > 1 { page -= 1 }
+                                            }
+                                        }
+                                )
                             }
-                            .foregroundColor(.white)
+                            
+                            // Highlights/Notes Floating Overlay Card
+                            if activeSelection != nil || selectedHighlightId != nil {
+                                VStack {
+                                    Spacer()
+                                    highlightToolbarCard()
+                                        .transition(.move(edge: .bottom))
+                                }
+                            }
                         }
-                        
-                        Spacer()
-                        
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // Slide-in AI Assistant Sidebar (For large screens)
+                    if isChatOpen && isLargeScreen {
+                        Divider().background(Color.white.opacity(0.1))
+                        aiAssistantPanel()
+                            .frame(width: 320)
+                            .transition(.move(edge: .trailing))
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
                         Text(book.title)
                             .font(.headline)
                             .foregroundColor(.white)
-                            .lineLimit(1)
-                            .frame(maxWidth: isLargeScreen ? 300 : 150)
-                        
-                        Spacer()
-                        
-                        // Toggle Chat Assistant Button
-                        Button(action: {
-                            withAnimation {
-                                isChatOpen.toggle()
-                            }
-                        }) {
-                            Image(systemName: "bubble.left.and.bubble.right.fill")
-                                .foregroundColor(isChatOpen ? Color(hex: "6366f1") : .white)
-                                .font(.title3)
-                        }
-                        .padding(.trailing, 8)
-                        
-                        // View Mode Picker
-                        Picker("View Mode", selection: $viewMode) {
-                            Text("EN").tag("en")
-                            Text("Song ngữ").tag("split")
-                            Text("VI").tag("vi")
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                        .frame(width: isLargeScreen ? 180 : 130)
                     }
-                    .padding()
-                    .background(Color(hex: "1e293b"))
-                    
-                    // Reading Area
-                    ZStack {
-                        Color(hex: "0f172a").ignoresSafeArea()
-                        
-                        if isLoading {
-                            ProgressView().tint(.white)
-                        } else {
-                            HStack(spacing: 0) {
-                                let padPage = String(format: "%04d", page)
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        HStack(spacing: 12) {
+                            HStack(spacing: 8) {
+                                Button(action: { if page > 1 { page -= 1 } }) {
+                                    Image(systemName: "chevron.left").foregroundColor(page > 1 ? .white : .gray)
+                                }.disabled(page <= 1)
                                 
-                                // English WebView
-                                if viewMode == "en" || viewMode == "split" {
-                                    let enUrlString = "\(api.serverUrl)/books/\(book.slug)/output/en/page_\(padPage).html?token=\(api.token)"
-                                    BilingualWebView(
-                                        urlString: enUrlString,
-                                        lang: "en",
-                                        page: page,
-                                        activeSentenceId: activeSentenceId,
-                                        onScroll: { scrollTop in
-                                            NotificationCenter.default.post(
-                                                name: NSNotification.Name("ScrollTo_vi"),
-                                                object: nil,
-                                                userInfo: ["scrollTop": scrollTop]
-                                            )
-                                        },
-                                        onHighlightMessage: { msg in
-                                            handleHighlightMessage(msg, lang: "en")
-                                        },
-                                        onSentenceClicked: { sentenceId in
-                                            self.activeSentenceId = sentenceId
-                                        }
-                                    )
-                                    .background(Color(hex: "0f172a"))
-                                }
+                                Text("\(page)/\(book.pageCount)")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.white)
                                 
-                                // Split Divider Line
-                                if viewMode == "split" {
-                                    Rectangle()
-                                        .fill(Color.white.opacity(0.1))
-                                        .frame(width: 2)
-                                }
-                                
-                                // Vietnamese WebView
-                                if viewMode == "vi" || viewMode == "split" {
-                                    let viUrlString = "\(api.serverUrl)/books/\(book.slug)/output/vi/page_\(padPage).html?token=\(api.token)"
-                                    BilingualWebView(
-                                        urlString: viUrlString,
-                                        lang: "vi",
-                                        page: page,
-                                        activeSentenceId: activeSentenceId,
-                                        onScroll: { scrollTop in
-                                            NotificationCenter.default.post(
-                                                name: NSNotification.Name("ScrollTo_en"),
-                                                object: nil,
-                                                userInfo: ["scrollTop": scrollTop]
-                                            )
-                                        },
-                                        onHighlightMessage: { msg in
-                                            handleHighlightMessage(msg, lang: "vi")
-                                        },
-                                        onSentenceClicked: { sentenceId in
-                                            self.activeSentenceId = sentenceId
-                                        }
-                                    )
-                                    .background(Color(hex: "0f172a"))
-                                }
+                                Button(action: { if page < book.pageCount { page += 1 } }) {
+                                    Image(systemName: "chevron.right").foregroundColor(page < book.pageCount ? .white : .gray)
+                                }.disabled(page >= book.pageCount)
                             }
-                        }
-                        
-                        // Highlights/Notes Floating Overlay Card
-                        if activeSelection != nil || selectedHighlightId != nil {
-                            VStack {
-                                Spacer()
-                                highlightToolbarCard()
-                                    .transition(.move(edge: .bottom))
+                            .padding(.trailing, 4)
+                            
+                            Button(action: { isChatOpen.toggle() }) {
+                                Image(systemName: "bubble.left.and.bubble.right.fill")
+                                    .foregroundColor(.white)
+                            }
+                            
+                            Menu {
+                                Button("Tiếng Anh") { viewMode = "en" }
+                                Button("Tiếng Việt") { viewMode = "vi" }
+                                Button("Song ngữ") { viewMode = "split" }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(viewMode.uppercased())
+                                        .font(.system(size: 14, weight: .bold))
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 12))
+                                }
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color.white)
+                                .cornerRadius(12)
                             }
                         }
                     }
-                    
-                    // Bottom Navigation Bar
-                    HStack {
-                        Button(action: {
-                            if page > 1 {
-                                page -= 1
-                                clearSelectionState()
-                                saveProgress()
-                            }
-                        }) {
-                            Text("◀ Trang trước")
-                                .foregroundColor(page <= 1 ? .gray : .white)
-                                .padding()
-                        }
-                        .disabled(page <= 1)
-                        
-                        Spacer()
-                        
-                        Text("Trang \(page) / \(book.pageCount)")
-                            .foregroundColor(.white)
-                            .font(.subheadline)
-                        
-                        Spacer()
-                        
-                        Button(action: {
-                            if page < book.pageCount {
-                                page += 1
-                                clearSelectionState()
-                                saveProgress()
-                            }
-                        }) {
-                            Text("Trang tiếp ▶")
-                                .foregroundColor(page >= book.pageCount ? .gray : .white)
-                                .padding()
-                        }
-                        .disabled(page >= book.pageCount)
-                    }
-                    .padding(.horizontal)
-                    .background(Color(hex: "1e293b"))
                 }
-                .frame(maxWidth: .infinity)
-                
-                // Slide-in AI Assistant Sidebar (For large screens)
-                if isChatOpen && isLargeScreen {
-                    Divider().background(Color.white.opacity(0.1))
+                // Sliding Overlay Sheet for smaller screens (iPhone)
+                .sheet(isPresented: Binding(
+                    get: { isChatOpen && !isLargeScreen },
+                    set: { isChatOpen = $0 }
+                )) {
                     aiAssistantPanel()
-                        .frame(width: 320)
-                        .transition(.move(edge: .trailing))
+                        .background(Color(hex: "111827").ignoresSafeArea())
                 }
             }
-            // Sliding Overlay Sheet for smaller screens (iPhone)
-            .sheet(isPresented: Binding(
-                get: { isChatOpen && !isLargeScreen },
-                set: { isChatOpen = $0 }
-            )) {
-                aiAssistantPanel()
-                    .background(Color(hex: "111827").ignoresSafeArea())
+            .background(Color(hex: "0f172a"))
+            .onAppear {
+                loadProgress()
+                loadAISettings()
+                fetchHighlights()
             }
-        }
-        .background(Color(hex: "0f172a"))
-        .onAppear {
-            loadProgress()
-            loadAISettings()
-            fetchHighlights()
         }
     }
     

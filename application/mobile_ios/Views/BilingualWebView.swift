@@ -56,6 +56,9 @@ struct BilingualWebView: UIViewRepresentable {
                 .sentence-node.highlight-sync {
                     background-color: \(highlightColor) !important;
                 }
+                .page-nav {
+                    display: none !important;
+                }
                 mark.reader-highlight {
                     border-radius: 3px;
                     padding: 0 1px;

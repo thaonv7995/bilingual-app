@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		04D65506177CC1C5E2EEC4D6 /* ReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB921731167CE40A439D7728 /* ReaderView.swift */; };
 		2A496E9E71C427877DE4099A /* AdminPortalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A58A03C7B604756D005FE5 /* AdminPortalView.swift */; };
+		34A892B65037498539E88D18 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5538CACD35C531C90CC07521 /* Assets.xcassets */; };
 		3DA094D67BA2E7AE2EBEBECA /* BookshelfView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 159815F66B6C0D29720BE1A9 /* BookshelfView.swift */; };
 		45013FC446C2D70BCB2CD11E /* BilingualWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57B156C7DBCD09A96394153 /* BilingualWebView.swift */; };
 		46E6F6DD0BC8E058BC652705 /* BilingualReaderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */; };
@@ -19,6 +20,7 @@
 
 /* Begin PBXFileReference section */
 		159815F66B6C0D29720BE1A9 /* BookshelfView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookshelfView.swift; sourceTree = "<group>"; };
+		5538CACD35C531C90CC07521 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualReaderApp.swift; sourceTree = "<group>"; };
 		6AD4860B8B690109EFB9878A /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		83C106C930837C2F0DA5DB0C /* BilingualReader.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BilingualReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -68,6 +70,7 @@
 		FBB9406F9D44F9F6BE5E67C2 /* mobile_ios */ = {
 			isa = PBXGroup;
 			children = (
+				5538CACD35C531C90CC07521 /* Assets.xcassets */,
 				58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */,
 				E662218020EDB28D9165D73D /* Models */,
 				16601F8E94BA2CEE66D8C2A2 /* Services */,
@@ -97,6 +100,7 @@
 			buildConfigurationList = AFDC2266A6E7C754B2E6869E /* Build configuration list for PBXNativeTarget "BilingualReader" */;
 			buildPhases = (
 				B9A193C1E156412E28B1769D /* Sources */,
+				3BE803AA0BCD80CBB2F1F987 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -139,6 +143,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		3BE803AA0BCD80CBB2F1F987 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				34A892B65037498539E88D18 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		B9A193C1E156412E28B1769D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -166,6 +181,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSAppTransportSecurity = "[\"NSAllowsArbitraryLoads\": true]";
+				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageName\": \"SplashIcon\", \"UIColorName\": \"SplashBackground\", \"UIImageRespectsSafeAreaInsets\": false]";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -305,6 +321,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSAppTransportSecurity = "[\"NSAllowsArbitraryLoads\": true]";
+				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageName\": \"SplashIcon\", \"UIColorName\": \"SplashBackground\", \"UIImageRespectsSafeAreaInsets\": false]";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
