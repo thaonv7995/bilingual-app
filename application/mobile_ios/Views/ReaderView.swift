@@ -42,14 +42,58 @@ struct ReaderView: View {
     ]
     
     var body: some View {
-        NavigationView {
-            GeometryReader { geometry in
-                let isLargeScreen = geometry.size.width > 700
-                
-                HStack(spacing: 0) {
-                    // Main Reading Pane
-                    VStack(spacing: 0) {
-                        // Reading Area
+        GeometryReader { geometry in
+            let isLargeScreen = geometry.size.width > 700
+            
+            HStack(spacing: 0) {
+                // Main Reading Pane
+                VStack(spacing: 0) {
+                    // Custom Slim Top Navigation Bar
+                    HStack(spacing: 12) {
+                        Button(action: { dismiss() }) {
+                            Image(systemName: "chevron.left")
+                                .foregroundColor(.white)
+                                .font(.system(size: 16))
+                        }
+                        
+                        Spacer()
+                        
+                        Text(book.title)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        
+                        Spacer()
+                        
+                        Button(action: { isChatOpen.toggle() }) {
+                            Image(systemName: "bubble.left.and.bubble.right.fill")
+                                .foregroundColor(.white)
+                                .font(.system(size: 14))
+                        }
+                        
+                        Menu {
+                            Button("Tiếng Anh") { viewMode = "en" }
+                            Button("Tiếng Việt") { viewMode = "vi" }
+                            Button("Song ngữ") { viewMode = "split" }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(viewMode.uppercased())
+                                    .font(.system(size: 11, weight: .bold))
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 9))
+                            }
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(Color.white)
+                            .cornerRadius(6)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(Color(hex: "0f172a"))
+                    
+                    // Reading Area
                         ZStack {
                             Color(hex: "0f172a").ignoresSafeArea()
                             
@@ -121,16 +165,6 @@ struct ReaderView: View {
                                         .background(Color(hex: "0f172a"))
                                     }
                                 }
-                                .gesture(
-                                    DragGesture(minimumDistance: 40)
-                                        .onEnded { value in
-                                            if value.translation.width < -50 {
-                                                if page < book.pageCount { page += 1 }
-                                            } else if value.translation.width > 50 {
-                                                if page > 1 { page -= 1 }
-                                            }
-                                        }
-                                )
                             }
                             
                             // Highlights/Notes Floating Overlay Card
@@ -142,6 +176,44 @@ struct ReaderView: View {
                                 }
                             }
                         }
+                        
+                        // Bottom Navigation Bar
+                        HStack {
+                            Button(action: {
+                                if page > 1 {
+                                    page -= 1
+                                }
+                            }) {
+                                Text("◀ Trang trước")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(page <= 1 ? .gray : .white)
+                                    .padding(.vertical, 4)
+                            }
+                            .disabled(page <= 1)
+                            
+                            Spacer()
+                            
+                            Text("Trang \(page) / \(book.pageCount)")
+                                .foregroundColor(.gray)
+                                .font(.system(size: 12))
+                            
+                            Spacer()
+                            
+                            Button(action: {
+                                if page < book.pageCount {
+                                    page += 1
+                                }
+                            }) {
+                                Text("Trang tiếp ▶")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(page >= book.pageCount ? .gray : .white)
+                                    .padding(.vertical, 4)
+                            }
+                            .disabled(page >= book.pageCount)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 4)
+                        .background(Color(hex: "0f172a"))
                     }
                     .frame(maxWidth: .infinity)
                     
@@ -151,54 +223,6 @@ struct ReaderView: View {
                         aiAssistantPanel()
                             .frame(width: 320)
                             .transition(.move(edge: .trailing))
-                    }
-                }
-                .toolbar {
-                    ToolbarItem(placement: .principal) {
-                        Text(book.title)
-                            .font(.headline)
-                            .foregroundColor(.white)
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        HStack(spacing: 12) {
-                            HStack(spacing: 8) {
-                                Button(action: { if page > 1 { page -= 1 } }) {
-                                    Image(systemName: "chevron.left").foregroundColor(page > 1 ? .white : .gray)
-                                }.disabled(page <= 1)
-                                
-                                Text("\(page)/\(book.pageCount)")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.white)
-                                
-                                Button(action: { if page < book.pageCount { page += 1 } }) {
-                                    Image(systemName: "chevron.right").foregroundColor(page < book.pageCount ? .white : .gray)
-                                }.disabled(page >= book.pageCount)
-                            }
-                            .padding(.trailing, 4)
-                            
-                            Button(action: { isChatOpen.toggle() }) {
-                                Image(systemName: "bubble.left.and.bubble.right.fill")
-                                    .foregroundColor(.white)
-                            }
-                            
-                            Menu {
-                                Button("Tiếng Anh") { viewMode = "en" }
-                                Button("Tiếng Việt") { viewMode = "vi" }
-                                Button("Song ngữ") { viewMode = "split" }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Text(viewMode.uppercased())
-                                        .font(.system(size: 14, weight: .bold))
-                                    Image(systemName: "chevron.down")
-                                        .font(.system(size: 12))
-                                }
-                                .foregroundColor(.black)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(Color.white)
-                                .cornerRadius(12)
-                            }
-                        }
                     }
                 }
                 // Sliding Overlay Sheet for smaller screens (iPhone)
@@ -215,7 +239,6 @@ struct ReaderView: View {
                 loadProgress()
                 loadAISettings()
                 fetchHighlights()
-            }
         }
     }
     
