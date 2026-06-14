@@ -6,22 +6,43 @@
   <link rel="icon" href="favicon.png" type="image/png">
   <title>Admin Portal - Bilingual Library</title>
   
-  <!-- Premium Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Modern Clean Typography -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   
   <style>
     :root {
-      --bg-dark: #090d16;
-      --bg-panel: #111827;
-      --bg-card: rgba(17, 24, 39, 0.7);
-      --border-color: rgba(255, 255, 255, 0.08);
-      --text-main: #f9fafb;
-      --text-muted: #9ca3af;
-      --accent: #6366f1;
-      --accent-hover: #4f46e5;
-      --accent-alpha: rgba(99, 102, 241, 0.15);
-      --danger: #f43f5e;
+      /* Professional SaaS Slate Theme */
+      --bg-app: #0f172a;        /* Slate 900 */
+      --bg-sidebar: #0b1120;    /* Darker Slate */
+      --bg-card: #1e293b;       /* Slate 800 */
+      --bg-input: #0f172a;      /* Slate 900 */
+      --bg-hover: #334155;      /* Slate 700 */
+      
+      --border-subtle: rgba(255, 255, 255, 0.05); 
+      --border-base: #334155;   /* Slate 700 */
+      --border-focus: #3b82f6;  /* Blue 500 */
+      
+      --text-main: #f8fafc;     /* Slate 50 */
+      --text-muted: #94a3b8;    /* Slate 400 */
+      
+      --primary: #3b82f6;       /* Blue 500 */
+      --primary-hover: #2563eb; /* Blue 600 */
+      --primary-alpha: rgba(59, 130, 246, 0.15);
+      
       --success: #10b981;
+      --success-alpha: rgba(16, 185, 129, 0.15);
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --danger-alpha: rgba(239, 68, 68, 0.15);
+      --warning: #f59e0b;
+      
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
     }
 
     * {
@@ -31,278 +52,61 @@
     }
 
     body {
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      background-color: var(--bg-dark);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-app);
       color: var(--text-main);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      padding: 0;
       overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* Top Navigation bar */
-    .topbar {
-      width: 100%;
-      background: var(--bg-panel);
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      justify-content: center;
-      padding: 1rem 2rem;
+    .hidden {
+      display: none !important;
     }
 
-    .topbar-container {
-      width: 100%;
-      max-width: 1200px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .topbar h1 {
-      font-size: 1.5rem;
-      font-weight: 800;
-      background: linear-gradient(135deg, #a5b4fc, #6366f1);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .nav-actions {
-      display: flex;
-      align-items: center;
-      gap: 1.5rem;
-    }
-
-    .nav-actions a {
-      color: var(--text-muted);
-      text-decoration: none;
-      font-weight: 500;
-      font-size: 0.9rem;
-      transition: color 0.2s;
-    }
-
-    .nav-actions a:hover {
+    /* Typography */
+    h1, h2, h3, h4 {
       color: var(--text-main);
-    }
-
-    .btn-logout {
-      background: rgba(244, 63, 94, 0.15);
-      color: var(--danger) !important;
-      border: 1px solid rgba(244, 63, 94, 0.2);
-      padding: 0.5rem 1rem;
-      border-radius: 6px;
-      transition: background 0.2s;
-    }
-
-    .btn-logout:hover {
-      background: rgba(244, 63, 94, 0.3) !important;
-    }
-
-    /* Main layout with sidebar and content */
-    .main-layout {
-      display: flex;
-      width: 100%;
-      max-width: 1200px;
-      margin-top: 2rem;
-      gap: 2rem;
-      padding: 0 1rem;
-    }
-
-    /* Left Sidebar Tabs */
-    .sidebar {
-      width: 250px;
-      flex-shrink: 0;
-    }
-
-    .tab-menu {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .tab-btn {
-      background: transparent;
-      border: 1px solid transparent;
-      color: var(--text-muted);
-      text-align: left;
-      padding: 0.85rem 1.25rem;
-      border-radius: 10px;
-      font-family: inherit;
       font-weight: 600;
-      font-size: 0.95rem;
-      cursor: pointer;
-      transition: all 0.2s;
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-    }
-
-    .tab-btn:hover {
-      color: var(--text-main);
-      background: rgba(255, 255, 255, 0.03);
-    }
-
-    .tab-btn.active {
-      color: var(--text-main);
-      background: var(--accent-alpha);
-      border-color: rgba(99, 102, 241, 0.3);
-    }
-
-    /* Content Area */
-    .content-area {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .tab-content {
-      display: none;
-    }
-
-    .tab-content.active {
-      display: block;
-      animation: fadeIn 0.3s ease-out;
-    }
-
-    /* Glassmorphism Cards */
-    .card {
-      background: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 16px;
-      padding: 2rem;
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      margin-bottom: 2rem;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      letter-spacing: -0.025em;
     }
 
     h2 {
-      font-size: 1.35rem;
-      font-weight: 700;
-      margin-bottom: 1.5rem;
-      color: #f3f4f6;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    /* Drag and Drop Uploader */
-    .upload-zone {
-      border: 2px dashed rgba(99, 102, 241, 0.3);
-      background: rgba(99, 102, 241, 0.02);
-      border-radius: 12px;
-      padding: 2.5rem;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-      margin-bottom: 1.5rem;
-      position: relative;
-    }
-
-    .upload-zone:hover {
-      border-color: var(--accent);
-      background: rgba(99, 102, 241, 0.05);
-    }
-
-    .upload-zone svg {
-      width: 48px;
-      height: 48px;
-      fill: var(--accent);
-      margin-bottom: 1rem;
-      opacity: 0.8;
-    }
-
-    .upload-zone p {
-      font-size: 0.95rem;
-      color: var(--text-muted);
-      margin-bottom: 0.5rem;
-    }
-
-    .upload-zone span {
-      font-size: 0.8rem;
-      color: rgba(156, 163, 175, 0.7);
-    }
-
-    .file-input {
-      display: none;
-    }
-
-    .progress-container {
-      margin-top: 1rem;
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 10px;
-      overflow: hidden;
-      height: 6px;
-      display: none;
-    }
-
-    .progress-bar {
-      height: 100%;
-      background: var(--accent);
-      width: 0%;
-      transition: width 0.1s;
-    }
-
-    .status-msg {
-      margin-top: 0.75rem;
-      font-size: 0.85rem;
-      text-align: center;
-    }
-
-    /* Forms */
-    .form-group {
+      font-size: 1.125rem;
       margin-bottom: 1.25rem;
     }
 
-    label {
-      display: block;
-      margin-bottom: 0.5rem;
-      font-size: 0.875rem;
-      font-weight: 600;
-      color: var(--text-muted);
-    }
-
-    input, select {
-      width: 100%;
-      background: #0f172a;
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 0.75rem 1rem;
-      color: var(--text-main);
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-
-    input:focus, select:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
-    }
-
+    /* Buttons */
     .btn {
-      background: var(--accent);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      background: var(--primary);
       color: white;
-      border: none;
-      border-radius: 8px;
-      padding: 0.75rem 1.5rem;
-      font-weight: 600;
-      font-family: inherit;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: 0.625rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 500;
       cursor: pointer;
-      transition: background-color 0.2s, transform 0.1s;
+      transition: all 0.2s;
+      box-shadow: var(--shadow-sm);
     }
 
     .btn:hover {
-      background: var(--accent-hover);
+      background: var(--primary-hover);
     }
 
     .btn:active {
-      transform: scale(0.98);
+      transform: translateY(1px);
     }
 
     .btn-sm {
-      padding: 0.4rem 0.8rem;
-      font-size: 0.8rem;
-      border-radius: 6px;
+      padding: 0.375rem 0.75rem;
+      font-size: 0.8125rem;
     }
 
     .btn-danger {
@@ -310,17 +114,327 @@
     }
 
     .btn-danger:hover {
-      background: #e11d48;
+      background: var(--danger-hover);
     }
 
     .btn-secondary {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border-color);
+      background: var(--bg-card);
+      border: 1px solid var(--border-base);
       color: var(--text-main);
     }
 
     .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--bg-hover);
+      border-color: #475569;
+    }
+    
+    .btn-outline-danger {
+      background: transparent;
+      border: 1px solid var(--danger-alpha);
+      color: var(--danger);
+    }
+    
+    .btn-outline-danger:hover {
+      background: var(--danger-alpha);
+    }
+
+    /* Inputs */
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    input, select {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-sm);
+      padding: 0.625rem 0.875rem;
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 0.875rem;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px var(--primary-alpha);
+    }
+    
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    
+    .card-header h2 {
+      margin-bottom: 0;
+    }
+
+    /* Custom Toast Notifications */
+    .toast-container {
+      position: fixed;
+      top: 1.5rem;
+      right: 1.5rem;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      width: 320px;
+    }
+
+    .toast {
+      background: var(--bg-card);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-sm);
+      padding: 1rem;
+      color: var(--text-main);
+      box-shadow: var(--shadow-md);
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      transform: translateX(120%);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
+      opacity: 0;
+    }
+
+    .toast.show {
+      transform: translateX(0);
+      opacity: 1;
+    }
+
+    /* Custom Modal Overlay */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(4px);
+      z-index: 9998;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .modal-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-md);
+      width: 100%;
+      max-width: 420px;
+      padding: 1.5rem;
+      box-shadow: var(--shadow-lg);
+      transform: scale(0.95);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .modal-overlay.show .modal-card {
+      transform: scale(1);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .modal-header h3 {
+      font-size: 1.125rem;
+    }
+
+    .modal-body {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      line-height: 1.5;
+      margin-bottom: 1.5rem;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+
+    /* --- Application Layout --- */
+    .app-layout {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 260px;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-base);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      padding: 0 1.5rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--text-main);
+    }
+    
+    .logo svg {
+      width: 24px;
+      height: 24px;
+      fill: var(--primary);
+    }
+
+    .sidebar-nav {
+      padding: 1rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      width: 100%;
+      text-align: left;
+      transition: all 0.15s;
+    }
+
+    .nav-item:hover {
+      color: var(--text-main);
+      background: var(--bg-hover);
+    }
+
+    .nav-item.active {
+      color: var(--primary);
+      background: var(--primary-alpha);
+    }
+    
+    .nav-item svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    /* Main Content Wrapper */
+    .main-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--bg-app);
+    }
+
+    /* Topbar */
+    .topbar {
+      height: 64px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 2rem;
+      background: var(--bg-app);
+      border-bottom: 1px solid var(--border-base);
+    }
+
+    .page-title {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    
+    .topbar-actions a {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    
+    .topbar-actions a:hover {
+      color: var(--text-main);
+    }
+
+    /* Content Area */
+    .content {
+      flex: 1;
+      padding: 2rem;
+      overflow-y: auto;
+    }
+
+    .tab-content {
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     /* Tables */
@@ -332,46 +446,156 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 1rem;
     }
 
     th, td {
-      padding: 1rem;
+      padding: 0.875rem 1rem;
       text-align: left;
-      border-bottom: 1px solid var(--border-color);
       vertical-align: middle;
+      border-bottom: 1px solid var(--border-subtle);
     }
 
     th {
+      font-size: 0.75rem;
       font-weight: 600;
       color: var(--text-muted);
-      font-size: 0.8rem;
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
 
     td {
-      color: #e5e7eb;
-      font-size: 0.9rem;
+      font-size: 0.875rem;
+      color: var(--text-main);
+    }
+    
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.02);
     }
 
-    tr:hover td {
+    /* Upload Zone */
+    .upload-zone {
+      border: 1px dashed var(--border-base);
+      border-radius: var(--radius-md);
       background: rgba(255, 255, 255, 0.01);
+      padding: 3rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
     }
 
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--primary);
+      background: var(--primary-alpha);
+    }
+
+    .upload-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--bg-hover);
+      margin-bottom: 1rem;
+      color: var(--text-muted);
+      transition: all 0.2s;
+    }
+    
+    .upload-zone:hover .upload-icon {
+      background: var(--primary);
+      color: white;
+    }
+
+    .upload-zone p {
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+      font-size: 0.9375rem;
+    }
+    
+    .upload-zone span {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+    }
+
+    .progress-container {
+      margin-top: 1.5rem;
+      background: var(--bg-input);
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+      display: none;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--primary);
+      width: 0%;
+      transition: width 0.2s ease;
+    }
+
+    .status-msg {
+      margin-top: 0.75rem;
+      font-size: 0.8125rem;
+      font-weight: 500;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .badge-success {
+      background: var(--success-alpha);
+      color: var(--success);
+    }
+
+    .badge-danger {
+      background: var(--danger-alpha);
+      color: var(--danger);
+    }
+
+    /* Login Layout */
+    .login-container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: var(--bg-app);
+    }
+
+    .login-box {
+      width: 100%;
+      max-width: 380px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-md);
+      padding: 2rem;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .login-box h1 {
+      font-size: 1.5rem;
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    
     /* Cover Preview */
     .cover-preview {
-      width: 45px;
-      height: 60px;
-      background: rgba(255,255,255,0.05);
+      width: 40px;
+      height: 56px;
+      background: var(--bg-input);
       border-radius: 4px;
       display: flex;
       justify-content: center;
       align-items: center;
-      font-size: 0.7rem;
-      color: var(--text-muted);
       overflow: hidden;
-      border: 1px solid var(--border-color);
+      border: 1px solid var(--border-base);
     }
 
     .cover-preview img {
@@ -379,240 +603,246 @@
       height: 100%;
       object-fit: cover;
     }
-
-    /* Badges */
-    .badge {
-      display: inline-block;
-      padding: 0.25rem 0.5rem;
-      border-radius: 6px;
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
-
-    .badge-success {
-      background: rgba(16, 185, 129, 0.15);
-      color: var(--success);
-    }
-
-    .badge-danger {
-      background: rgba(244, 63, 94, 0.15);
-      color: var(--danger);
-    }
-
-    /* Login Box */
-    .login-box {
-      width: 100%;
-      max-width: 420px;
-      margin-top: 8rem;
-    }
-
-    .login-box h1 {
-      text-align: center;
-      margin-bottom: 2rem;
-    }
-
-    .hidden {
-      display: none !important;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(5px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
   </style>
 </head>
 <body>
 
-  <!-- Login Form -->
-  <div id="login-section" class="card login-box">
-    <h1 style="font-weight: 800; background: linear-gradient(135deg, #a5b4fc, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Admin Login</h1>
-    <form id="login-form">
-      <div class="form-group">
-        <label for="username">Tài khoản</label>
-        <input type="text" id="username" required placeholder="admin">
-      </div>
-      <div class="form-group">
-        <label for="password">Mật khẩu</label>
-        <input type="password" id="password" required placeholder="••••••••">
-      </div>
-      <div id="login-error" style="color: var(--danger); margin-bottom: 1rem; font-size: 0.875rem;" class="hidden"></div>
-      <button type="submit" class="btn" style="width: 100%;">Đăng nhập</button>
-    </form>
-  </div>
+  <!-- Custom Alert Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
 
-  <!-- Top Navigation (Admin Panel) -->
-  <div id="topbar-section" class="topbar hidden">
-    <div class="topbar-container">
-      <h1>Bilingual Library Admin</h1>
-      <div class="nav-actions">
-        <a href="/" target="_blank">View Web Library ➔</a>
-        <a href="#" id="logout-btn" class="btn-logout">Đăng xuất</a>
+  <!-- Custom Confirmation Modal -->
+  <div id="custom-confirm-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="confirm-title">Xác nhận</h3>
+      </div>
+      <div class="modal-body" id="confirm-message">
+        Bạn có chắc chắn muốn thực hiện hành động này?
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" onclick="closeConfirmModal(false)">Hủy</button>
+        <button class="btn btn-danger btn-sm" id="confirm-ok-btn">Đồng ý</button>
       </div>
     </div>
   </div>
 
-  <!-- Layout Container -->
-  <div id="admin-section" class="main-layout hidden">
-    <!-- Sidebar Controls -->
+  <!-- Login Form Section -->
+  <div id="login-section" class="login-container">
+    <div class="login-box">
+      <div style="display: flex; justify-content: center; margin-bottom: 1rem;">
+        <svg style="width: 40px; height: 40px; fill: var(--primary);" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+      </div>
+      <h1>Đăng nhập Quản trị</h1>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="username">Tài khoản</label>
+          <input type="text" id="username" required placeholder="admin">
+        </div>
+        <div class="form-group">
+          <label for="password">Mật khẩu</label>
+          <input type="password" id="password" required placeholder="••••••••">
+        </div>
+        <div id="login-error" style="color: var(--danger); margin-bottom: 1rem; font-size: 0.8125rem; text-align: center;" class="hidden"></div>
+        <button type="submit" class="btn" style="width: 100%;">Đăng nhập</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main Application Layout -->
+  <div id="admin-section" class="app-layout hidden">
+    <!-- Fixed Sidebar -->
     <aside class="sidebar">
-      <nav class="tab-menu">
-        <button class="tab-btn active" onclick="switchTab('books-tab')">
-          <svg style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12A10 10 0 0 0 12 22A10 10 0 0 0 22 12A10 10 0 0 0 12 2M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>
+      <div class="sidebar-header">
+        <div class="logo">
+          <svg viewBox="0 0 24 24"><path d="M19 2H5C3.89 2 3 2.9 3 4V20C3 21.1 3.9 22 5 22H19C20.11 22 21 21.1 21 20V4C21 2.9 20.11 2 19 2M19 20H5V4H19V20M12 9V11H17V9H12M12 13V15H17V13H12M8 9V11H10V9H8M8 13V15H10V13H8Z"/></svg>
+          <span>Admin Portal</span>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" onclick="switchTab('books-tab', 'Quản Lý Tủ Sách')">
+          <svg viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12A10 10 0 0 0 12 22A10 10 0 0 0 22 12A10 10 0 0 0 12 2M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>
           Quản Lý Tủ Sách
         </button>
-        <button class="tab-btn" onclick="switchTab('users-tab')">
-          <svg style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-          Người Dùng & Phân Quyền
+        <button class="nav-item" onclick="switchTab('users-tab', 'Người Dùng & Phân Quyền')">
+          <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          Người Dùng & Quyền
         </button>
-        <button class="tab-btn" onclick="switchTab('apikeys-tab')">
-          <svg style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24"><path d="M12.65 11C11.83 7.56 8.77 5 5 5c-4.42 0-8 3.58-8 8s3.58 8 8 8c3.77 0 6.83-2.56 7.65-6H17v3h4v-3h2v-4H12.65zM5 17c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg>
+        <button class="nav-item" onclick="switchTab('apikeys-tab', 'Quản Lý API Key')">
+          <svg viewBox="0 0 24 24"><path d="M12.65 11C11.83 7.56 8.77 5 5 5c-4.42 0-8 3.58-8 8s3.58 8 8 8c3.77 0 6.83-2.56 7.65-6H17v3h4v-3h2v-4H12.65zM5 17c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg>
           Quản Lý API Key
         </button>
       </nav>
     </aside>
 
-    <!-- Main Content Panel -->
-    <main class="content-area">
-      
-      <!-- TAB 1: BOOK MANAGEMENT -->
-      <section id="books-tab" class="tab-content active">
-        <!-- Upload Card -->
-        <div class="card">
-          <h2>Tải Sách Mới (.bkb Package)</h2>
-          <div class="upload-zone" onclick="document.getElementById('bkb-file-input').click()">
-            <svg viewBox="0 0 24 24">
-              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
-            </svg>
-            <p>Nhấp vào đây hoặc kéo thả file <strong>.bkb</strong> để tải sách lên</p>
-            <span>Kích thước khuyên dùng &lt; 50MB</span>
-            <input type="file" id="bkb-file-input" class="file-input" accept=".bkb" onchange="handleBkbUpload(this.files[0])" />
-            
-            <div id="progress-container" class="progress-container">
-              <div id="progress-bar" class="progress-bar"></div>
+    <!-- Main Content Area -->
+    <div class="main-wrapper">
+      <!-- Header -->
+      <header class="topbar">
+        <div class="page-title" id="current-page-title">Quản Lý Tủ Sách</div>
+        <div class="topbar-actions">
+          <a href="/" target="_blank">View Web App ↗</a>
+          <button id="logout-btn" class="btn btn-sm btn-outline-danger">Đăng xuất</button>
+        </div>
+      </header>
+
+      <!-- Content -->
+      <main class="content">
+        
+        <!-- TAB 1: BOOK MANAGEMENT -->
+        <section id="books-tab" class="tab-content active">
+          <div class="card">
+            <div class="card-header">
+              <h2>Tải Sách Mới (.bkb Package)</h2>
             </div>
-            <div id="upload-status" class="status-msg"></div>
-          </div>
-        </div>
-
-        <!-- Books Grid / Table -->
-        <div class="card">
-          <h2>Tủ Sách Hiện Có</h2>
-          <div class="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th style="width: 70px;">Bìa</th>
-                  <th>Tên Sách / Tác Giả</th>
-                  <th>Thư Mục (Slug)</th>
-                  <th style="width: 100px;">Số Trang</th>
-                  <th style="width: 240px; text-align: center;">Hành Động</th>
-                </tr>
-              </thead>
-              <tbody id="books-list-body">
-                <!-- Dynamically populated -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <!-- TAB 2: USERS & PERMISSIONS -->
-      <section id="users-tab" class="tab-content">
-        <!-- Create User Card -->
-        <div class="card">
-          <h2>
-            <span>Tạo Tài Khoản Người Dùng</span>
-            <button class="btn btn-secondary btn-sm" id="btn-create-user-toggle">+ Thêm Người Dùng</button>
-          </h2>
-          <div id="user-creation-box" class="hidden" style="margin-top: 1.5rem; background: rgba(0,0,0,0.15); padding: 1.5rem; border-radius: 10px; border: 1px solid var(--border-color);">
-            <form id="create-user-form">
-              <div class="form-group">
-                <label for="new-username">Tài khoản</label>
-                <input type="text" id="new-username" required placeholder="docgia1">
+            <div class="upload-zone" id="drop-zone" onclick="document.getElementById('bkb-file-input').click()">
+              <div class="upload-icon">
+                <svg style="width:24px;height:24px;fill:currentColor" viewBox="0 0 24 24"><path d="M9 16H15V10H19L12 3L5 10H9V16M5 20V18H19V20H5Z"/></svg>
               </div>
-              <div class="form-group">
-                <label for="new-password">Mật khẩu</label>
-                <input type="password" id="new-password" required placeholder="••••••••">
+              <p>Nhấp hoặc kéo thả file <strong>.bkb</strong> vào đây</p>
+              <span>Kích thước khuyên dùng &lt; 50MB</span>
+              <input type="file" id="bkb-file-input" class="file-input hidden" accept=".bkb" onchange="handleBkbUpload(this.files[0])" />
+              
+              <div id="progress-container" class="progress-container">
+                <div id="progress-bar" class="progress-bar"></div>
               </div>
-              <button type="submit" class="btn">Tạo Người Dùng</button>
-              <button type="button" class="btn btn-secondary" id="btn-cancel-user" style="margin-left: 0.5rem;">Hủy</button>
-            </form>
-          </div>
-        </div>
-
-        <!-- Permissions Control Card -->
-        <div class="card">
-          <h2>Cấp Quyền Đọc Sách</h2>
-          <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; background: rgba(0,0,0,0.15); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border-color);">
-            <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
-              <label for="select-user">Chọn Người Dùng</label>
-              <select id="select-user"></select>
+              <div id="upload-status" class="status-msg"></div>
             </div>
-            <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
-              <label for="select-book">Chọn Sách</label>
-              <select id="select-book"></select>
-            </div>
-            <button class="btn" id="btn-grant-permission">Cấp Quyền Ngay</button>
           </div>
 
-          <h3 style="font-size: 1.1rem; margin-top: 2rem; margin-bottom: 1rem; font-weight: 700; color: #e5e7eb;">Danh Sách Quyền Truy Cập</h3>
-          <div class="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Tài Khoản</th>
-                  <th>Cuốn Sách Được Đọc</th>
-                  <th style="width: 150px; text-align: center;">Hành Động</th>
-                </tr>
-              </thead>
-              <tbody id="permissions-list-body">
-                <!-- Dynamically populated -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <!-- TAB 3: API KEY MANAGEMENT -->
-      <section id="apikeys-tab" class="tab-content">
-        <div class="card">
-          <h2>
-            <span>Quản Lý Khóa API Keys</span>
-            <button class="btn btn-sm" id="btn-create-apikey">+ Tạo API Key</button>
-          </h2>
-          
-          <div id="apikey-creation-box" class="hidden" style="margin-top: 1.5rem; background: rgba(0,0,0,0.15); padding: 1.5rem; border-radius: 10px; border: 1px solid var(--border-color);">
-            <h3 style="font-size: 0.95rem; margin-bottom: 1rem; color: #f3f4f6;">Đăng ký API Key mới</h3>
-            <div class="form-group">
-              <label for="apikey-name">Tên nhãn (ví dụ: CLI Laptop, Ingestion Server)</label>
-              <input type="text" id="apikey-name" placeholder="CLI Laptop">
+          <div class="card">
+            <div class="card-header">
+              <h2>Tủ Sách Hiện Có</h2>
             </div>
-            <button class="btn" id="btn-submit-apikey">Xác nhận tạo</button>
-            <button class="btn btn-secondary" id="btn-cancel-apikey" style="margin-left: 0.5rem;">Hủy</button>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 60px;">Bìa</th>
+                    <th>Tên Sách / Tác Giả</th>
+                    <th>Slug</th>
+                    <th style="width: 120px;">Số Trang</th>
+                    <th style="width: 200px; text-align: right;">Hành Động</th>
+                  </tr>
+                </thead>
+                <tbody id="books-list-body">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB 2: USERS & PERMISSIONS -->
+        <section id="users-tab" class="tab-content">
+          <div class="card">
+            <div class="card-header">
+              <h2>Tài Khoản Độc Giả</h2>
+              <button class="btn btn-sm btn-secondary" id="btn-create-user-toggle">Thêm Độc Giả</button>
+            </div>
             
-            <div id="new-key-display" class="hidden" style="margin-top: 1.25rem; padding: 1rem; background: rgba(16,185,129,0.1); border: 1px solid var(--success); border-radius: 6px;">
-              <p style="color: var(--success); font-weight: 700; font-size: 0.85rem; margin-bottom: 0.5rem;">⚠️ Hãy sao chép Key của bạn (chỉ hiển thị một lần duy nhất!):</p>
-              <code id="new-key-value" style="font-family: monospace; font-size: 1.1rem; background: #070b13; padding: 0.6rem; display: block; word-break: break-all; border-radius: 4px; color: #f9fafb; border: 1px solid rgba(255,255,255,0.05)"></code>
+            <div id="user-creation-box" class="hidden" style="margin-bottom: 1.5rem; padding: 1.25rem; background: var(--bg-input); border-radius: var(--radius-md); border: 1px solid var(--border-base);">
+              <form id="create-user-form">
+                <div class="form-row">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label for="new-username">Tài khoản (Username)</label>
+                    <input type="text" id="new-username" required placeholder="Nhập tên đăng nhập">
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label for="new-password">Mật khẩu</label>
+                    <input type="password" id="new-password" required placeholder="Nhập mật khẩu">
+                  </div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                  <button type="submit" class="btn btn-sm">Tạo Tài Khoản</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-cancel-user">Hủy</button>
+                </div>
+              </form>
+            </div>
+            
+            <div style="margin-top: 1.5rem;">
+              <h3 style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em;">Cấp Quyền Đọc Sách</h3>
+              <div class="form-row" style="align-items: end;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="select-user">Chọn Độc Giả</label>
+                  <select id="select-user"></select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="select-book">Chọn Sách</label>
+                  <select id="select-book"></select>
+                </div>
+                <button class="btn" id="btn-grant-permission" style="height: 39px;">Cấp Quyền</button>
+              </div>
             </div>
           </div>
 
-          <table style="margin-top: 1.5rem;">
-            <thead>
-              <tr>
-                <th>Tên Nhãn Key</th>
-                <th>API Key Prefix</th>
-                <th>Trạng Thái</th>
-                <th style="width: 150px; text-align: center;">Hành Động</th>
-              </tr>
-            </thead>
-            <tbody id="apikeys-list-body">
-              <!-- Dynamically populated -->
-            </tbody>
-          </table>
-        </div>
-      </section>
+          <div class="card">
+            <div class="card-header">
+              <h2>Danh Sách Phân Quyền</h2>
+            </div>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tài Khoản</th>
+                    <th>Sách Được Truy Cập</th>
+                    <th style="width: 150px; text-align: right;">Hành Động</th>
+                  </tr>
+                </thead>
+                <tbody id="permissions-list-body">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
 
-    </main>
+        <!-- TAB 3: API KEY MANAGEMENT -->
+        <section id="apikeys-tab" class="tab-content">
+          <div class="card">
+            <div class="card-header">
+              <h2>Quản Lý API Keys</h2>
+              <button class="btn btn-sm" id="btn-create-apikey">Tạo API Key</button>
+            </div>
+            
+            <div id="apikey-creation-box" class="hidden" style="margin-bottom: 1.5rem; padding: 1.25rem; background: var(--bg-input); border-radius: var(--radius-md); border: 1px solid var(--border-base);">
+              <h3 style="font-size: 0.875rem; margin-bottom: 1rem; color: var(--text-main);">Đăng ký API Key mới</h3>
+              <div class="form-group">
+                <label for="apikey-name">Tên nhãn (Ví dụ: Dịch thuật CLI, Backend Sync)</label>
+                <input type="text" id="apikey-name" placeholder="Tên gợi nhớ cho Key này">
+              </div>
+              <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-sm" id="btn-submit-apikey">Khởi tạo Key</button>
+                <button class="btn btn-secondary btn-sm" id="btn-cancel-apikey">Hủy</button>
+              </div>
+              
+              <div id="new-key-display" class="hidden" style="margin-top: 1.25rem; padding: 1rem; background: var(--success-alpha); border: 1px solid rgba(16,185,129,0.3); border-radius: var(--radius-sm);">
+                <p style="color: var(--success); font-weight: 500; font-size: 0.8125rem; margin-bottom: 0.5rem;">
+                  Lưu lại API Key này (nó sẽ không hiển thị lại nữa):
+                </p>
+                <code id="new-key-value" style="font-family: monospace; font-size: 0.9375rem; background: rgba(0,0,0,0.3); padding: 0.5rem 0.75rem; display: block; word-break: break-all; border-radius: 4px; color: #cbd5e1;"></code>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tên Nhãn Key</th>
+                    <th>Key Prefix</th>
+                    <th>Trạng Thái</th>
+                    <th style="width: 150px; text-align: right;">Hành Động</th>
+                  </tr>
+                </thead>
+                <tbody id="apikeys-list-body">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
   </div>
 
   <script src="admin.js"></script>
