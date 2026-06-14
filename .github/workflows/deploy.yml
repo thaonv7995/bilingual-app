@@ -4,10 +4,14 @@ on:
   push:
     branches:
       - main
+    tags:
+      - '*'
 
 jobs:
   test-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Code
@@ -54,3 +58,12 @@ jobs:
           name: bilingual-reader-release
           path: release.tar.gz
           retention-days: 7
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} release.tar.gz \
+             --title "Release ${{ github.ref_name }}" \
+             --notes "Automated release build for version ${{ github.ref_name }}."
