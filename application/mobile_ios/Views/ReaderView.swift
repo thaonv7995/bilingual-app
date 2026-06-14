@@ -14,6 +14,11 @@ struct ReaderView: View {
     @State private var page: Int
     @State private var viewMode: String // "en" | "vi" | "split"
     
+    // Jump to page dialog
+    @State private var showJumpToPageDialog = false
+    @State private var inputPageString = ""
+    @FocusState private var isPageFieldFocused: Bool
+    
     init(book: Book) {
         self.book = book
         
@@ -149,10 +154,15 @@ struct ReaderView: View {
                             }
                             .disabled(!canPrev)
                             
-                            Text(pageText)
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 8)
+                            Button(action: {
+                                inputPageString = "\(page)"
+                                showJumpToPageDialog = true
+                            }) {
+                                Text(pageText)
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8)
+                            }
                             
                             Button(action: {
                                 let step = useDoubleSided ? 2 : 1
@@ -386,6 +396,13 @@ struct ReaderView: View {
             .onChange(of: viewMode) { _ in
                 saveProgress()
             }
+            .overlay(
+                Group {
+                    if showJumpToPageDialog {
+                        jumpToPageDialogView()
+                    }
+                }
+            )
     }
     
     // --- Highlights UI / logic ---
@@ -1371,6 +1388,88 @@ struct ReaderView: View {
     private func saveChatHistory() {
         if let data = try? JSONEncoder().encode(chatMessages) {
             UserDefaults.standard.set(data, forKey: "chatHistory_\(book.slug)")
+        }
+    }
+    
+    @ViewBuilder
+    private func jumpToPageDialogView() -> some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    showJumpToPageDialog = false
+                }
+            
+            VStack(spacing: 20) {
+                Text("Đi tới trang")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text("Nhập số trang từ 1 đến \(book.pageCount)")
+                    .font(.system(size: 13))
+                    .foregroundColor(.gray)
+                
+                HStack {
+                    TextField("", text: $inputPageString)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.center)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.vertical, 8)
+                        .background(Color(hex: "0f172a"))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        )
+                        .focused($isPageFieldFocused)
+                        .frame(width: 120)
+                }
+                
+                HStack(spacing: 16) {
+                    Button(action: {
+                        showJumpToPageDialog = false
+                    }) {
+                        Text("Hủy")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.gray)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color(hex: "0f172a"))
+                            .cornerRadius(6)
+                    }
+                    
+                    Button(action: {
+                        if let targetPage = Int(inputPageString.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                            let clampedPage = max(1, min(book.pageCount, targetPage))
+                            page = clampedPage
+                            showJumpToPageDialog = false
+                        }
+                    }) {
+                        Text("Đi tiếp")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color(hex: "6366f1"))
+                            .cornerRadius(6)
+                    }
+                }
+            }
+            .padding(24)
+            .background(Color(hex: "1e293b"))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
+            .frame(width: 280)
+            .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 5)
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isPageFieldFocused = true
+            }
         }
     }
 }
