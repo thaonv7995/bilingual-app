@@ -27,7 +27,7 @@
 		5538CACD35C531C90CC07521 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualReaderApp.swift; sourceTree = "<group>"; };
 		6AD4860B8B690109EFB9878A /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-		83C106C930837C2F0DA5DB0C /* BilingualReader.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BilingualReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		83C106C930837C2F0DA5DB0C /* BilingualReader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BilingualReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPagerView.swift; sourceTree = "<group>"; };
 		99AF811F0CC00281EC4C8B04 /* BookCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCacheManager.swift; sourceTree = "<group>"; };
 		AB39B254369C911E5008B8A0 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
@@ -79,9 +79,6 @@
 			children = (
 				5538CACD35C531C90CC07521 /* Assets.xcassets */,
 				58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */,
-				E662218020EDB28D9165D73D /* Models */,
-				16601F8E94BA2CEE66D8C2A2 /* Services */,
-				FBE7E929CF26843AFD2C06AD /* Views */,
 			);
 			name = mobile_ios;
 			path = .;
@@ -130,8 +127,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = 9DCCD159C66C1867B95FA144 /* Build configuration list for PBXProject "BilingualReader" */;
 			developmentRegion = en;
@@ -189,8 +184,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = MPB66BJ242;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSAppTransportSecurity = "[\"NSAllowsArbitraryLoads\": true]";
 				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageRespectsSafeAreaInsets\": false, \"UIImageName\": \"SplashIcon\", \"UIColorName\": \"SplashBackground\"]";
@@ -329,8 +325,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = MPB66BJ242;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSAppTransportSecurity = "[\"NSAllowsArbitraryLoads\": true]";
 				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageRespectsSafeAreaInsets\": false, \"UIImageName\": \"SplashIcon\", \"UIColorName\": \"SplashBackground\"]";
@@ -358,7 +355,7 @@
 				565BF9E84B077291DBC51E85 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 		AFDC2266A6E7C754B2E6869E /* Build configuration list for PBXNativeTarget "BilingualReader" */ = {
 			isa = XCConfigurationList;
@@ -367,7 +364,7 @@
 				9E9AC5FF940D9C33B395F160 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

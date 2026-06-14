@@ -23,10 +23,14 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
     @ViewBuilder var content: (Int) -> Content
     
     func makeUIViewController(context: Context) -> UIPageViewController {
+        // Use pageCurl on iPad for the book feel, scroll on iPhone to avoid
+        // gesture conflicts with WKWebView's scroll view
+        let isIPad = UIDevice.current.userInterfaceIdiom == .pad
+        let style: UIPageViewController.TransitionStyle = isIPad ? .pageCurl : .scroll
         let pvc = UIPageViewController(
-            transitionStyle: .pageCurl,
+            transitionStyle: style,
             navigationOrientation: .horizontal,
-            options: nil
+            options: [UIPageViewController.OptionsKey.interPageSpacing: 16]
         )
         pvc.dataSource = context.coordinator
         pvc.delegate = context.coordinator
@@ -82,14 +86,14 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                 context.coordinator.lastPage = currentPage
                 let vc = context.coordinator.createVC(page: currentPage)
                 
-                if uiViewController.spineLocation == .min || uiViewController.spineLocation == .max {
+                if uiViewController.spineLocation == .min || uiViewController.spineLocation == .max || uiViewController.spineLocation == .none {
                     uiViewController.setViewControllers([vc], direction: dir, animated: false)
                 }
             }
         }
     }
     
-    func makeCoordinator() -> Coordinator {
+    func makeCoordinator() -> Coordinator { 
         Coordinator(self)
     }
     
