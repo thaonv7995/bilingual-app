@@ -92,9 +92,13 @@ struct ReaderView: View {
                     // Custom Slim Top Navigation Bar
                     HStack(spacing: 12) {
                         Button(action: { dismiss() }) {
-                            Image(systemName: "chevron.left")
-                                .foregroundColor(.white)
-                                .font(.system(size: 16))
+                            HStack(spacing: 5) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 14, weight: .bold))
+                                Text("Library")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
                         }
                         
                         Spacer()
