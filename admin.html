@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="favicon.png" type="image/png">
+  <title>Admin Portal - Bilingual Library</title>
+  
+  <!-- Premium Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-panel: #111827;
+      --bg-card: rgba(17, 24, 39, 0.7);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --text-main: #f9fafb;
+      --text-muted: #9ca3af;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --accent-alpha: rgba(99, 102, 241, 0.15);
+      --danger: #f43f5e;
+      --success: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    /* Top Navigation bar */
+    .topbar {
+      width: 100%;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: center;
+      padding: 1rem 2rem;
+    }
+
+    .topbar-container {
+      width: 100%;
+      max-width: 1200px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .topbar h1 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #a5b4fc, #6366f1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .nav-actions a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+
+    .nav-actions a:hover {
+      color: var(--text-main);
+    }
+
+    .btn-logout {
+      background: rgba(244, 63, 94, 0.15);
+      color: var(--danger) !important;
+      border: 1px solid rgba(244, 63, 94, 0.2);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+
+    .btn-logout:hover {
+      background: rgba(244, 63, 94, 0.3) !important;
+    }
+
+    /* Main layout with sidebar and content */
+    .main-layout {
+      display: flex;
+      width: 100%;
+      max-width: 1200px;
+      margin-top: 2rem;
+      gap: 2rem;
+      padding: 0 1rem;
+    }
+
+    /* Left Sidebar Tabs */
+    .sidebar {
+      width: 250px;
+      flex-shrink: 0;
+    }
+
+    .tab-menu {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      text-align: left;
+      padding: 0.85rem 1.25rem;
+      border-radius: 10px;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .tab-btn.active {
+      color: var(--text-main);
+      background: var(--accent-alpha);
+      border-color: rgba(99, 102, 241, 0.3);
+    }
+
+    /* Content Area */
+    .content-area {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    /* Glassmorphism Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 2rem;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      margin-bottom: 2rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      color: #f3f4f6;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Drag and Drop Uploader */
+    .upload-zone {
+      border: 2px dashed rgba(99, 102, 241, 0.3);
+      background: rgba(99, 102, 241, 0.02);
+      border-radius: 12px;
+      padding: 2.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 1.5rem;
+      position: relative;
+    }
+
+    .upload-zone:hover {
+      border-color: var(--accent);
+      background: rgba(99, 102, 241, 0.05);
+    }
+
+    .upload-zone svg {
+      width: 48px;
+      height: 48px;
+      fill: var(--accent);
+      margin-bottom: 1rem;
+      opacity: 0.8;
+    }
+
+    .upload-zone p {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .upload-zone span {
+      font-size: 0.8rem;
+      color: rgba(156, 163, 175, 0.7);
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .progress-container {
+      margin-top: 1rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      overflow: hidden;
+      height: 6px;
+      display: none;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.1s;
+    }
+
+    .status-msg {
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
+      text-align: center;
+    }
+
+    /* Forms */
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    input, select {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: var(--text-main);
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem 1.5rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+
+    .btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-sm {
+      padding: 0.4rem 0.8rem;
+      font-size: 0.8rem;
+      border-radius: 6px;
+    }
+
+    .btn-danger {
+      background: var(--danger);
+    }
+
+    .btn-danger:hover {
+      background: #e11d48;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Tables */
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+
+    th, td {
+      padding: 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+      vertical-align: middle;
+    }
+
+    th {
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    td {
+      color: #e5e7eb;
+      font-size: 0.9rem;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.01);
+    }
+
+    /* Cover Preview */
+    .cover-preview {
+      width: 45px;
+      height: 60px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 4px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+    }
+
+    .cover-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-success {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+    }
+
+    .badge-danger {
+      background: rgba(244, 63, 94, 0.15);
+      color: var(--danger);
+    }
+
+    /* Login Box */
+    .login-box {
+      width: 100%;
+      max-width: 420px;
+      margin-top: 8rem;
+    }
+
+    .login-box h1 {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Login Form -->
+  <div id="login-section" class="card login-box">
+    <h1 style="font-weight: 800; background: linear-gradient(135deg, #a5b4fc, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Admin Login</h1>
+    <form id="login-form">
+      <div class="form-group">
+        <label for="username">Tài khoản</label>
+        <input type="text" id="username" required placeholder="admin">
+      </div>
+      <div class="form-group">
+        <label for="password">Mật khẩu</label>
+        <input type="password" id="password" required placeholder="••••••••">
+      </div>
+      <div id="login-error" style="color: var(--danger); margin-bottom: 1rem; font-size: 0.875rem;" class="hidden"></div>
+      <button type="submit" class="btn" style="width: 100%;">Đăng nhập</button>
+    </form>
+  </div>
+
+  <!-- Top Navigation (Admin Panel) -->
+  <div id="topbar-section" class="topbar hidden">
+    <div class="topbar-container">
+      <h1>Bilingual Library Admin</h1>
+      <div class="nav-actions">
+        <a href="/" target="_blank">View Web Library ➔</a>
+        <a href="#" id="logout-btn" class="btn-logout">Đăng xuất</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layout Container -->
+  <div id="admin-section" class="main-layout hidden">
+    <!-- Sidebar Controls -->
+    <aside class="sidebar">
+      <nav class="tab-menu">
+        <button class="tab-btn active" onclick="switchTab('books-tab')">
+          <svg style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12A10 10 0 0 0 12 22A10 10 0 0 0 22 12A10 10 0 0 0 12 2M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>
+          Quản Lý Tủ Sách
+        </button>
+        <button class="tab-btn" onclick="switchTab('users-tab')">
+          <svg style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          Người Dùng & Phân Quyền
+        </button>
+        <button class="tab-btn" onclick="switchTab('apikeys-tab')">
+          <svg style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24"><path d="M12.65 11C11.83 7.56 8.77 5 5 5c-4.42 0-8 3.58-8 8s3.58 8 8 8c3.77 0 6.83-2.56 7.65-6H17v3h4v-3h2v-4H12.65zM5 17c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg>
+          Quản Lý API Key
+        </button>
+      </nav>
+    </aside>
+
+    <!-- Main Content Panel -->
+    <main class="content-area">
+      
+      <!-- TAB 1: BOOK MANAGEMENT -->
+      <section id="books-tab" class="tab-content active">
+        <!-- Upload Card -->
+        <div class="card">
+          <h2>Tải Sách Mới (.bkb Package)</h2>
+          <div class="upload-zone" onclick="document.getElementById('bkb-file-input').click()">
+            <svg viewBox="0 0 24 24">
+              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+            </svg>
+            <p>Nhấp vào đây hoặc kéo thả file <strong>.bkb</strong> để tải sách lên</p>
+            <span>Kích thước khuyên dùng &lt; 50MB</span>
+            <input type="file" id="bkb-file-input" class="file-input" accept=".bkb" onchange="handleBkbUpload(this.files[0])" />
+            
+            <div id="progress-container" class="progress-container">
+              <div id="progress-bar" class="progress-bar"></div>
+            </div>
+            <div id="upload-status" class="status-msg"></div>
+          </div>
+        </div>
+
+        <!-- Books Grid / Table -->
+        <div class="card">
+          <h2>Tủ Sách Hiện Có</h2>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 70px;">Bìa</th>
+                  <th>Tên Sách / Tác Giả</th>
+                  <th>Thư Mục (Slug)</th>
+                  <th style="width: 100px;">Số Trang</th>
+                  <th style="width: 240px; text-align: center;">Hành Động</th>
+                </tr>
+              </thead>
+              <tbody id="books-list-body">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: USERS & PERMISSIONS -->
+      <section id="users-tab" class="tab-content">
+        <!-- Create User Card -->
+        <div class="card">
+          <h2>
+            <span>Tạo Tài Khoản Người Dùng</span>
+            <button class="btn btn-secondary btn-sm" id="btn-create-user-toggle">+ Thêm Người Dùng</button>
+          </h2>
+          <div id="user-creation-box" class="hidden" style="margin-top: 1.5rem; background: rgba(0,0,0,0.15); padding: 1.5rem; border-radius: 10px; border: 1px solid var(--border-color);">
+            <form id="create-user-form">
+              <div class="form-group">
+                <label for="new-username">Tài khoản</label>
+                <input type="text" id="new-username" required placeholder="docgia1">
+              </div>
+              <div class="form-group">
+                <label for="new-password">Mật khẩu</label>
+                <input type="password" id="new-password" required placeholder="••••••••">
+              </div>
+              <button type="submit" class="btn">Tạo Người Dùng</button>
+              <button type="button" class="btn btn-secondary" id="btn-cancel-user" style="margin-left: 0.5rem;">Hủy</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Permissions Control Card -->
+        <div class="card">
+          <h2>Cấp Quyền Đọc Sách</h2>
+          <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; background: rgba(0,0,0,0.15); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border-color);">
+            <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+              <label for="select-user">Chọn Người Dùng</label>
+              <select id="select-user"></select>
+            </div>
+            <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+              <label for="select-book">Chọn Sách</label>
+              <select id="select-book"></select>
+            </div>
+            <button class="btn" id="btn-grant-permission">Cấp Quyền Ngay</button>
+          </div>
+
+          <h3 style="font-size: 1.1rem; margin-top: 2rem; margin-bottom: 1rem; font-weight: 700; color: #e5e7eb;">Danh Sách Quyền Truy Cập</h3>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tài Khoản</th>
+                  <th>Cuốn Sách Được Đọc</th>
+                  <th style="width: 150px; text-align: center;">Hành Động</th>
+                </tr>
+              </thead>
+              <tbody id="permissions-list-body">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: API KEY MANAGEMENT -->
+      <section id="apikeys-tab" class="tab-content">
+        <div class="card">
+          <h2>
+            <span>Quản Lý Khóa API Keys</span>
+            <button class="btn btn-sm" id="btn-create-apikey">+ Tạo API Key</button>
+          </h2>
+          
+          <div id="apikey-creation-box" class="hidden" style="margin-top: 1.5rem; background: rgba(0,0,0,0.15); padding: 1.5rem; border-radius: 10px; border: 1px solid var(--border-color);">
+            <h3 style="font-size: 0.95rem; margin-bottom: 1rem; color: #f3f4f6;">Đăng ký API Key mới</h3>
+            <div class="form-group">
+              <label for="apikey-name">Tên nhãn (ví dụ: CLI Laptop, Ingestion Server)</label>
+              <input type="text" id="apikey-name" placeholder="CLI Laptop">
+            </div>
+            <button class="btn" id="btn-submit-apikey">Xác nhận tạo</button>
+            <button class="btn btn-secondary" id="btn-cancel-apikey" style="margin-left: 0.5rem;">Hủy</button>
+            
+            <div id="new-key-display" class="hidden" style="margin-top: 1.25rem; padding: 1rem; background: rgba(16,185,129,0.1); border: 1px solid var(--success); border-radius: 6px;">
+              <p style="color: var(--success); font-weight: 700; font-size: 0.85rem; margin-bottom: 0.5rem;">⚠️ Hãy sao chép Key của bạn (chỉ hiển thị một lần duy nhất!):</p>
+              <code id="new-key-value" style="font-family: monospace; font-size: 1.1rem; background: #070b13; padding: 0.6rem; display: block; word-break: break-all; border-radius: 4px; color: #f9fafb; border: 1px solid rgba(255,255,255,0.05)"></code>
+            </div>
+          </div>
+
+          <table style="margin-top: 1.5rem;">
+            <thead>
+              <tr>
+                <th>Tên Nhãn Key</th>
+                <th>API Key Prefix</th>
+                <th>Trạng Thái</th>
+                <th style="width: 150px; text-align: center;">Hành Động</th>
+              </tr>
+            </thead>
+            <tbody id="apikeys-list-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>
