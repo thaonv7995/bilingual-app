@@ -1,0 +1,75 @@
+name: CI/CD Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install -r application/backend/requirements-api.txt
+          python -m pip install -e application/backend
+          python -m pip install pytest
+
+      - name: Run unit tests
+        run: |
+          source .venv/bin/activate
+          cd application/backend
+          pytest
+
+      - name: Package Application
+        run: |
+          # Create a clean tarball excluding venvs, databases, logs, and untracked configs
+          tar --exclude='application/.venv' \
+              --exclude='application/backend/.pytest_cache' \
+              --exclude='application/data' \
+              --exclude='bilingual_reader.db' \
+              --exclude='application/web-app/config.js' \
+              --exclude='.git' \
+              -czf release.tar.gz .
+
+      - name: Copy package to server via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: "release.tar.gz"
+          target: ${{ secrets.DEPLOY_PATH }}
+
+      - name: Deploy on Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            # Ensure deploy directory exists
+            mkdir -p ${{ secrets.DEPLOY_PATH }}
+            
+            # Extract release files
+            tar -xzf ${{ secrets.DEPLOY_PATH }}/release.tar.gz -C ${{ secrets.DEPLOY_PATH }}
+            rm -f ${{ secrets.DEPLOY_PATH }}/release.tar.gz
+            
+            # Execute deployment bootstrapper
+            cd ${{ secrets.DEPLOY_PATH }}
+            chmod +x deploy.sh
+            ./deploy.sh

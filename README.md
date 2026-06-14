@@ -26,9 +26,9 @@ graph TD
 ```
 
 ### 1. Web Frontend (Library & Reader App)
-- **Library (`index.html`, `app.js`)**: Trang chủ chứa tủ sách công cộng. Hiển thị sách được tải lên, tìm kiếm, lưu tiến trình đọc tự động.
+- **Library (`application/web-app/index.html`, `application/web-app/app.js`)**: Trang chủ chứa tủ sách công cộng. Hiển thị sách được tải lên, tìm kiếm, lưu tiến trình đọc tự động.
 - **Reader (Side-by-Side Split View)**: Hiển thị song song bản gốc tiếng Anh và bản dịch tiếng Việt chuẩn A4. Đồng bộ cuộn (scroll sync) mượt mà cho cả 2 ngôn ngữ.
-- **Admin Portal (`admin.html`, `admin.js`)**: Giao diện kéo thả file `.bkb`, tự động giải nén và nạp sách vào DB, cấp quyền cho user, tạo API Key và quản lý thành viên.
+- **Admin Portal (`application/web-app/admin.html`, `application/web-app/admin.js`)**: Giao diện kéo thả file `.bkb`, tự động giải nén và nạp sách vào DB, cấp quyền cho user, tạo API Key và quản lý thành viên.
 
 ### 2. Backend Server (FastAPI)
 - **Tập tin chạy**: `server.py` (Chạy trình bao tự động định tuyến môi trường ảo `.venv`).
@@ -48,23 +48,55 @@ graph TD
 
 ## 🚀 Hướng dẫn khởi chạy (Launch Instructions)
 
-### 1. Chuẩn bị môi trường
+### 1. Khởi chạy cục bộ (Local Launch)
+
+**Chuẩn bị môi trường**:
 Yêu cầu Python từ phiên bản **3.10** trở lên. Môi trường ảo `.venv` phải được khởi tạo bên trong thư mục `application/`.
 
 Cài đặt các thư viện phụ thuộc:
 ```bash
 cd application
+rm -rf .venv
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r backend/requirements.txt
+pip install -r backend/requirements-api.txt
+pip install -e backend
 ```
 
-### 2. Khởi chạy Server
+**Khởi chạy Server**:
 Để khởi động FastAPI Server chạy ngầm trên cổng `27099`, chạy file `server.py` ở thư mục gốc của dự án:
 ```bash
 python3 server.py
 ```
 *Lưu ý: Script `server.py` sẽ tự động phát hiện và kích hoạt môi trường ảo `.venv/` để đảm bảo hệ thống chạy chính xác.*
+
+---
+
+### 2. Triển khai trên máy chủ Debian (Server Deployment)
+
+Ứng dụng hỗ trợ tập lệnh triển khai thông minh chạy dưới dạng Background Process (dịch vụ `systemd`) trên Debian/Ubuntu.
+
+#### 🚀 Cài đặt tự động bằng 1 dòng lệnh (Curl bootstrap)
+Chạy lệnh sau trên máy chủ Debian trống để tự động tải code từ GitHub của bạn, cấu hình các thư viện Python, và khởi chạy dịch vụ:
+```bash
+curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- install /opt/bilingual-app https://github.com/thaonv7995/bilingual-app.git
+```
+
+#### 🔄 Cập nhật phiên bản mới (Update)
+Kéo code mới nhất từ GitHub, tự động cập nhật các thư viện dependencies và restart dịch vụ:
+```bash
+cd /opt/bilingual-app
+sudo ./deploy.sh update
+```
+
+#### 🗑️ Gỡ cài đặt hoàn toàn (Delete / Uninstall)
+Dừng dịch vụ chạy ngầm, vô hiệu hóa tự động kích hoạt và tùy chọn xóa thư mục code:
+```bash
+cd /opt/bilingual-app
+sudo ./deploy.sh delete
+```
+
+*Xem thêm tài liệu cấu hình CI/CD tự động bằng GitHub Actions tại [DEPLOYMENT.md](file:///Users/thaonv/Projects/Personal/bilingual-app/application/backend/docs/DEPLOYMENT.md).*
 
 ---
 

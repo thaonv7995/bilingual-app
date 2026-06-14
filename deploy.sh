@@ -1,38 +1,171 @@
 #!/bin/bash
 set -e
 
-# Automatically detect the directory where the script is located
-APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ACTION=${1:-"install"}
+TARGET_DIR=${2:-"/opt/bilingual-app"}
+REPO_URL=${3:-""}
+
 SERVICE_NAME="bilingual-reader"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
-echo "============================================="
-echo "Starting deployment for Bilingual Book Reader"
-echo "Target Directory: $APP_DIR"
-echo "============================================="
-
-# 1. Update source code if inside a Git repository
-if [ -d "$APP_DIR/.git" ]; then
-    echo "Updating repository from GitHub..."
-    cd "$APP_DIR"
-    git fetch --all
-    # Pull latest updates (assumes main branch, or active branch)
-    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    echo "Pulling latest changes on branch: $CURRENT_BRANCH..."
-    git pull origin "$CURRENT_BRANCH"
+# Detect if we are inside the application source tree
+if [ -f "$(dirname "$0")/server.py" ] && [ -d "$(dirname "$0")/application" ]; then
+    IS_SOURCE_TREE=true
+    APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+else
+    IS_SOURCE_TREE=false
 fi
 
-# 2. Check and install Python 3 if missing
+# Print Help
+show_help() {
+    echo "Bilingual Book Reader Service Manager"
+    echo "Usage:"
+    echo "  Local Run:  ./deploy.sh [install|update|delete] [target_dir]"
+    echo "  Curl Run:   curl -sSL <url> | bash -s -- install [target_dir] [repo_url]"
+    echo ""
+    echo "Actions:"
+    echo "  install   Install and register the systemd service (default)"
+    echo "  update    Pull the latest code from GitHub and restart the process"
+    echo "  delete    Stop, disable, and clean up the service and directories"
+}
+
+if [ "$ACTION" = "help" ] || [ "$ACTION" = "--help" ] || [ "$ACTION" = "-h" ]; then
+    show_help
+    exit 0
+fi
+
+# ==================== ACTION: DELETE ====================
+if [ "$ACTION" = "delete" ] || [ "$ACTION" = "uninstall" ]; then
+    echo "============================================="
+    echo "Uninstalling Bilingual Book Reader Service..."
+    echo "============================================="
+    
+    # 1. Stop and disable systemd service
+    if [ -f "$SERVICE_FILE" ]; then
+        echo "Stopping and disabling $SERVICE_NAME service..."
+        sudo systemctl stop "$SERVICE_NAME" || true
+        sudo systemctl disable "$SERVICE_NAME" || true
+        echo "Removing systemd service file..."
+        sudo rm -f "$SERVICE_FILE"
+        sudo systemctl daemon-reload
+    else
+        echo "Service file $SERVICE_FILE not found, skipping..."
+    fi
+    
+    # 2. Optionally delete files
+    if [ "$IS_SOURCE_TREE" = "true" ]; then
+        echo "Please delete the folder manually if needed: $APP_DIR"
+    elif [ -d "$TARGET_DIR" ]; then
+        read -p "Do you want to delete the installation directory at $TARGET_DIR? (y/N): " confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            echo "Deleting $TARGET_DIR..."
+            sudo rm -rf "$TARGET_DIR"
+        fi
+    fi
+    echo "Uninstall completed successfully."
+    exit 0
+fi
+
+# ==================== ACTION: INSTALL (BOOTSTRAP PHASE) ====================
+if [ "$IS_SOURCE_TREE" = "false" ] && [ "$ACTION" = "install" ]; then
+    echo "============================================="
+    echo "Bootstrapping Bilingual Book Reader Installation..."
+    echo "============================================="
+    
+    if [ -z "$REPO_URL" ]; then
+        echo "Error: Git repository URL is required for bootstrap installation."
+        echo "Usage: curl -sSL <script_url> | bash -s -- install [target_dir] [repo_url]"
+        exit 1
+    fi
+    
+    echo "Target directory: $TARGET_DIR"
+    echo "Git repository: $REPO_URL"
+    
+    # Clone repository
+    if [ -d "$TARGET_DIR" ]; then
+        echo "Target directory already exists. Updating it instead..."
+    else
+        echo "Cloning repository..."
+        sudo git clone "$REPO_URL" "$TARGET_DIR"
+    fi
+    
+    # Run the local installer
+    echo "Triggering local installation..."
+    cd "$TARGET_DIR"
+    sudo ./deploy.sh install "$TARGET_DIR"
+    exit 0
+fi
+
+# ==================== LOCAL OPERATIONS (SOURCE TREE REQUIRED) ====================
+if [ "$IS_SOURCE_TREE" = "false" ]; then
+    echo "Error: This action must be executed inside the application source tree."
+    show_help
+    exit 1
+fi
+
+# Set the target dir to the current source directory since we are in-tree
+TARGET_DIR="$APP_DIR"
+
+# ==================== ACTION: UPDATE ====================
+if [ "$ACTION" = "update" ]; then
+    echo "============================================="
+    echo "Updating Bilingual Book Reader..."
+    echo "============================================="
+    
+    if [ -d "$TARGET_DIR/.git" ]; then
+        echo "Pulling latest changes from Git..."
+        cd "$TARGET_DIR"
+        git fetch --all
+        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+        git pull origin "$CURRENT_BRANCH"
+    else
+        echo "Not a Git repository, skipping source code pull..."
+    fi
+fi
+
+# ==================== ACTION: INSTALL / UPDATE (BUILD & RUN WORK) ====================
+echo "============================================="
+echo "Building and Configuring Process..."
+echo "============================================="
+
+# 1. Check/Install Python 3 & venv
+echo "Checking Python 3 installation..."
 if ! command -v python3 &> /dev/null; then
     echo "Python 3 not found. Installing..."
-    sudo apt-get update && sudo apt-get install -y python3
+    sudo apt-get update && sudo apt-get install -y python3 python3-venv python3-pip
+elif ! python3 -c "import venv" &> /dev/null; then
+    echo "Python 3 venv module not found. Installing..."
+    sudo apt-get update && sudo apt-get install -y python3-venv
 fi
 
-# 3. Ensure server.py is executable
-chmod +x "$APP_DIR/server.py"
+# 2. Bootstrap Virtual Environment if missing
+if [ ! -d "$TARGET_DIR/application/.venv" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv "$TARGET_DIR/application/.venv"
+fi
 
-# 4. Configure systemd service
+# 3. Align shebangs and paths
+echo "Aligning virtual environment paths..."
+cd "$TARGET_DIR/application"
+bash scripts/fix-venv.sh
+
+# 4. Update dependencies
+echo "Updating Python API dependencies..."
+.venv/bin/python3 -m pip install -r backend/requirements-api.txt
+cd "$TARGET_DIR"
+
+# 5. Make launcher executable
+chmod +x "$TARGET_DIR/server.py"
+
+# 6. Setup systemd service
 echo "Configuring systemd service..."
+RUN_USER=${SUDO_USER:-$USER}
+if [ "$RUN_USER" = "root" ]; then
+    # If run via sudo, use the original user to run the server
+    RUN_USER=${SUDO_USER:-root}
+fi
+echo "Running service as user: $RUN_USER"
+
 sudo bash -c "cat > $SERVICE_FILE" <<EOF
 [Unit]
 Description=Bilingual Book Reader & AI Proxy Service
@@ -40,9 +173,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=$USER
-WorkingDirectory=$APP_DIR
-ExecStart=/usr/bin/python3 server.py
+User=$RUN_USER
+WorkingDirectory=$TARGET_DIR
+ExecStart=$TARGET_DIR/application/.venv/bin/python3 server.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
@@ -51,7 +184,7 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=multi-user.target
 EOF
 
-# 5. Reload systemd daemon and restart service
+# 7. Start / Restart service
 echo "Reloading systemd daemon..."
 sudo systemctl daemon-reload
 
@@ -62,7 +195,6 @@ echo "Restarting $SERVICE_NAME service..."
 sudo systemctl restart "$SERVICE_NAME"
 
 echo "============================================="
-echo "Deployment completed successfully!"
-echo "The service is now running on port 27099."
+echo "Service is now running on port 27099."
 echo "You can check status using: sudo systemctl status $SERVICE_NAME"
 echo "============================================="
