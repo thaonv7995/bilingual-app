@@ -86,6 +86,7 @@ if [ "$IS_SOURCE_TREE" = "false" ]; then
         if [ -d "$TARGET_DIR/.git" ]; then
             echo "Target directory already exists and is a git repository. Pulling latest updates..."
             cd "$TARGET_DIR"
+            sudo git reset --hard HEAD
             sudo git fetch --all
             CURRENT_BRANCH=$(sudo git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
             sudo git pull origin "$CURRENT_BRANCH"
@@ -120,6 +121,7 @@ if [ "$IS_SOURCE_TREE" = "false" ]; then
         # Update repository
         echo "Pulling latest changes from Git..."
         cd "$TARGET_DIR"
+        sudo git reset --hard HEAD
         sudo git fetch --all
         CURRENT_BRANCH=$(sudo git rev-parse --abbrev-ref HEAD)
         sudo git pull origin "$CURRENT_BRANCH"
@@ -174,6 +176,7 @@ if [ "$ACTION" = "update" ]; then
     if [ -d "$TARGET_DIR/.git" ]; then
         echo "Pulling latest changes from Git..."
         cd "$TARGET_DIR"
+        git reset --hard HEAD
         git fetch --all
         CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
         git pull origin "$CURRENT_BRANCH"
