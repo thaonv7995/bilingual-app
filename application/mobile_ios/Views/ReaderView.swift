@@ -71,26 +71,39 @@ struct ReaderView: View {
                                 .font(.system(size: 14))
                         }
                         
-                        Menu {
-                            Button("Tiếng Anh") { viewMode = "en" }
-                            Button("Tiếng Việt") { viewMode = "vi" }
-                            Button("Song ngữ") { viewMode = "split" }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(viewMode.uppercased())
-                                    .font(.system(size: 11, weight: .bold))
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: 9))
+                        // Language Switcher (Web Style)
+                        HStack(spacing: 0) {
+                            Button(action: { viewMode = "en" }) {
+                                Text("EN")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .frame(width: 36, height: 28)
+                                    .background(viewMode == "en" ? Color(hex: "6366f1") : Color.clear)
+                                    .foregroundColor(viewMode == "en" ? .white : .gray)
                             }
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 4)
-                            .background(Color.white)
-                            .cornerRadius(6)
+                            Button(action: { viewMode = "vi" }) {
+                                Text("VI")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .frame(width: 36, height: 28)
+                                    .background(viewMode == "vi" ? Color(hex: "6366f1") : Color.clear)
+                                    .foregroundColor(viewMode == "vi" ? .white : .gray)
+                            }
+                            Button(action: { viewMode = "split" }) {
+                                Image(systemName: "rectangle.split.2x1")
+                                    .font(.system(size: 13))
+                                    .frame(width: 36, height: 28)
+                                    .background(viewMode == "split" ? Color(hex: "6366f1") : Color.clear)
+                                    .foregroundColor(viewMode == "split" ? .white : .gray)
+                            }
                         }
+                        .background(Color(hex: "1e293b"))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        )
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 10)
                     .background(Color(hex: "0f172a"))
                     
                     // Reading Area
@@ -178,16 +191,13 @@ struct ReaderView: View {
                         }
                         
                         // Bottom Navigation Bar
-                        HStack {
+                        HStack(alignment: .center) {
                             Button(action: {
-                                if page > 1 {
-                                    page -= 1
-                                }
+                                if page > 1 { page -= 1 }
                             }) {
                                 Text("◀ Trang trước")
-                                    .font(.system(size: 13))
+                                    .font(.system(size: 13, weight: .medium))
                                     .foregroundColor(page <= 1 ? .gray : .white)
-                                    .padding(.vertical, 4)
                             }
                             .disabled(page <= 1)
                             
@@ -195,24 +205,21 @@ struct ReaderView: View {
                             
                             Text("Trang \(page) / \(book.pageCount)")
                                 .foregroundColor(.gray)
-                                .font(.system(size: 12))
+                                .font(.system(size: 13))
                             
                             Spacer()
                             
                             Button(action: {
-                                if page < book.pageCount {
-                                    page += 1
-                                }
+                                if page < book.pageCount { page += 1 }
                             }) {
                                 Text("Trang tiếp ▶")
-                                    .font(.system(size: 13))
+                                    .font(.system(size: 13, weight: .medium))
                                     .foregroundColor(page >= book.pageCount ? .gray : .white)
-                                    .padding(.vertical, 4)
                             }
                             .disabled(page >= book.pageCount)
                         }
+                        .frame(height: 44)
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 4)
                         .background(Color(hex: "0f172a"))
                     }
                     .frame(maxWidth: .infinity)

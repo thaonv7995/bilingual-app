@@ -59,6 +59,29 @@ struct BilingualWebView: UIViewRepresentable {
                 .page-nav {
                     display: none !important;
                 }
+                html, body, main, article, .book-page, .sheet-flow, .prose-page {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    box-sizing: border-box !important;
+                    overflow-x: hidden !important;
+                    background-color: #F9F7F1 !important;
+                    color: #333333 !important;
+                    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+                }
+                div, p, h1, h2, h3, h4, h5, h6, ul, ol, li {
+                    background-color: transparent !important;
+                    color: inherit !important;
+                }
+                body {
+                    padding: 24px 24px 40px 24px !important;
+                }
+                * {
+                    box-sizing: border-box !important;
+                    max-width: 100% !important;
+                    word-wrap: break-word !important;
+                }
                 mark.reader-highlight {
                     border-radius: 3px;
                     padding: 0 1px;
@@ -255,6 +278,9 @@ struct BilingualWebView: UIViewRepresentable {
         context.coordinator.webView = webView
         webView.scrollView.showsVerticalScrollIndicator = false
         webView.scrollView.showsHorizontalScrollIndicator = false
+        webView.isOpaque = true
+        webView.backgroundColor = UIColor(red: 249/255, green: 247/255, blue: 241/255, alpha: 1.0)
+        webView.scrollView.backgroundColor = UIColor(red: 249/255, green: 247/255, blue: 241/255, alpha: 1.0)
         
         // Register observer for programmatical scrolling
         NotificationCenter.default.addObserver(
