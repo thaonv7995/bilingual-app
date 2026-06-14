@@ -78,9 +78,10 @@ def sync_books_directory_to_db(db: Session):
                     db.add(new_book)
                     print(f"[Startup Sync] Added book to DB: {item.name}")
                 else:
-                    # Sync page count and cover path if updated
+                    # Sync page count, author and cover path if updated
                     db_book.page_count = book_paths.estimate_page_count()
                     db_book.title = metadata.get("title", db_book.title)
+                    db_book.author = metadata.get("author", db_book.author)
                     if cover_val:
                         db_book.cover_path = cover_val
             except Exception as e:
