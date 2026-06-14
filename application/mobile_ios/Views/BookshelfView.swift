@@ -283,7 +283,7 @@ struct BookCard: View {
                     .foregroundColor(.white)
                     .lineLimit(2)
             }
-            .frame(width: 154, alignment: .leading)
+            .frame(width: 154, height: 40, alignment: .topLeading)
             .padding(.horizontal, 4)
             .contentShape(Rectangle())
             .onTapGesture {
