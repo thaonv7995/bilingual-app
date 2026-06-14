@@ -167,37 +167,40 @@ struct BookCard: View {
                     .appendingPathComponent("output")
                     .appendingPathComponent(book.coverPath ?? "")
                 
-                if cacheManager.isDownloaded(slug: book.slug),
-                   !(book.coverPath ?? "").isEmpty,
-                   FileManager.default.fileExists(atPath: localCoverURL.path),
-                   let uiImage = UIImage(contentsOfFile: localCoverURL.path) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .clipped()
-                } else if let coverPath = book.cover, let coverUrl = URL(string: "\(api.serverUrl)/\(coverPath)") {
-                    AsyncImage(url: coverUrl) { image in
-                        image
+                GeometryReader { geo in
+                    if cacheManager.isDownloaded(slug: book.slug),
+                       !(book.coverPath ?? "").isEmpty,
+                       FileManager.default.fileExists(atPath: localCoverURL.path),
+                       let uiImage = UIImage(contentsOfFile: localCoverURL.path) {
+                        Image(uiImage: uiImage)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        ProgressView().tint(.white)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                } else {
-                    // Fallback Text Cover
-                    VStack(spacing: 8) {
-                        Image(systemName: "book.fill")
-                            .font(.largeTitle)
-                            .foregroundColor(Color(hex: "6366f1"))
-                        Text(book.title)
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 10)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .clipped()
+                    } else if let coverPath = book.cover, let coverUrl = URL(string: "\(api.serverUrl)/\(coverPath)") {
+                        AsyncImage(url: coverUrl) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            ProgressView().tint(.white)
+                        }
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                    } else {
+                        // Fallback Text Cover
+                        VStack(spacing: 8) {
+                            Image(systemName: "book.fill")
+                                .font(.largeTitle)
+                                .foregroundColor(Color(hex: "6366f1"))
+                            Text(book.title)
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 10)
+                        }
+                        .frame(width: geo.size.width, height: geo.size.height)
                     }
                 }
             }
