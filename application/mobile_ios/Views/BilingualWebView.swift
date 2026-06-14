@@ -45,12 +45,11 @@ struct BilingualWebView: UIViewRepresentable {
         let highlightColor = isEnglish ? "rgba(56, 189, 248, 0.22)" : "rgba(250, 204, 21, 0.24)"
         let hoverColor = isEnglish ? "rgba(56, 189, 248, 0.08)" : "rgba(250, 204, 21, 0.08)"
         
-        // Inject highlighting core script
-        let jsSource = """
-        const STYLE_ID = 'reader-highlight-style';
-        if (!document.getElementById(STYLE_ID)) {
+        // 1. Inject CSS Style rules script at .atDocumentStart to prevent white flash
+        let cssStyleSource = """
+        (function() {
             const style = document.createElement('style');
-            style.id = STYLE_ID;
+            style.id = 'reader-highlight-style';
             style.innerHTML = `
                 .sentence-node {
                     transition: background-color 0.2s ease;
@@ -111,9 +110,15 @@ struct BilingualWebView: UIViewRepresentable {
                     border: 1px solid #fff;
                 }
             `;
-            document.head.appendChild(style);
-        }
-
+            const parent = document.head || document.documentElement;
+            parent.appendChild(style);
+        })();
+        """
+        let cssUserScript = WKUserScript(source: cssStyleSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        contentController.addUserScript(cssUserScript)
+        
+        // 2. Inject highlighting core JS logic at .atDocumentEnd (needs DOM elements)
+        let jsSource = """
         const PARAGRAPH_SELECTOR = 'p, li, blockquote, pre, h1, h2, h3, h4, h5, h6';
 
         window.getParagraphs = function() {
@@ -402,9 +407,9 @@ struct BilingualWebView: UIViewRepresentable {
         context.coordinator.webView = webView
         webView.scrollView.showsVerticalScrollIndicator = false
         webView.scrollView.showsHorizontalScrollIndicator = false
-        webView.isOpaque = true
-        webView.backgroundColor = UIColor(red: 249/255, green: 247/255, blue: 241/255, alpha: 1.0)
-        webView.scrollView.backgroundColor = UIColor(red: 249/255, green: 247/255, blue: 241/255, alpha: 1.0)
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
         
         // Register observer for programmatical scrolling
         NotificationCenter.default.addObserver(
