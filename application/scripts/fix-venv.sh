@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-if [[ ! -d .venv ]]; then
+if [[ ! -f .venv/bin/activate ]]; then
+  rm -rf .venv
   python3 -m venv .venv
 fi
 # shellcheck disable=SC1091

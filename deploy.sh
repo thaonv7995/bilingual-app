@@ -200,9 +200,10 @@ elif ! python3 -c "import venv, ensurepip" &> /dev/null; then
     sudo apt-get update && sudo apt-get install -y python3-venv
 fi
 
-# 2. Bootstrap Virtual Environment if missing
-if [ ! -d "$TARGET_DIR/application/.venv" ]; then
+# 2. Bootstrap Virtual Environment if missing or broken
+if [ ! -f "$TARGET_DIR/application/.venv/bin/activate" ]; then
     echo "Creating virtual environment..."
+    rm -rf "$TARGET_DIR/application/.venv"
     python3 -m venv "$TARGET_DIR/application/.venv"
 fi
 
