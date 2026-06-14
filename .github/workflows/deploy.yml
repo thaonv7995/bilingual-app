@@ -36,14 +36,17 @@ jobs:
       - name: Package Application
         run: |
           # Create a clean tarball excluding venvs, databases, logs, and untracked configs
-          tar --exclude='application/.venv' \
-              --exclude='application/backend/.pytest_cache' \
+          tar --exclude='.venv' \
+              --exclude='application/.venv' \
+              --exclude='**/.venv' \
+              --exclude='**/__pycache__' \
+              --exclude='**/.pytest_cache' \
               --exclude='application/data' \
               --exclude='bilingual_reader.db' \
               --exclude='application/web-app/config.js' \
               --exclude='.git' \
-              --exclude='release.tar.gz' \
-              -czf release.tar.gz .
+              -czf ../release.tar.gz .
+          mv ../release.tar.gz .
 
       - name: Copy package to server via SCP
         uses: appleboy/scp-action@v0.1.7
