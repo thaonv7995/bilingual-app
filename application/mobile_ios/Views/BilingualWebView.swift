@@ -6,11 +6,12 @@ struct SelectionInfo: Codable {
     let startOffset: Int
     let endOffset: Int
     let text: String
+    let rect: CGRect?
 }
 
 enum HighlightMessage {
     case textSelected(selectionInfo: SelectionInfo)
-    case highlightClicked(id: String)
+    case highlightClicked(id: String, rect: CGRect?)
     case clearSelection
 }
 
@@ -197,8 +198,10 @@ struct BilingualWebView: UIViewRepresentable {
             preRange.setEnd(range.startContainer, range.startOffset);
             const startOffset = preRange.toString().length;
             const endOffset = startOffset + range.toString().length;
+            
+            const rect = range.getBoundingClientRect();
 
-            return { paragraphIndex, startOffset, endOffset, text: range.toString() };
+            return { paragraphIndex, startOffset, endOffset, text: range.toString(), rect: {x: rect.x, y: rect.y, width: rect.width, height: rect.height} };
         };
 
         window.highlightSentence = function(sentenceId) {
@@ -224,9 +227,11 @@ struct BilingualWebView: UIViewRepresentable {
 
                 if (clickedMark) {
                     const highlightId = clickedMark.dataset.highlightId;
+                    const rect = clickedMark.getBoundingClientRect();
                     window.webkit.messageHandlers.iosListener.postMessage(JSON.stringify({
                         type: 'highlightClicked',
-                        id: highlightId
+                        id: highlightId,
+                        rect: {x: rect.x, y: rect.y, width: rect.width, height: rect.height}
                     }));
                     selection.removeAllRanges();
                     return;
@@ -385,6 +390,7 @@ struct BilingualWebView: UIViewRepresentable {
                 if let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
                     if let type = json["type"] as? String {
                         if type == "scroll" && !isUpdatingScroll {
+                            parent.onHighlightMessage(.clearSelection)
                             if let scrollTop = json["scrollTop"] as? CGFloat {
                                 parent.onScroll(scrollTop)
                             }
@@ -394,12 +400,30 @@ struct BilingualWebView: UIViewRepresentable {
                                let start = selectionData["startOffset"] as? Int,
                                let end = selectionData["endOffset"] as? Int,
                                let text = selectionData["text"] as? String {
-                                let info = SelectionInfo(paragraphIndex: pIndex, startOffset: start, endOffset: end, text: text)
+                                
+                                var rect: CGRect? = nil
+                                if let rectDict = selectionData["rect"] as? [String: Any],
+                                   let rx = rectDict["x"] as? CGFloat,
+                                   let ry = rectDict["y"] as? CGFloat,
+                                   let rw = rectDict["width"] as? CGFloat,
+                                   let rh = rectDict["height"] as? CGFloat {
+                                    rect = CGRect(x: rx, y: ry, width: rw, height: rh)
+                                }
+                                
+                                let info = SelectionInfo(paragraphIndex: pIndex, startOffset: start, endOffset: end, text: text, rect: rect)
                                 parent.onHighlightMessage(.textSelected(selectionInfo: info))
                             }
                         } else if type == "highlightClicked" {
                             if let id = json["id"] as? String {
-                                parent.onHighlightMessage(.highlightClicked(id: id))
+                                var rect: CGRect? = nil
+                                if let rectDict = json["rect"] as? [String: Any],
+                                   let rx = rectDict["x"] as? CGFloat,
+                                   let ry = rectDict["y"] as? CGFloat,
+                                   let rw = rectDict["width"] as? CGFloat,
+                                   let rh = rectDict["height"] as? CGFloat {
+                                    rect = CGRect(x: rx, y: ry, width: rw, height: rh)
+                                }
+                                parent.onHighlightMessage(.highlightClicked(id: id, rect: rect))
                             }
                         } else if type == "sentenceClicked" {
                             if let sId = json["sentenceId"] as? String {

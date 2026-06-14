@@ -19,6 +19,8 @@ struct ReaderView: View {
     @State private var activeSelection: SelectionInfo? = nil
     @State private var activeSelectionLang: String = ""
     @State private var selectedHighlightId: String? = nil
+    @State private var activeRect: CGRect? = nil
+    @State private var showNoteInput: Bool = false
     @State private var highlightNote: String = ""
     @State private var selectedColor: String = "#fde68a" // yellow default
     @State private var activeSentenceId: String? = nil
@@ -113,87 +115,105 @@ struct ReaderView: View {
                             if isLoading {
                                 ProgressView().tint(.white)
                             } else {
-                                let layout = (viewMode == "split" && !isLargeScreen) ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
-                                
-                                layout {
-                                    let padPage = String(format: "%04d", page)
-                                    
-                                    // English WebView
-                                    if viewMode == "en" || viewMode == "split" {
-                                        let enUrlString = "\(api.serverUrl)/books/\(book.slug)/output/en/page_\(padPage).html?token=\(api.token)"
-                                        BilingualWebView(
-                                            urlString: enUrlString,
-                                            lang: "en",
-                                            page: page,
-                                            activeSentenceId: activeSentenceId,
-                                            onScroll: { scrollTop in
-                                                NotificationCenter.default.post(
-                                                    name: NSNotification.Name("ScrollTo_vi"),
-                                                    object: nil,
-                                                    userInfo: ["scrollTop": scrollTop]
-                                                )
-                                            },
-                                            onHighlightMessage: { msg in
-                                                handleHighlightMessage(msg, lang: "en")
-                                            },
-                                            onSentenceClicked: { sentenceId in
-                                                self.activeSentenceId = sentenceId
-                                            }
-                                        )
-                                        .background(Color(hex: "0f172a"))
+                                TabView(selection: Binding(
+                                    get: { self.page },
+                                    set: { newPage in
+                                        if newPage != self.page {
+                                            self.page = newPage
+                                            self.saveProgress()
+                                        }
                                     }
-                                    
-                                    // Split Divider Line
-                                    if viewMode == "split" {
-                                        Rectangle()
-                                            .fill(Color.white.opacity(0.1))
-                                            .frame(
-                                                width: (viewMode == "split" && !isLargeScreen) ? nil : 2,
-                                                height: (viewMode == "split" && !isLargeScreen) ? 2 : nil
-                                            )
-                                    }
-                                    
-                                    // Vietnamese WebView
-                                    if viewMode == "vi" || viewMode == "split" {
-                                        let viUrlString = "\(api.serverUrl)/books/\(book.slug)/output/vi/page_\(padPage).html?token=\(api.token)"
-                                        BilingualWebView(
-                                            urlString: viUrlString,
-                                            lang: "vi",
-                                            page: page,
-                                            activeSentenceId: activeSentenceId,
-                                            onScroll: { scrollTop in
-                                                NotificationCenter.default.post(
-                                                    name: NSNotification.Name("ScrollTo_en"),
-                                                    object: nil,
-                                                    userInfo: ["scrollTop": scrollTop]
+                                )) {
+                                    ForEach(1...max(1, book.pageCount), id: \.self) { p in
+                                        let layout = (viewMode == "split" && !isLargeScreen) ? AnyLayout(VStackLayout(spacing: 16)) : AnyLayout(HStackLayout(spacing: 16))
+                                        
+                                        layout {
+                                            let padPage = String(format: "%04d", p)
+                                            
+                                            // English WebView
+                                            if viewMode == "en" || viewMode == "split" {
+                                                let enUrlString = "\(api.serverUrl)/books/\(book.slug)/output/en/page_\(padPage).html?token=\(api.token)"
+                                                BilingualWebView(
+                                                    urlString: enUrlString,
+                                                    lang: "en",
+                                                    page: p,
+                                                    activeSentenceId: activeSentenceId,
+                                                    onScroll: { scrollTop in
+                                                        NotificationCenter.default.post(
+                                                            name: NSNotification.Name("ScrollTo_vi"),
+                                                            object: nil,
+                                                            userInfo: ["scrollTop": scrollTop]
+                                                        )
+                                                    },
+                                                    onHighlightMessage: { msg in
+                                                        handleHighlightMessage(msg, lang: "en")
+                                                    },
+                                                    onSentenceClicked: { sentenceId in
+                                                        self.activeSentenceId = sentenceId
+                                                    }
                                                 )
-                                            },
-                                            onHighlightMessage: { msg in
-                                                handleHighlightMessage(msg, lang: "vi")
-                                            },
-                                            onSentenceClicked: { sentenceId in
-                                                self.activeSentenceId = sentenceId
+                                                .modifier(PaperSheetModifier(isLargeScreen: isLargeScreen, viewMode: viewMode))
+                                                .overlay(
+                                                    Group {
+                                                        if activeSelectionLang == "en" && (activeSelection != nil || selectedHighlightId != nil) {
+                                                            if let rect = activeRect {
+                                                                highlightPopupMenu()
+                                                                    .position(x: rect.midX, y: max(30, rect.minY - 30))
+                                                            }
+                                                        }
+                                                    }
+                                                )
                                             }
-                                        )
-                                        .background(Color(hex: "0f172a"))
+                                            
+                                            // Vietnamese WebView
+                                            if viewMode == "vi" || viewMode == "split" {
+                                                let viUrlString = "\(api.serverUrl)/books/\(book.slug)/output/vi/page_\(padPage).html?token=\(api.token)"
+                                                BilingualWebView(
+                                                    urlString: viUrlString,
+                                                    lang: "vi",
+                                                    page: p,
+                                                    activeSentenceId: activeSentenceId,
+                                                    onScroll: { scrollTop in
+                                                        NotificationCenter.default.post(
+                                                            name: NSNotification.Name("ScrollTo_en"),
+                                                            object: nil,
+                                                            userInfo: ["scrollTop": scrollTop]
+                                                        )
+                                                    },
+                                                    onHighlightMessage: { msg in
+                                                        handleHighlightMessage(msg, lang: "vi")
+                                                    },
+                                                    onSentenceClicked: { sentenceId in
+                                                        self.activeSentenceId = sentenceId
+                                                    }
+                                                )
+                                                .modifier(PaperSheetModifier(isLargeScreen: isLargeScreen, viewMode: viewMode))
+                                                .overlay(
+                                                    Group {
+                                                        if activeSelectionLang == "vi" && (activeSelection != nil || selectedHighlightId != nil) {
+                                                            if let rect = activeRect {
+                                                                highlightPopupMenu()
+                                                                    .position(x: rect.midX, y: max(30, rect.minY - 30))
+                                                            }
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        }
+                                        .padding(16)
+                                        .tag(p)
                                     }
                                 }
-                            }
-                            
-                            // Highlights/Notes Floating Overlay Card
-                            if activeSelection != nil || selectedHighlightId != nil {
-                                VStack {
-                                    Spacer()
-                                    highlightToolbarCard()
-                                        .transition(.move(edge: .bottom))
-                                }
+                                .tabViewStyle(.page(indexDisplayMode: .never))
                             }
                         }
                         
                         // Bottom Navigation Bar
                         HStack(alignment: .center) {
                             Button(action: {
-                                if page > 1 { page -= 1 }
+                                withAnimation(.easeInOut) {
+                                    if page > 1 { page -= 1 }
+                                }
                             }) {
                                 Text("◀ Trang trước")
                                     .font(.system(size: 13, weight: .medium))
@@ -210,7 +230,9 @@ struct ReaderView: View {
                             Spacer()
                             
                             Button(action: {
-                                if page < book.pageCount { page += 1 }
+                                withAnimation(.easeInOut) {
+                                    if page < book.pageCount { page += 1 }
+                                }
                             }) {
                                 Text("Trang tiếp ▶")
                                     .font(.system(size: 13, weight: .medium))
@@ -251,106 +273,90 @@ struct ReaderView: View {
     
     // --- Highlights UI / logic ---
     @ViewBuilder
-    private func highlightToolbarCard() -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(activeSelection != nil ? "Tạo Highlight" : "Ghi chú & Highlight")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                
-                Spacer()
-                
-                // Ask AI Shortcut Button
-                if let selection = activeSelection {
-                    Button(action: {
-                        askAIShortcut(text: selection.text)
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "sparkles")
-                            Text("Hỏi AI")
-                        }
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 8)
-                        .background(Color.purple)
-                        .cornerRadius(6)
-                        .foregroundColor(.white)
-                    }
-                }
-                
-                Button(action: {
-                    clearSelectionState()
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.gray)
-                        .font(.title2)
-                }
-            }
-            
-            // Color Choices Selection
-            HStack(spacing: 16) {
+    private func highlightPopupMenu() -> some View {
+        HStack(spacing: 12) {
+            // Colors
+            HStack(spacing: 8) {
                 ForEach(highlightColors, id: \.0) { colorHex, colorVal in
                     Circle()
                         .fill(colorVal)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 24, height: 24)
                         .overlay(
                             Circle()
-                                .stroke(Color.white, lineWidth: selectedColor == colorHex ? 3 : 0)
+                                .stroke(Color.white, lineWidth: selectedColor == colorHex ? 2 : 0)
                         )
                         .onTapGesture {
                             selectedColor = colorHex
+                            saveHighlight()
                         }
                 }
             }
             
-            // Optional Ghi chú input
-            TextField("Nhập ghi chú hoặc từ khóa lưu lại...", text: $highlightNote)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .foregroundColor(.black)
-                .frame(height: 36)
+            Divider().background(Color.white.opacity(0.3)).frame(height: 20)
             
-            HStack {
-                if selectedHighlightId != nil {
-                    Button(action: {
-                        deleteHighlight()
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "trash.fill")
-                            Text("Xóa Highlight")
-                        }
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 16)
-                        .background(Color.red)
-                        .cornerRadius(8)
-                    }
-                }
-                
-                Spacer()
-                
+            // Ask AI
+            if let selection = activeSelection {
                 Button(action: {
-                    saveHighlight()
+                    askAIShortcut(text: selection.text)
                 }) {
-                    Text("Lưu lại")
-                        .foregroundColor(.white)
-                        .fontWeight(.bold)
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 24)
-                        .background(Color(hex: "6366f1"))
-                        .cornerRadius(8)
+                    Image(systemName: "sparkles")
+                        .foregroundColor(.purple)
+                        .font(.system(size: 18))
+                }
+            }
+            
+            // Add Note Icon
+            Button(action: {
+                withAnimation { showNoteInput.toggle() }
+            }) {
+                Image(systemName: "square.and.pencil")
+                    .foregroundColor(highlightNote.isEmpty ? .gray : .yellow)
+                    .font(.system(size: 18))
+            }
+            
+            // Delete Highlight
+            if selectedHighlightId != nil {
+                Button(action: {
+                    deleteHighlight()
+                }) {
+                    Image(systemName: "trash")
+                        .foregroundColor(.red)
+                        .font(.system(size: 18))
                 }
             }
         }
-        .padding()
-        .background(Color(hex: "1e293b"))
-        .cornerRadius(16)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(hex: "1e293b").opacity(0.95))
+        .cornerRadius(20)
+        .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 3)
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            Group {
+                if showNoteInput {
+                    VStack(spacing: 8) {
+                        TextField("Nhập ghi chú...", text: $highlightNote)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .foregroundColor(.black)
+                            .frame(width: 200)
+                        HStack {
+                            Spacer()
+                            Button("Lưu") { saveHighlight() }
+                                .font(.system(size: 13, weight: .bold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color(hex: "6366f1"))
+                                .foregroundColor(.white)
+                                .cornerRadius(6)
+                        }
+                    }
+                    .padding(10)
+                    .background(Color(hex: "1e293b"))
+                    .cornerRadius(12)
+                    .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 3)
+                    .offset(y: 60)
+                }
+            }
         )
-        .padding()
     }
     
     private func handleHighlightMessage(_ msg: HighlightMessage, lang: String) {
@@ -361,16 +367,19 @@ struct ReaderView: View {
             self.selectedHighlightId = nil
             self.highlightNote = ""
             self.selectedColor = "#fde68a"
-        case .highlightClicked(let id):
+            self.activeRect = selectionInfo.rect
+            self.showNoteInput = false
+        case .highlightClicked(let id, let rect):
             self.selectedHighlightId = id
             self.activeSelection = nil
+            self.activeRect = rect
+            self.showNoteInput = false
             if let existing = api.highlights.first(where: { $0.id == id }) {
                 self.selectedColor = existing.color
                 self.highlightNote = existing.note ?? ""
             }
         case .clearSelection:
-            // Do not clear immediately on mobile to prevent accidental touch cancels
-            break;
+            clearSelectionState()
         }
     }
     
@@ -379,6 +388,8 @@ struct ReaderView: View {
         self.selectedHighlightId = nil
         self.highlightNote = ""
         self.activeSentenceId = nil
+        self.activeRect = nil
+        self.showNoteInput = false
     }
     
     private func fetchHighlights() {
@@ -713,6 +724,28 @@ struct ReaderView: View {
     private func saveChatHistory() {
         if let data = try? JSONEncoder().encode(chatMessages) {
             UserDefaults.standard.set(data, forKey: "chatHistory_\(book.slug)")
+        }
+    }
+}
+
+struct PaperSheetModifier: ViewModifier {
+    var isLargeScreen: Bool
+    var viewMode: String
+    
+    func body(content: Content) -> some View {
+        if isLargeScreen && viewMode != "split" {
+            content
+                .background(Color(hex: "F9F7F1"))
+                .cornerRadius(4)
+                .shadow(color: .black.opacity(0.15), radius: 5, x: 0, y: 3)
+                .aspectRatio(1 / 1.414, contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(hex: "0f172a"))
+        } else {
+            content
+                .background(Color(hex: "F9F7F1"))
+                .cornerRadius(4)
+                .shadow(color: .black.opacity(0.15), radius: 5, x: 0, y: 3)
         }
     }
 }
