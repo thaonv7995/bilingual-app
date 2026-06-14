@@ -83,17 +83,15 @@ curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy
 ```
 
 #### 🔄 Cập nhật phiên bản mới (Update)
-Kéo code mới nhất từ GitHub, tự động cập nhật các thư viện dependencies và restart dịch vụ:
+Tự động kéo mã nguồn mới nhất từ GitHub, cập nhật các dependencies và khởi động lại dịch vụ bằng một câu lệnh:
 ```bash
-cd /opt/bilingual-app
-sudo ./deploy.sh update
+curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- update /opt/bilingual-app
 ```
 
 #### 🗑️ Gỡ cài đặt hoàn toàn (Delete / Uninstall)
-Dừng dịch vụ chạy ngầm, vô hiệu hóa tự động kích hoạt và tùy chọn xóa thư mục code:
+Dừng dịch vụ chạy ngầm, gỡ cấu hình systemd và xóa sạch thư mục cài đặt từ xa:
 ```bash
-cd /opt/bilingual-app
-sudo ./deploy.sh delete
+curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- delete /opt/bilingual-app
 ```
 
 *Xem thêm tài liệu cấu hình CI/CD tự động bằng GitHub Actions tại [DEPLOYMENT.md](file:///Users/thaonv/Projects/Personal/bilingual-app/application/backend/docs/DEPLOYMENT.md).*
