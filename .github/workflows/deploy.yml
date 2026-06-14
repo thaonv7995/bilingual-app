@@ -48,32 +48,9 @@ jobs:
               -czf ../release.tar.gz .
           mv ../release.tar.gz .
 
-      - name: Copy package to server via SCP
-        uses: appleboy/scp-action@v0.1.7
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          source: "release.tar.gz"
-          target: ${{ secrets.DEPLOY_PATH }}
-
-      - name: Deploy on Server via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          script: |
-            # Ensure deploy directory exists
-            mkdir -p ${{ secrets.DEPLOY_PATH }}
-            
-            # Extract release files
-            tar -xzf ${{ secrets.DEPLOY_PATH }}/release.tar.gz -C ${{ secrets.DEPLOY_PATH }}
-            rm -f ${{ secrets.DEPLOY_PATH }}/release.tar.gz
-            
-            # Execute deployment bootstrapper
-            cd ${{ secrets.DEPLOY_PATH }}
-            chmod +x deploy.sh
-            ./deploy.sh
+          name: bilingual-reader-release
+          path: release.tar.gz
+          retention-days: 7
