@@ -163,7 +163,6 @@ struct BookCard: View {
             ZStack {
                 Color(hex: "1e293b")
                     .aspectRatio(0.7, contentMode: .fit)
-                    .cornerRadius(12)
                 
                 let localCoverURL = BookCacheManager.shared.localBookDir(slug: book.slug)
                     .appendingPathComponent("output")
@@ -177,7 +176,6 @@ struct BookCard: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .cornerRadius(12)
                         .clipped()
                 } else if let coverPath = book.cover, let coverUrl = URL(string: "\(api.serverUrl)/\(coverPath)") {
                     AsyncImage(url: coverUrl) { image in
@@ -188,7 +186,6 @@ struct BookCard: View {
                         ProgressView().tint(.white)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .cornerRadius(12)
                     .clipped()
                 } else {
                     // Fallback Text Cover
@@ -206,15 +203,79 @@ struct BookCard: View {
                 }
             }
             .frame(height: 220)
+            .overlay(
+                // Bottom Gradient & Information Overlay
+                VStack {
+                    Spacer()
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        // Author
+                        Text(book.author ?? "Unknown Author")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineLimit(1)
+                        
+                        // Progress
+                        HStack(alignment: .firstTextBaseline) {
+                            if let progress = progress {
+                                Text("Trang \(progress.page)/\(book.pageCount)")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(Color(hex: "2dd4bf"))
+                            } else {
+                                Text("\(book.pageCount) trang")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.9))
+                            }
+                            
+                            Spacer()
+                            
+                            if let progress = progress, let lastRead = progress.lastRead {
+                                Text(formatTime(lastRead))
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                        }
+                        
+                        // Progress Bar
+                        if let progress = progress {
+                            let percent = Double(progress.page) / Double(book.pageCount)
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.2))
+                                        .frame(height: 3)
+                                    
+                                    Capsule()
+                                        .fill(Color(hex: "2dd4bf"))
+                                        .frame(width: geo.size.width * CGFloat(min(percent, 1.0)), height: 3)
+                                }
+                            }
+                            .frame(height: 3)
+                            .padding(.top, 2)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.top, 24)
+                    .padding(.bottom, 10)
+                    .background(
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.65), .black.opacity(0.95)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                }
+            )
+            .overlay(
+                downloadStatusOverlay,
+                alignment: .topTrailing
+            )
+            .cornerRadius(12)
             .shadow(color: Color.black.opacity(0.4), radius: 8, x: 0, y: 4)
             .contentShape(Rectangle())
             .onTapGesture {
                 onSelect()
             }
-            .overlay(
-                downloadStatusOverlay,
-                alignment: .topTrailing
-            )
             
             // Book Titles
             VStack(alignment: .leading, spacing: 4) {
@@ -222,50 +283,6 @@ struct BookCard: View {
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
-                
-                Text(book.author ?? "Unknown Author")
-                    .font(.system(size: 12))
-                    .foregroundColor(Color(hex: "94a3b8"))
-                    .lineLimit(1)
-                
-                HStack(alignment: .firstTextBaseline) {
-                    if let progress = progress {
-                        Text("Trang \(progress.page)/\(book.pageCount)")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color(hex: "14b8a6"))
-                    } else {
-                        Text("\(book.pageCount) trang")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color(hex: "6366f1"))
-                    }
-                    
-                    Spacer()
-                    
-                    if let progress = progress, let lastRead = progress.lastRead {
-                        Text(formatTime(lastRead))
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(hex: "94a3b8"))
-                    }
-                }
-                .padding(.top, 2)
-                
-                // Progress Bar
-                if let progress = progress {
-                    let percent = Double(progress.page) / Double(book.pageCount)
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color.white.opacity(0.08))
-                                .frame(height: 3)
-                            
-                            Capsule()
-                                .fill(Color(hex: "14b8a6"))
-                                .frame(width: geo.size.width * CGFloat(min(percent, 1.0)), height: 3)
-                        }
-                    }
-                    .frame(height: 3)
-                    .padding(.top, 2)
-                }
             }
             .padding(.horizontal, 4)
             .contentShape(Rectangle())

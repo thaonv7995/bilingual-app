@@ -1214,36 +1214,61 @@ struct ReaderView: View {
     }
     
     private func loadProgress() {
+        // Load local progress first for immediate UI update
+        if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
+           let localProgress = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
+            self.page = localProgress.page
+            self.viewMode = localProgress.viewMode
+        }
+        
         Task {
             do {
                 let progress = try await api.fetchProgress(slug: book.slug)
                 await MainActor.run {
-                    var shouldUpdate = true
+                    var finalPage = self.page
+                    var finalViewMode = self.viewMode
+                    
                     if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
                        let localProgress = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
                         let localTime = localProgress.lastRead ?? 0
                         let serverTime = progress.lastRead ?? 0
-                        if serverTime < localTime {
-                            shouldUpdate = false
+                        if serverTime >= localTime {
+                            finalPage = progress.page
+                            finalViewMode = progress.viewMode
                         }
+                    } else {
+                        finalPage = progress.page
+                        finalViewMode = progress.viewMode
                     }
                     
-                    if shouldUpdate {
-                        self.page = progress.page
-                        self.viewMode = progress.viewMode
-                        
-                        let now = Int64(Date().timeIntervalSince1970)
-                        let progressToSave = ReadingProgress(page: progress.page, viewMode: progress.viewMode, lastRead: progress.lastRead ?? now)
-                        if let data = try? JSONEncoder().encode(progressToSave) {
-                            UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
-                            NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
-                        }
+                    self.page = finalPage
+                    self.viewMode = finalViewMode
+                    
+                    // Update lastRead to NOW since they just opened the book
+                    let now = Int64(Date().timeIntervalSince1970)
+                    let progressToSave = ReadingProgress(page: finalPage, viewMode: finalViewMode, lastRead: now)
+                    if let data = try? JSONEncoder().encode(progressToSave) {
+                        UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
+                        NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
                     }
+                    
+                    // Save the updated timestamp to the server
+                    Task {
+                        await api.saveProgress(slug: book.slug, page: finalPage, viewMode: finalViewMode)
+                    }
+                    
                     self.isLoading = false
                 }
             } catch {
                 print("Failed to fetch progress from server: \(error)")
                 await MainActor.run {
+                    // Even if network fails, update local lastRead to now
+                    let now = Int64(Date().timeIntervalSince1970)
+                    let progressToSave = ReadingProgress(page: self.page, viewMode: self.viewMode, lastRead: now)
+                    if let data = try? JSONEncoder().encode(progressToSave) {
+                        UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
+                        NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
+                    }
                     self.isLoading = false
                 }
             }
