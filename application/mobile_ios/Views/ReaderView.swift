@@ -1205,6 +1205,7 @@ struct ReaderView: View {
         
         if let data = try? JSONEncoder().encode(localProgress) {
             UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
+            NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
         }
         
         Task {
@@ -1235,6 +1236,7 @@ struct ReaderView: View {
                         let progressToSave = ReadingProgress(page: progress.page, viewMode: progress.viewMode, lastRead: progress.lastRead ?? now)
                         if let data = try? JSONEncoder().encode(progressToSave) {
                             UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
+                            NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
                         }
                     }
                     self.isLoading = false

@@ -155,6 +155,8 @@ struct BookCard: View {
     @StateObject private var api = APIService.shared
     @ObservedObject private var cacheManager = BookCacheManager.shared
     
+    @State private var progress: ReadingProgress? = nil
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Book Cover Wrapper
@@ -226,16 +228,85 @@ struct BookCard: View {
                     .foregroundColor(Color(hex: "94a3b8"))
                     .lineLimit(1)
                 
-                Text("\(book.pageCount) trang")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(Color(hex: "6366f1"))
+                HStack(alignment: .firstTextBaseline) {
+                    if let progress = progress {
+                        Text("Trang \(progress.page)/\(book.pageCount)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color(hex: "14b8a6"))
+                    } else {
+                        Text("\(book.pageCount) trang")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color(hex: "6366f1"))
+                    }
+                    
+                    Spacer()
+                    
+                    if let progress = progress, let lastRead = progress.lastRead {
+                        Text(formatTime(lastRead))
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(hex: "94a3b8"))
+                    }
+                }
+                .padding(.top, 2)
+                
+                // Progress Bar
+                if let progress = progress {
+                    let percent = Double(progress.page) / Double(book.pageCount)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(Color.white.opacity(0.08))
+                                .frame(height: 3)
+                            
+                            Capsule()
+                                .fill(Color(hex: "14b8a6"))
+                                .frame(width: geo.size.width * CGFloat(min(percent, 1.0)), height: 3)
+                        }
+                    }
+                    .frame(height: 3)
                     .padding(.top, 2)
+                }
             }
             .padding(.horizontal, 4)
             .contentShape(Rectangle())
             .onTapGesture {
                 onSelect()
             }
+        }
+        .onAppear {
+            loadLocalProgress()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ReadingProgressUpdated"))) { _ in
+            loadLocalProgress()
+        }
+    }
+    
+    private func loadLocalProgress() {
+        if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
+           let decoded = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
+            self.progress = decoded
+        } else {
+            self.progress = nil
+        }
+    }
+    
+    private func formatTime(_ timestamp: Int64) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+        let now = Date()
+        let diff = Int(now.timeIntervalSince(date))
+        
+        if diff < 60 {
+            return "Vừa xong"
+        } else if diff < 3600 {
+            return "\(diff / 60) phút"
+        } else if diff < 86400 {
+            return "\(diff / 3600) giờ"
+        } else if diff < 604800 {
+            return "\(diff / 86400) ngày"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "dd/MM"
+            return formatter.string(from: date)
         }
     }
     

@@ -64,10 +64,10 @@ struct BilingualWebView: UIViewRepresentable {
                             display: inline;
                         }
                         .sentence-node:hover {
-                            background-color: \\(hoverColor);
+                            background-color: \(hoverColor);
                         }
                         .sentence-node.highlight-sync {
-                            background-color: \\(highlightColor) !important;
+                            background-color: \(highlightColor) !important;
                         }
                         .page-nav {
                             display: none !important;
