@@ -84,15 +84,27 @@ struct AISettingsView: View {
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundColor(.gray)
                                 
-                                TextField("Base URL", text: $aiBaseURL, prompt: Text("Nhập URL cơ sở...").foregroundColor(.gray.opacity(0.5)))
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.white)
-                                    .padding(12)
-                                    .background(Color.white.opacity(0.05))
-                                    .cornerRadius(10)
-                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.none)
+                                HStack {
+                                    TextField("Base URL", text: $aiBaseURL, prompt: Text("Nhập URL cơ sở...").foregroundColor(.gray.opacity(0.5)))
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white)
+                                        .autocorrectionDisabled()
+                                        .textInputAutocapitalization(.none)
+                                    
+                                    Button(action: {
+                                        if let pasteboardString = UIPasteboard.general.string {
+                                            aiBaseURL = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        }
+                                    }) {
+                                        Image(systemName: "doc.on.clipboard")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(Color(hex: "14b8a6"))
+                                    }
+                                }
+                                .padding(12)
+                                .background(Color.white.opacity(0.05))
+                                .cornerRadius(10)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
                             }
                             
                             VStack(alignment: .leading, spacing: 6) {
@@ -100,15 +112,27 @@ struct AISettingsView: View {
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundColor(.gray)
                                 
-                                SecureField("API Key", text: $aiApiKey, prompt: Text("Nhập API Key của bạn...").foregroundColor(.gray.opacity(0.5)))
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.white)
-                                    .padding(12)
-                                    .background(Color.white.opacity(0.05))
-                                    .cornerRadius(10)
-                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.none)
+                                HStack {
+                                    SecureField("API Key", text: $aiApiKey, prompt: Text("Nhập API Key của bạn...").foregroundColor(.gray.opacity(0.5)))
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white)
+                                        .autocorrectionDisabled()
+                                        .textInputAutocapitalization(.none)
+                                    
+                                    Button(action: {
+                                        if let pasteboardString = UIPasteboard.general.string {
+                                            aiApiKey = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        }
+                                    }) {
+                                        Image(systemName: "doc.on.clipboard")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(Color(hex: "14b8a6"))
+                                    }
+                                }
+                                .padding(12)
+                                .background(Color.white.opacity(0.05))
+                                .cornerRadius(10)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
                             }
                             
                             VStack(alignment: .leading, spacing: 6) {
@@ -116,15 +140,27 @@ struct AISettingsView: View {
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundColor(.gray)
                                 
-                                TextField("Model Name", text: $aiModel, prompt: Text("Ví dụ: gpt-4o-mini").foregroundColor(.gray.opacity(0.5)))
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.white)
-                                    .padding(12)
-                                    .background(Color.white.opacity(0.05))
-                                    .cornerRadius(10)
-                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.none)
+                                HStack {
+                                    TextField("Model Name", text: $aiModel, prompt: Text("Ví dụ: gpt-4o-mini").foregroundColor(.gray.opacity(0.5)))
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white)
+                                        .autocorrectionDisabled()
+                                        .textInputAutocapitalization(.none)
+                                    
+                                    Button(action: {
+                                        if let pasteboardString = UIPasteboard.general.string {
+                                            aiModel = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        }
+                                    }) {
+                                        Image(systemName: "doc.on.clipboard")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(Color(hex: "14b8a6"))
+                                    }
+                                }
+                                .padding(12)
+                                .background(Color.white.opacity(0.05))
+                                .cornerRadius(10)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
                             }
                         }
                         .padding()
