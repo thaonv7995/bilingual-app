@@ -115,7 +115,7 @@ struct ReaderView: View {
                             if isLoading {
                                 ProgressView().tint(.white)
                             } else {
-                                TabView(selection: Binding(
+                                let pageBinding = Binding(
                                     get: { self.page },
                                     set: { newPage in
                                         if newPage != self.page {
@@ -123,88 +123,39 @@ struct ReaderView: View {
                                             self.saveProgress()
                                         }
                                     }
-                                )) {
-                                    ForEach(1...max(1, book.pageCount), id: \.self) { p in
-                                        let layout = (viewMode == "split" && !isLargeScreen) ? AnyLayout(VStackLayout(spacing: 16)) : AnyLayout(HStackLayout(spacing: 16))
-                                        
-                                        layout {
-                                            let padPage = String(format: "%04d", p)
-                                            
-                                            // English WebView
-                                            if viewMode == "en" || viewMode == "split" {
-                                                let enUrlString = "\(api.serverUrl)/books/\(book.slug)/output/en/page_\(padPage).html?token=\(api.token)"
-                                                BilingualWebView(
-                                                    urlString: enUrlString,
-                                                    lang: "en",
-                                                    page: p,
-                                                    activeSentenceId: activeSentenceId,
-                                                    onScroll: { scrollTop in
-                                                        NotificationCenter.default.post(
-                                                            name: NSNotification.Name("ScrollTo_vi"),
-                                                            object: nil,
-                                                            userInfo: ["scrollTop": scrollTop]
-                                                        )
-                                                    },
-                                                    onHighlightMessage: { msg in
-                                                        handleHighlightMessage(msg, lang: "en")
-                                                    },
-                                                    onSentenceClicked: { sentenceId in
-                                                        self.activeSentenceId = sentenceId
-                                                    }
-                                                )
-                                                .modifier(PaperSheetModifier(isLargeScreen: isLargeScreen, viewMode: viewMode))
-                                                .overlay(
-                                                    Group {
-                                                        if activeSelectionLang == "en" && (activeSelection != nil || selectedHighlightId != nil) {
-                                                            if let rect = activeRect {
-                                                                highlightPopupMenu()
-                                                                    .position(x: rect.midX, y: max(30, rect.minY - 30))
-                                                            }
-                                                        }
-                                                    }
-                                                )
-                                            }
-                                            
-                                            // Vietnamese WebView
-                                            if viewMode == "vi" || viewMode == "split" {
-                                                let viUrlString = "\(api.serverUrl)/books/\(book.slug)/output/vi/page_\(padPage).html?token=\(api.token)"
-                                                BilingualWebView(
-                                                    urlString: viUrlString,
-                                                    lang: "vi",
-                                                    page: p,
-                                                    activeSentenceId: activeSentenceId,
-                                                    onScroll: { scrollTop in
-                                                        NotificationCenter.default.post(
-                                                            name: NSNotification.Name("ScrollTo_en"),
-                                                            object: nil,
-                                                            userInfo: ["scrollTop": scrollTop]
-                                                        )
-                                                    },
-                                                    onHighlightMessage: { msg in
-                                                        handleHighlightMessage(msg, lang: "vi")
-                                                    },
-                                                    onSentenceClicked: { sentenceId in
-                                                        self.activeSentenceId = sentenceId
-                                                    }
-                                                )
-                                                .modifier(PaperSheetModifier(isLargeScreen: isLargeScreen, viewMode: viewMode))
-                                                .overlay(
-                                                    Group {
-                                                        if activeSelectionLang == "vi" && (activeSelection != nil || selectedHighlightId != nil) {
-                                                            if let rect = activeRect {
-                                                                highlightPopupMenu()
-                                                                    .position(x: rect.midX, y: max(30, rect.minY - 30))
-                                                            }
-                                                        }
-                                                    }
-                                                )
+                                )
+                                
+                                if viewMode == "split" {
+                                    let layout = isLargeScreen ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
+                                    layout {
+                                        TabView(selection: pageBinding) {
+                                            ForEach(1...max(1, book.pageCount), id: \.self) { p in
+                                                renderWebView(lang: "en", p: p, isLargeScreen: isLargeScreen)
+                                                    .padding(16)
+                                                    .tag(p)
                                             }
                                         }
-                                        .padding(16)
-                                        .tag(p)
+                                        .tabViewStyle(.page(indexDisplayMode: .never))
+                                        
+                                        TabView(selection: pageBinding) {
+                                            ForEach(1...max(1, book.pageCount), id: \.self) { p in
+                                                renderWebView(lang: "vi", p: p, isLargeScreen: isLargeScreen)
+                                                    .padding(16)
+                                                    .tag(p)
+                                            }
+                                        }
+                                        .tabViewStyle(.page(indexDisplayMode: .never))
                                     }
+                                } else {
+                                    TabView(selection: pageBinding) {
+                                        ForEach(1...max(1, book.pageCount), id: \.self) { p in
+                                            renderWebView(lang: viewMode, p: p, isLargeScreen: isLargeScreen)
+                                                .padding(16)
+                                                .tag(p)
+                                        }
+                                    }
+                                    .tabViewStyle(.page(indexDisplayMode: .never))
                                 }
-                                .tabViewStyle(.page(indexDisplayMode: .never))
                             }
                         }
                         
@@ -272,6 +223,44 @@ struct ReaderView: View {
     }
     
     // --- Highlights UI / logic ---
+    @ViewBuilder
+    private func renderWebView(lang: String, p: Int, isLargeScreen: Bool) -> some View {
+        let padPage = String(format: "%04d", p)
+        let urlString = "\(api.serverUrl)/books/\(book.slug)/output/\(lang)/page_\(padPage).html?token=\(api.token)"
+        
+        BilingualWebView(
+            urlString: urlString,
+            lang: lang,
+            page: p,
+            activeSentenceId: activeSentenceId,
+            onScroll: { scrollTop in
+                let otherLang = lang == "en" ? "vi" : "en"
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("ScrollTo_\(otherLang)"),
+                    object: nil,
+                    userInfo: ["scrollTop": scrollTop]
+                )
+            },
+            onHighlightMessage: { msg in
+                handleHighlightMessage(msg, lang: lang)
+            },
+            onSentenceClicked: { sentenceId in
+                self.activeSentenceId = sentenceId
+            }
+        )
+        .modifier(PaperSheetModifier(isLargeScreen: isLargeScreen, viewMode: viewMode))
+        .overlay(
+            Group {
+                if activeSelectionLang == lang && (activeSelection != nil || selectedHighlightId != nil) {
+                    if let rect = activeRect {
+                        highlightPopupMenu()
+                            .position(x: rect.midX, y: max(30, rect.minY - 30))
+                    }
+                }
+            }
+        )
+    }
+    
     @ViewBuilder
     private func highlightPopupMenu() -> some View {
         HStack(spacing: 12) {
