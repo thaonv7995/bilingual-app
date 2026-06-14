@@ -26,3 +26,12 @@ targets:
         INFOPLIST_KEY_NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         CODE_SIGNING_ALLOWED: false
+
+schemes:
+  BilingualReader:
+    build:
+      targets:
+        BilingualReader: all
+    run:
+      environmentVariables:
+        OS_ACTIVITY_MODE: "disable"

@@ -311,6 +311,7 @@ struct ReaderView: View {
         let targetSentenceId = shouldHighlightActiveSentence ? activeSentenceId : nil
         
         BilingualWebView(
+            bookSlug: book.slug,
             urlString: urlString,
             lang: lang,
             page: p,

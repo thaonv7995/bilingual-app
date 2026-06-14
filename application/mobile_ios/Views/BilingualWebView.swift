@@ -22,6 +22,7 @@ class NoSelectionMenuWebView: WKWebView {
 }
 
 struct BilingualWebView: UIViewRepresentable {
+    let bookSlug: String
     let urlString: String
     let lang: String
     let page: Int
@@ -418,33 +419,48 @@ struct BilingualWebView: UIViewRepresentable {
     
     func updateUIView(_ uiView: WKWebView, context: Context) {
         context.coordinator.parent = self
-        if context.coordinator.loadedUrlString != urlString {
-            context.coordinator.loadedUrlString = urlString
-            if let url = URL(string: urlString) {
+        
+        let targetUrlStr: String
+        let isLocal: Bool
+        
+        if let localURL = BookCacheManager.shared.localPageURL(slug: bookSlug, lang: lang, page: page) {
+            targetUrlStr = localURL.absoluteString
+            isLocal = true
+        } else {
+            targetUrlStr = urlString
+            isLocal = false
+        }
+        
+        if context.coordinator.loadedUrlString != targetUrlStr {
+            context.coordinator.loadedUrlString = targetUrlStr
+            if isLocal, let localURL = BookCacheManager.shared.localPageURL(slug: bookSlug, lang: lang, page: page) {
+                let outputDir = BookCacheManager.shared.localOutputDir(slug: bookSlug)
+                uiView.loadFileURL(localURL, allowingReadAccessTo: outputDir)
+            } else if let url = URL(string: urlString) {
                 let request = URLRequest(url: url)
                 uiView.load(request)
             }
         } else {
-                // Apply highlights dynamically when list changes
-                let filtered = api.highlights.filter { $0.page == page && $0.lang == lang }
-                if filtered != context.coordinator.lastAppliedHighlights {
-                    context.coordinator.lastAppliedHighlights = filtered
-                    if let data = try? JSONEncoder().encode(filtered),
-                       let jsonStr = String(data: data, encoding: .utf8) {
-                        let js = "window.applyStoredHighlights(\(jsonStr));"
-                        uiView.evaluateJavaScript(js, completionHandler: nil)
-                    }
-                }
-                
-                // Highlight active sentence dynamically
-                if activeSentenceId != context.coordinator.lastAppliedSentenceId {
-                    context.coordinator.lastAppliedSentenceId = activeSentenceId
-                    let sentenceId = activeSentenceId ?? ""
-                    let activeJs = "if (window.highlightSentence) { window.highlightSentence('\(sentenceId)'); }"
-                    uiView.evaluateJavaScript(activeJs, completionHandler: nil)
+            // Apply highlights dynamically when list changes
+            let filtered = api.highlights.filter { $0.page == page && $0.lang == lang }
+            if filtered != context.coordinator.lastAppliedHighlights {
+                context.coordinator.lastAppliedHighlights = filtered
+                if let data = try? JSONEncoder().encode(filtered),
+                   let jsonStr = String(data: data, encoding: .utf8) {
+                    let js = "window.applyStoredHighlights(\(jsonStr));"
+                    uiView.evaluateJavaScript(js, completionHandler: nil)
                 }
             }
+            
+            // Highlight active sentence dynamically
+            if activeSentenceId != context.coordinator.lastAppliedSentenceId {
+                context.coordinator.lastAppliedSentenceId = activeSentenceId
+                let sentenceId = activeSentenceId ?? ""
+                let activeJs = "if (window.highlightSentence) { window.highlightSentence('\(sentenceId)'); }"
+                uiView.evaluateJavaScript(activeJs, completionHandler: nil)
+            }
         }
+    }
     
 
     func makeCoordinator() -> Coordinator {

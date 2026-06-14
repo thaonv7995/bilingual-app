@@ -2,6 +2,9 @@ import SwiftUI
 
 struct AISettingsView: View {
     @Environment(\.dismiss) var dismiss
+    let books: [Book]
+    
+    @ObservedObject private var cacheManager = BookCacheManager.shared
     
     @State private var aiProvider: String = "openai"
     @State private var aiBaseURL: String = "https://api.openai.com/v1"
@@ -143,6 +146,82 @@ struct AISettingsView: View {
                                 LayoutOptionButton(mode: "vi-en", badge1: "VI", badge2: "EN", isVertical: false, selectedMode: $bilingualLayoutMode)
                                 LayoutOptionButton(mode: "en-over-vi", badge1: "EN", badge2: "VI", isVertical: true, selectedMode: $bilingualLayoutMode)
                                 LayoutOptionButton(mode: "vi-over-en", badge1: "VI", badge2: "EN", isVertical: true, selectedMode: $bilingualLayoutMode)
+                            }
+                        }
+                        .padding()
+                        .background(Color.white.opacity(0.04))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                        
+                        // Section 4: Cache Management
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Quản lý bộ nhớ đệm")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.white.opacity(0.9))
+                            
+                            let downloadedBooks = books.filter { cacheManager.isDownloaded(slug: $0.slug) }
+                            
+                            if downloadedBooks.isEmpty {
+                                Text("Chưa có sách nào được tải về thiết bị.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(hex: "94a3b8"))
+                                    .padding(.vertical, 8)
+                            } else {
+                                VStack(spacing: 8) {
+                                    ForEach(downloadedBooks) { book in
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(book.title)
+                                                    .font(.system(size: 13, weight: .semibold))
+                                                    .foregroundColor(.white)
+                                                    .lineLimit(1)
+                                                Text(book.author ?? "Unknown Author")
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(Color(hex: "94a3b8"))
+                                            }
+                                            
+                                            Spacer()
+                                            
+                                            Button(action: {
+                                                withAnimation {
+                                                    cacheManager.deleteCache(slug: book.slug)
+                                                }
+                                            }) {
+                                                Image(systemName: "trash")
+                                                    .font(.system(size: 13))
+                                                    .foregroundColor(.red)
+                                                    .frame(width: 28, height: 28)
+                                                    .background(Color.red.opacity(0.1))
+                                                    .clipShape(Circle())
+                                            }
+                                        }
+                                        .padding(.vertical, 6)
+                                        
+                                        if book.id != downloadedBooks.last?.id {
+                                            Divider().background(Color.white.opacity(0.06))
+                                        }
+                                    }
+                                    
+                                    Button(action: {
+                                        withAnimation {
+                                            for b in downloadedBooks {
+                                                cacheManager.deleteCache(slug: b.slug)
+                                            }
+                                        }
+                                    }) {
+                                        Text("Xóa toàn bộ bộ nhớ đệm")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundColor(.red)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 10)
+                                            .background(Color.red.opacity(0.08))
+                                            .cornerRadius(10)
+                                    }
+                                    .padding(.top, 8)
+                                }
                             }
                         }
                         .padding()

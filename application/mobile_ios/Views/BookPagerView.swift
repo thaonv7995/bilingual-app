@@ -107,7 +107,6 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
         func createVC(page: Int) -> PageHostingController {
             if let cached = cachedVCs[page] {
                 cached.rootView = AnyView(parent.content(page))
-                preloadAdjacent(center: page)
                 pruneCache(center: page)
                 return cached
             }
@@ -117,7 +116,6 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                 let vc = PageHostingController(pageIndex: page, rootView: view)
                 cachedVCs[page] = vc
                 
-                preloadAdjacent(center: page)
                 pruneCache(center: page)
                 
                 return vc
@@ -127,28 +125,10 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
             }
         }
         
-        func preloadAdjacent(center: Int) {
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                let pagesToPreload = [center - 1, center - 2, center + 1, center + 2]
-                for p in pagesToPreload {
-                    if p >= 1 && p <= self.parent.pageCount {
-                        if self.cachedVCs[p] == nil {
-                            let view = AnyView(self.parent.content(p))
-                            let vc = PageHostingController(pageIndex: p, rootView: view)
-                            // Force view to load to trigger WKWebView initialization
-                            _ = vc.view
-                            self.cachedVCs[p] = vc
-                        }
-                    }
-                }
-            }
-        }
-        
         func pruneCache(center: Int) {
             let keys = cachedVCs.keys
             for key in keys {
-                if abs(key - center) > 3 {
+                if abs(key - center) > 4 {
                     cachedVCs.removeValue(forKey: key)
                 }
             }

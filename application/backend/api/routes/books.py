@@ -202,6 +202,31 @@ def download_bkb(slug: str, current_user: User = Depends(get_current_user_or_api
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to package book: {e}")
 
+@router.get("/{slug}/manifest")
+def get_book_manifest(slug: str, current_user: User = Depends(get_current_user_or_apikey), db: Session = Depends(get_db)):
+    """Return a manifest of all file paths under output/ for downloading."""
+    # Check permissions
+    if not current_user.is_admin:
+        has_permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.book_slug == slug
+        ).first()
+        if not has_permission:
+            raise HTTPException(status_code=403, detail="No permission to access this book")
+            
+    book_dir = BOOKS_DIR / slug / "output"
+    if not book_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Book output directory not found")
+        
+    files = []
+    for p in book_dir.rglob("*"):
+        if p.is_file():
+            # Get path relative to the output folder
+            rel_path = p.relative_to(book_dir)
+            files.append(str(rel_path))
+            
+    return {"files": files}
+
 @router.delete("/{slug}")
 def delete_book(slug: str, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
     """Delete a book from DB and filesystem."""

@@ -36,10 +36,9 @@ struct BookshelfView: View {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 25) {
                             ForEach(books) { book in
-                                BookCard(book: book)
-                                    .onTapGesture {
-                                        selectedBook = book
-                                    }
+                                BookCard(book: book, onSelect: {
+                                    selectedBook = book
+                                })
                             }
                         }
                         .padding(20)
@@ -106,7 +105,7 @@ struct BookshelfView: View {
                 ReaderView(book: book)
             }
             .sheet(isPresented: $showSettings) {
-                AISettingsView()
+                AISettingsView(books: books)
                     .applySheetBackground(Color(hex: "0f172a"))
             }
             .onAppear {
@@ -134,6 +133,14 @@ struct BookshelfView: View {
             await MainActor.run {
                 self.books = fetched
                 self.isLoading = false
+                
+                // Auto-download all books that are not downloaded yet
+                for book in fetched {
+                    let status = BookCacheManager.shared.downloadStatus[book.slug] ?? .notDownloaded
+                    if status == .notDownloaded {
+                        BookCacheManager.shared.downloadBook(slug: book.slug, api: api)
+                    }
+                }
             }
         } catch {
             print("Failed to fetch books: \(error)")
@@ -144,7 +151,9 @@ struct BookshelfView: View {
 
 struct BookCard: View {
     let book: Book
+    let onSelect: () -> Void
     @StateObject private var api = APIService.shared
+    @ObservedObject private var cacheManager = BookCacheManager.shared
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -154,7 +163,21 @@ struct BookCard: View {
                     .aspectRatio(0.7, contentMode: .fit)
                     .cornerRadius(12)
                 
-                if let coverPath = book.cover, let coverUrl = URL(string: "\(api.serverUrl)/\(coverPath)") {
+                let localCoverURL = BookCacheManager.shared.localBookDir(slug: book.slug)
+                    .appendingPathComponent("output")
+                    .appendingPathComponent(book.coverPath ?? "")
+                
+                if cacheManager.isDownloaded(slug: book.slug),
+                   !(book.coverPath ?? "").isEmpty,
+                   FileManager.default.fileExists(atPath: localCoverURL.path),
+                   let uiImage = UIImage(contentsOfFile: localCoverURL.path) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .cornerRadius(12)
+                        .clipped()
+                } else if let coverPath = book.cover, let coverUrl = URL(string: "\(api.serverUrl)/\(coverPath)") {
                     AsyncImage(url: coverUrl) { image in
                         image
                             .resizable()
@@ -182,6 +205,14 @@ struct BookCard: View {
             }
             .frame(height: 220)
             .shadow(color: Color.black.opacity(0.4), radius: 8, x: 0, y: 4)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onSelect()
+            }
+            .overlay(
+                downloadStatusOverlay,
+                alignment: .topTrailing
+            )
             
             // Book Titles
             VStack(alignment: .leading, spacing: 4) {
@@ -201,6 +232,39 @@ struct BookCard: View {
                     .padding(.top, 2)
             }
             .padding(.horizontal, 4)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onSelect()
+            }
+        }
+    }
+    
+    private var downloadStatusOverlay: some View {
+        let status = cacheManager.downloadStatus[book.slug] ?? .notDownloaded
+        let progress = cacheManager.downloadProgress[book.slug] ?? 0.0
+        
+        return Group {
+            if status == .downloading {
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.25), lineWidth: 2)
+                        .frame(width: 28, height: 28)
+                    
+                    Circle()
+                        .trim(from: 0.0, to: CGFloat(progress))
+                        .stroke(Color(hex: "38bdf8"), lineWidth: 2)
+                        .frame(width: 28, height: 28)
+                        .rotationEffect(Angle(degrees: -90))
+                    
+                    Text("\(Int(progress * 100))%")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 28, height: 28)
+                .background(Color.black.opacity(0.6))
+                .clipShape(Circle())
+                .padding(8)
+            }
         }
     }
 }

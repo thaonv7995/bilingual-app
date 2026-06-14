@@ -35,6 +35,15 @@ struct Book: Codable, Identifiable {
     let cover: String?
     let isPublished: Bool
     
+    var coverPath: String? {
+        guard let cover = cover else { return nil }
+        let prefix = "books/\(slug)/output/"
+        if cover.hasPrefix(prefix) {
+            return String(cover.dropFirst(prefix.count))
+        }
+        return cover
+    }
+    
     enum CodingKeys: String, CodingKey {
         case slug, title, author, pageCount, cover, isPublished
     }
