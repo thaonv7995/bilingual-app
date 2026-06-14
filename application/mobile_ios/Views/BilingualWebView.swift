@@ -454,6 +454,23 @@ struct BilingualWebView: UIViewRepresentable {
     func updateUIView(_ uiView: WKWebView, context: Context) {
         context.coordinator.parent = self
         
+        // Inject jwt_token cookie to authorize remote subresources (like images)
+        if !api.token.isEmpty,
+           let serverURL = URL(string: api.serverUrl),
+           let host = serverURL.host {
+            let cookieProperties: [HTTPCookiePropertyKey: Any] = [
+                .domain: host,
+                .path: "/",
+                .name: "jwt_token",
+                .value: api.token,
+                .secure: serverURL.scheme == "https" ? "TRUE" : "FALSE",
+                .expires: Date(timeIntervalSinceNow: 86400 * 30) // 30 days
+            ]
+            if let cookie = HTTPCookie(properties: cookieProperties) {
+                uiView.configuration.websiteDataStore.httpCookieStore.setCookie(cookie)
+            }
+        }
+        
         let targetUrlStr: String
         let isLocal: Bool
         

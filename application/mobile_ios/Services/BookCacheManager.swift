@@ -119,9 +119,6 @@ class BookCacheManager: ObservableObject {
                 let outputDir = localOutputDir(slug: slug)
                 try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true, attributes: nil)
                 
-                // Save manifest file locally to mark successful download
-                let manifestLocalURL = localBookDir(slug: slug).appendingPathComponent("manifest.json")
-                try finalData.write(to: manifestLocalURL)
                 
                 // 2. Download each file in batches
                 var downloadedCount = 0
@@ -185,6 +182,10 @@ class BookCacheManager: ObservableObject {
                         }
                     }
                 }
+                
+                // Save manifest file locally to mark successful download ONLY after all files are written
+                let manifestLocalURL = localBookDir(slug: slug).appendingPathComponent("manifest.json")
+                try finalData.write(to: manifestLocalURL)
                 
                 await MainActor.run {
                     self.downloadStatus[slug] = .downloaded
