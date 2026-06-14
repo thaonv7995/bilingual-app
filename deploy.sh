@@ -192,8 +192,8 @@ echo "Checking Python 3 installation..."
 if ! command -v python3 &> /dev/null; then
     echo "Python 3 not found. Installing..."
     sudo apt-get update && sudo apt-get install -y python3 python3-venv python3-pip
-elif ! python3 -c "import venv" &> /dev/null; then
-    echo "Python 3 venv module not found. Installing..."
+elif ! python3 -c "import venv, ensurepip" &> /dev/null; then
+    echo "Python 3 venv/ensurepip module not found. Installing..."
     sudo apt-get update && sudo apt-get install -y python3-venv
 fi
 
