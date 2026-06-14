@@ -170,19 +170,29 @@ function App() {
     
     // Fetch User Role info
     apiFetch('api/auth/me')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to get user info');
+        return res.json();
+      })
       .then(data => {
         setIsAdmin(data.is_admin);
         localStorage.setItem('bilingual.reader.isAdmin', data.is_admin);
-        setUsername(data.username);
-        localStorage.setItem('bilingual.reader.username', data.username);
+        setUsername(data.username || 'User');
+        localStorage.setItem('bilingual.reader.username', data.username || 'User');
         if (data.is_admin) {
           localStorage.setItem('bilingual.admin.token', token);
         } else {
           localStorage.removeItem('bilingual.admin.token');
         }
       })
-      .catch(err => console.warn(err));
+      .catch(err => {
+        console.warn('Failed fetching user info, logging out...', err);
+        setToken('');
+        localStorage.removeItem('bilingual.reader.token');
+        localStorage.removeItem('bilingual.reader.isAdmin');
+        localStorage.removeItem('bilingual.reader.username');
+        localStorage.removeItem('bilingual.admin.token');
+      });
 
     apiFetch('api/books')
       .then(res => {
@@ -1368,6 +1378,48 @@ Instructions:
     return elements;
   };
 
+  // --- Render Login UI ---
+  if (!token) {
+    return html`
+      <div class="login-view-container" style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #0f172a; font-family: 'Plus Jakarta Sans', sans-serif;">
+        <div class="modal-content" style="max-width: 400px; padding: 32px; border-radius: 16px; background: #1e293b; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);">
+          <h2 style="text-align: center; margin-bottom: 24px; color: #f8fafc; font-weight: 700;">Đăng nhập Thư Viện Song Ngữ</h2>
+          <form onSubmit=${async (e) => {
+            e.preventDefault();
+            setLoginError('');
+            try {
+              const res = await fetch(`api/auth/login?username=${encodeURIComponent(loginUsername)}&password=${encodeURIComponent(loginPassword)}`, { method: 'POST' });
+              if (!res.ok) throw new Error('Sai tài khoản hoặc mật khẩu');
+              const data = await res.json();
+              localStorage.setItem('bilingual.reader.token', data.access_token);
+              localStorage.setItem('bilingual.reader.isAdmin', data.is_admin);
+              localStorage.setItem('bilingual.reader.username', data.username);
+              if (data.is_admin) {
+                localStorage.setItem('bilingual.admin.token', data.access_token);
+              }
+              setIsAdmin(data.is_admin);
+              setUsername(data.username);
+              setToken(data.access_token);
+            } catch (err) {
+              setLoginError(err.message || 'Lỗi đăng nhập');
+            }
+          }}>
+            <div style="margin-bottom: 16px;">
+              <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #94a3b8; font-weight: 500;">Tài khoản</label>
+              <input type="text" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: #0f172a; color: #f8fafc; outline: none;" value=${loginUsername} onInput=${(e) => setLoginUsername(e.target.value)} required />
+            </div>
+            <div style="margin-bottom: 24px;">
+              <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #94a3b8; font-weight: 500;">Mật khẩu</label>
+              <input type="password" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: #0f172a; color: #f8fafc; outline: none;" value=${loginPassword} onInput=${(e) => setLoginPassword(e.target.value)} required />
+            </div>
+            ${loginError && html`<div style="color: #ef4444; margin-bottom: 16px; font-size: 14px; text-align: center;">${loginError}</div>`}
+            <button class="btn-primary" type="submit" style="width: 100%; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; background: #6366f1; border: none; color: white;">Đăng nhập</button>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
   // --- Render Dashboard UI ---
   if (!activeBook) {
     return html`
@@ -1624,47 +1676,6 @@ Instructions:
   
   const enPageUrl = `books/${activeBook.slug}/output/en/page_${padPage(page)}.html`;
   const viPageUrl = `books/${activeBook.slug}/output/vi/page_${padPage(page)}.html`;
-
-  if (!token) {
-    return html`
-      <div class="login-view-container" style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #0f172a; font-family: 'Plus Jakarta Sans', sans-serif;">
-        <div class="modal-content" style="max-width: 400px; padding: 32px; border-radius: 16px; background: #1e293b; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);">
-          <h2 style="text-align: center; margin-bottom: 24px; color: #f8fafc; font-weight: 700;">Đăng nhập Thư Viện Song Ngữ</h2>
-          <form onSubmit=${async (e) => {
-            e.preventDefault();
-            setLoginError('');
-            try {
-              const res = await fetch(`api/auth/login?username=${encodeURIComponent(loginUsername)}&password=${encodeURIComponent(loginPassword)}`, { method: 'POST' });
-              if (!res.ok) throw new Error('Sai tài khoản hoặc mật khẩu');
-              const data = await res.json();
-              localStorage.setItem('bilingual.reader.token', data.access_token);
-              localStorage.setItem('bilingual.reader.isAdmin', data.is_admin);
-              localStorage.setItem('bilingual.reader.username', data.username);
-              if (data.is_admin) {
-                localStorage.setItem('bilingual.admin.token', data.access_token);
-              }
-              setIsAdmin(data.is_admin);
-              setUsername(data.username);
-              setToken(data.access_token);
-            } catch (err) {
-              setLoginError(err.message || 'Lỗi đăng nhập');
-            }
-          }}>
-            <div style="margin-bottom: 16px;">
-              <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #94a3b8; font-weight: 500;">Tài khoản</label>
-              <input type="text" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: #0f172a; color: #f8fafc; outline: none;" value=${loginUsername} onInput=${(e) => setLoginUsername(e.target.value)} required />
-            </div>
-            <div style="margin-bottom: 24px;">
-              <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #94a3b8; font-weight: 500;">Mật khẩu</label>
-              <input type="password" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: #0f172a; color: #f8fafc; outline: none;" value=${loginPassword} onInput=${(e) => setLoginPassword(e.target.value)} required />
-            </div>
-            ${loginError && html`<div style="color: #ef4444; margin-bottom: 16px; font-size: 14px; text-align: center;">${loginError}</div>`}
-            <button class="btn-primary" type="submit" style="width: 100%; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; background: #6366f1; border: none; color: white;">Đăng nhập</button>
-          </form>
-        </div>
-      </div>
-    `;
-  }
 
   return html`
     <div class="reader-view">
