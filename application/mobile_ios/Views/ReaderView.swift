@@ -11,9 +11,28 @@ struct ReaderView: View {
     @Environment(\.dismiss) var dismiss
     @StateObject private var api = APIService.shared
     
-    @State private var page: Int = 1
-    @State private var viewMode: String = "split" // "en" | "vi" | "split"
-    @State private var isLoading = false
+    @State private var page: Int
+    @State private var viewMode: String // "en" | "vi" | "split"
+    @State private var isLoading: Bool
+    
+    init(book: Book) {
+        self.book = book
+        
+        var initialPage = 1
+        var initialViewMode = "split"
+        var hasCache = false
+        
+        if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
+           let progress = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
+            initialPage = progress.page
+            initialViewMode = progress.viewMode
+            hasCache = true
+        }
+        
+        self._page = State(initialValue: initialPage)
+        self._viewMode = State(initialValue: initialViewMode)
+        self._isLoading = State(initialValue: !hasCache)
+    }
     
     // Highlights States
     @State private var activeSelection: SelectionInfo? = nil
@@ -293,7 +312,10 @@ struct ReaderView: View {
                 loadProgress()
                 loadAISettings()
                 fetchHighlights()
-        }
+            }
+            .onChange(of: viewMode) { _ in
+                saveProgress()
+            }
     }
     
     // --- Highlights UI / logic ---
@@ -938,15 +960,27 @@ struct ReaderView: View {
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.gray)
                         
-                        TextField("Base URL", text: $aiBaseURL, prompt: Text("Nhập URL cơ sở...").foregroundColor(.gray.opacity(0.5)))
-                            .font(.system(size: 14))
-                            .foregroundColor(.white)
-                            .padding(12)
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(10)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.none)
+                        HStack {
+                            TextField("Base URL", text: $aiBaseURL, prompt: Text("Nhập URL cơ sở...").foregroundColor(.gray.opacity(0.5)))
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.none)
+                            
+                            Button(action: {
+                                if let pasteboardString = UIPasteboard.general.string {
+                                    aiBaseURL = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                }
+                            }) {
+                                Image(systemName: "doc.on.clipboard")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(hex: "14b8a6"))
+                            }
+                        }
+                        .padding(12)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
                     }
                     
                     VStack(alignment: .leading, spacing: 6) {
@@ -954,15 +988,27 @@ struct ReaderView: View {
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.gray)
                         
-                        SecureField("API Key", text: $aiApiKey, prompt: Text("Nhập API Key của bạn...").foregroundColor(.gray.opacity(0.5)))
-                            .font(.system(size: 14))
-                            .foregroundColor(.white)
-                            .padding(12)
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(10)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.none)
+                        HStack {
+                            SecureField("API Key", text: $aiApiKey, prompt: Text("Nhập API Key của bạn...").foregroundColor(.gray.opacity(0.5)))
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.none)
+                            
+                            Button(action: {
+                                if let pasteboardString = UIPasteboard.general.string {
+                                    aiApiKey = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                }
+                            }) {
+                                Image(systemName: "doc.on.clipboard")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(hex: "14b8a6"))
+                            }
+                        }
+                        .padding(12)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
                     }
                     
                     VStack(alignment: .leading, spacing: 6) {
@@ -970,15 +1016,27 @@ struct ReaderView: View {
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.gray)
                         
-                        TextField("Model Name", text: $aiModel, prompt: Text("Ví dụ: gpt-4o-mini").foregroundColor(.gray.opacity(0.5)))
-                            .font(.system(size: 14))
-                            .foregroundColor(.white)
-                            .padding(12)
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(10)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.none)
+                        HStack {
+                            TextField("Model Name", text: $aiModel, prompt: Text("Ví dụ: gpt-4o-mini").foregroundColor(.gray.opacity(0.5)))
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.none)
+                            
+                            Button(action: {
+                                if let pasteboardString = UIPasteboard.general.string {
+                                    aiModel = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                }
+                            }) {
+                                Image(systemName: "doc.on.clipboard")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(hex: "14b8a6"))
+                            }
+                        }
+                        .padding(12)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
                     }
                 }
                 .padding()
@@ -1115,19 +1173,51 @@ struct ReaderView: View {
     
     // --- Persistence helper logic ---
     private func saveProgress() {
+        let now = Int64(Date().timeIntervalSince1970)
+        let localProgress = ReadingProgress(page: page, viewMode: viewMode, lastRead: now)
+        
+        // Guard to avoid redundant network saves when values didn't change
+        if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
+           let cached = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
+            if cached.page == page && cached.viewMode == viewMode {
+                return
+            }
+        }
+        
+        if let data = try? JSONEncoder().encode(localProgress) {
+            UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
+        }
+        
         Task {
             await api.saveProgress(slug: book.slug, page: page, viewMode: viewMode)
         }
     }
     
     private func loadProgress() {
-        isLoading = true
         Task {
             do {
                 let progress = try await api.fetchProgress(slug: book.slug)
                 await MainActor.run {
-                    self.page = progress.page
-                    self.viewMode = progress.viewMode
+                    var shouldUpdate = true
+                    if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
+                       let localProgress = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
+                        let localTime = localProgress.lastRead ?? 0
+                        let serverTime = progress.lastRead ?? 0
+                        if serverTime < localTime {
+                            shouldUpdate = false
+                        }
+                    }
+                    
+                    if shouldUpdate {
+                        self.page = progress.page
+                        self.viewMode = progress.viewMode
+                        
+                        let now = Int64(Date().timeIntervalSince1970)
+                        let progressToSave = ReadingProgress(page: progress.page, viewMode: progress.viewMode, lastRead: progress.lastRead ?? now)
+                        if let data = try? JSONEncoder().encode(progressToSave) {
+                            UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
+                        }
+                    }
                     self.isLoading = false
                 }
             } catch {

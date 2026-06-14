@@ -45,73 +45,94 @@ struct BilingualWebView: UIViewRepresentable {
         let highlightColor = isEnglish ? "rgba(56, 189, 248, 0.22)" : "rgba(250, 204, 21, 0.24)"
         let hoverColor = isEnglish ? "rgba(56, 189, 248, 0.08)" : "rgba(250, 204, 21, 0.08)"
         
-        // 1. Inject CSS Style rules script at .atDocumentStart to prevent white flash
+        // 1. Set background color of root html tag immediately at .atDocumentStart to prevent white flash
         let cssStyleSource = """
         (function() {
-            const style = document.createElement('style');
-            style.id = 'reader-highlight-style';
-            style.innerHTML = `
-                .sentence-node {
-                    transition: background-color 0.2s ease;
-                    border-radius: 3px;
-                    cursor: pointer;
-                    display: inline;
+            document.documentElement.style.backgroundColor = '#F9F7F1';
+            document.documentElement.style.color = '#333333';
+            
+            const injectStyle = () => {
+                const STYLE_ID = 'reader-highlight-style';
+                if (!document.getElementById(STYLE_ID)) {
+                    const style = document.createElement('style');
+                    style.id = STYLE_ID;
+                    style.innerHTML = `
+                        .sentence-node {
+                            transition: background-color 0.2s ease;
+                            border-radius: 3px;
+                            cursor: pointer;
+                            display: inline;
+                        }
+                        .sentence-node:hover {
+                            background-color: \\(hoverColor);
+                        }
+                        .sentence-node.highlight-sync {
+                            background-color: \\(highlightColor) !important;
+                        }
+                        .page-nav {
+                            display: none !important;
+                        }
+                        html, body, main, article, .book-page, .sheet-flow, .prose-page {
+                            margin: 0 !important;
+                            padding: 0 !important;
+                            width: 100% !important;
+                            max-width: 100% !important;
+                            box-sizing: border-box !important;
+                            overflow-x: hidden !important;
+                            background-color: #F9F7F1 !important;
+                            color: #333333 !important;
+                            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+                        }
+                        div, p, h1, h2, h3, h4, h5, h6, ul, ol, li {
+                            background-color: transparent !important;
+                            color: inherit !important;
+                        }
+                        body {
+                            padding: 24px 24px 40px 24px !important;
+                        }
+                        * {
+                            box-sizing: border-box !important;
+                            max-width: 100% !important;
+                            word-wrap: break-word !important;
+                        }
+                        mark.reader-highlight {
+                            border-radius: 3px;
+                            padding: 0 1px;
+                            cursor: pointer;
+                            position: relative;
+                            color: inherit;
+                            box-decoration-break: clone;
+                            -webkit-box-decoration-break: clone;
+                        }
+                        mark.reader-highlight[data-has-note="true"]::after {
+                            content: '';
+                            position: absolute;
+                            top: -3px;
+                            right: -3px;
+                            width: 6px;
+                            height: 6px;
+                            border-radius: 50%;
+                            background: #2563eb;
+                            border: 1px solid #fff;
+                        }
+                    `;
+                    if (document.head) {
+                        document.head.appendChild(style);
+                    } else {
+                        document.documentElement.appendChild(style);
+                    }
                 }
-                .sentence-node:hover {
-                    background-color: \(hoverColor);
+            };
+            
+            injectStyle();
+            
+            const observer = new MutationObserver((mutations, obs) => {
+                if (document.head || document.body) {
+                    injectStyle();
+                    obs.disconnect();
                 }
-                .sentence-node.highlight-sync {
-                    background-color: \(highlightColor) !important;
-                }
-                .page-nav {
-                    display: none !important;
-                }
-                html, body, main, article, .book-page, .sheet-flow, .prose-page {
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    box-sizing: border-box !important;
-                    overflow-x: hidden !important;
-                    background-color: #F9F7F1 !important;
-                    color: #333333 !important;
-                    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
-                }
-                div, p, h1, h2, h3, h4, h5, h6, ul, ol, li {
-                    background-color: transparent !important;
-                    color: inherit !important;
-                }
-                body {
-                    padding: 24px 24px 40px 24px !important;
-                }
-                * {
-                    box-sizing: border-box !important;
-                    max-width: 100% !important;
-                    word-wrap: break-word !important;
-                }
-                mark.reader-highlight {
-                    border-radius: 3px;
-                    padding: 0 1px;
-                    cursor: pointer;
-                    position: relative;
-                    color: inherit;
-                    box-decoration-break: clone;
-                    -webkit-box-decoration-break: clone;
-                }
-                mark.reader-highlight[data-has-note="true"]::after {
-                    content: '';
-                    position: absolute;
-                    top: -3px;
-                    right: -3px;
-                    width: 6px;
-                    height: 6px;
-                    border-radius: 50%;
-                    background: #2563eb;
-                    border: 1px solid #fff;
-                }
-            `;
-            const parent = document.head || document.documentElement;
-            parent.appendChild(style);
+            });
+            observer.observe(document.documentElement, { childList: true, subtree: true });
         })();
         """
         let cssUserScript = WKUserScript(source: cssStyleSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)
@@ -390,12 +411,16 @@ struct BilingualWebView: UIViewRepresentable {
             });
         }
 
-        // Run sentence segmentation on current document
-        try {
-            segmentDocSentences(document);
-        } catch(e) {
-            console.error("Failed to segment sentences: ", e);
-        }
+        // Run sentence segmentation on current document deferred
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                try {
+                    segmentDocSentences(document);
+                } catch(e) {
+                    console.error("Failed to segment sentences: ", e);
+                }
+            }, 0);
+        });
         """
         let userScript = WKUserScript(source: jsSource, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         contentController.addUserScript(userScript)
@@ -407,9 +432,9 @@ struct BilingualWebView: UIViewRepresentable {
         context.coordinator.webView = webView
         webView.scrollView.showsVerticalScrollIndicator = false
         webView.scrollView.showsHorizontalScrollIndicator = false
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
-        webView.scrollView.backgroundColor = .clear
+        webView.isOpaque = true
+        webView.backgroundColor = UIColor(red: 249/255, green: 247/255, blue: 241/255, alpha: 1.0)
+        webView.scrollView.backgroundColor = UIColor(red: 249/255, green: 247/255, blue: 241/255, alpha: 1.0)
         
         // Register observer for programmatical scrolling
         NotificationCenter.default.addObserver(
