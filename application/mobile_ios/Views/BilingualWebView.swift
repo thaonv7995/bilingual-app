@@ -22,6 +22,9 @@ class NoSelectionMenuWebView: WKWebView {
 }
 
 struct BilingualWebView: UIViewRepresentable {
+    // Share a single WKProcessPool across all WebViews for better performance
+    private static let sharedProcessPool = WKProcessPool()
+    
     let bookSlug: String
     let urlString: String
     let lang: String
@@ -37,6 +40,7 @@ struct BilingualWebView: UIViewRepresentable {
         
         let configuration = WKWebViewConfiguration()
         configuration.preferences = preferences
+        configuration.processPool = Self.sharedProcessPool
         
         let contentController = WKUserContentController()
         contentController.add(context.coordinator, name: "iosListener")

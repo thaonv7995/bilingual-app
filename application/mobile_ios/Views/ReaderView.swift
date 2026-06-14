@@ -13,25 +13,21 @@ struct ReaderView: View {
     
     @State private var page: Int
     @State private var viewMode: String // "en" | "vi" | "split"
-    @State private var isLoading: Bool
     
     init(book: Book) {
         self.book = book
         
         var initialPage = 1
         var initialViewMode = "split"
-        var hasCache = false
         
         if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
            let progress = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
             initialPage = progress.page
             initialViewMode = progress.viewMode
-            hasCache = true
         }
         
         self._page = State(initialValue: initialPage)
         self._viewMode = State(initialValue: initialViewMode)
-        self._isLoading = State(initialValue: !hasCache)
     }
     
     // Highlights States
@@ -69,6 +65,22 @@ struct ReaderView: View {
         ("#f9a8d4", Color(hex: "f9a8d4")), // Pink
         ("#86efac", Color(hex: "86efac"))  // Green
     ]
+    
+    // Lazy page range: only load current page ± 2 to minimize WKWebView instances
+    private var lazyPageRange: [Int] {
+        let maxPage = max(1, book.pageCount)
+        let lower = max(1, page - 2)
+        let upper = min(maxPage, page + 2)
+        return Array(lower...upper)
+    }
+    
+    // Stable ID for the TabView range to avoid unnecessary recreation
+    private var lazyPageRangeId: String {
+        let maxPage = max(1, book.pageCount)
+        let lower = max(1, page - 2)
+        let upper = min(maxPage, page + 2)
+        return "\(lower)-\(upper)"
+    }
     
     var body: some View {
         GeometryReader { geometry in
@@ -144,9 +156,6 @@ struct ReaderView: View {
                         ZStack {
                             Color(hex: "0f172a").ignoresSafeArea()
                             
-                            if isLoading {
-                                ProgressView().tint(.white)
-                            } else {
                                 let pageBinding = Binding(
                                     get: { self.page },
                                     set: { newPage in
@@ -166,9 +175,9 @@ struct ReaderView: View {
                                 let isReadingPaneLarge = readingPaneWidth > 700
                                 
                                 ZStack {
-                                    // Chế độ Song ngữ
+                                    // Chế độ Song ngữ - Lazy loading only current page ± 1
                                     TabView(selection: pageBinding) {
-                                        ForEach(1...max(1, book.pageCount), id: \.self) { p in
+                                        ForEach(lazyPageRange, id: \.self) { p in
                                             let isHorizontal = (bilingualLayoutMode == "en-over-vi" || bilingualLayoutMode == "vi-over-en") ? false : isReadingPaneLarge
                                             let isEnFirst = bilingualLayoutMode.hasPrefix("en")
                                             let layout = isHorizontal ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
@@ -197,6 +206,7 @@ struct ReaderView: View {
                                         }
                                     }
                                     .tabViewStyle(.page(indexDisplayMode: .never))
+                                    .id("split_\(lazyPageRangeId)")
                                     .opacity(viewMode == "split" ? 1 : 0)
                                     .allowsHitTesting(viewMode == "split")
                                     
@@ -234,7 +244,6 @@ struct ReaderView: View {
                                     .opacity(viewMode == "vi" ? 1 : 0)
                                     .allowsHitTesting(viewMode == "vi")
                                 }
-                            }
                         }
                         .ignoresSafeArea(edges: .bottom)
                     }
@@ -1257,7 +1266,6 @@ struct ReaderView: View {
                         await api.saveProgress(slug: book.slug, page: finalPage, viewMode: finalViewMode)
                     }
                     
-                    self.isLoading = false
                 }
             } catch {
                 print("Failed to fetch progress from server: \(error)")
@@ -1269,7 +1277,6 @@ struct ReaderView: View {
                         UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
                         NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
                     }
-                    self.isLoading = false
                 }
             }
         }
