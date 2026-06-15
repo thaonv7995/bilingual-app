@@ -73,6 +73,10 @@ struct ReaderView: View {
     @State private var vocaProgressWord: String? = nil
     @State private var vocaIsPlayingAudio = false
     @State private var vocaToast: String? = nil
+    @State private var vocaLookupInProgress = false
+    @State private var vocaPanelWebView: WKWebView? = nil
+    @State private var readerUsesDoubleSided = false
+    @State private var selectionOverlayRevision = 0
     @State private var vocaBridgeOrigin: String = VocaService.defaultBridgeOrigin
     @State private var vocaBridgeToken: String = VocaService.defaultBridgeToken
     @State private var webViews: [String: WKWebView] = [:]
@@ -298,7 +302,8 @@ struct ReaderView: View {
                                     BookPagerView(
                                         pageCount: max(1, book.pageCount),
                                         currentPage: pageBinding,
-                                        isDoubleSided: useDoubleSided
+                                        isDoubleSided: useDoubleSided,
+                                        overlayRevision: selectionOverlayRevision
                                     ) { p in
                                         let isLeft = p % 2 == 1
                                         renderWebView(lang: "en", p: p, isDoubleSided: useDoubleSided)
@@ -315,7 +320,8 @@ struct ReaderView: View {
                                     BookPagerView(
                                         pageCount: max(1, book.pageCount),
                                         currentPage: pageBinding,
-                                        isDoubleSided: useDoubleSided
+                                        isDoubleSided: useDoubleSided,
+                                        overlayRevision: selectionOverlayRevision
                                     ) { p in
                                         let isLeft = p % 2 == 1
                                         renderWebView(lang: "vi", p: p, isDoubleSided: useDoubleSided)
@@ -330,6 +336,10 @@ struct ReaderView: View {
                                 }
                         }
                         .ignoresSafeArea(edges: .bottom)
+                        .onAppear { readerUsesDoubleSided = useDoubleSided }
+                        .onChange(of: useDoubleSided) { readerUsesDoubleSided = $0 }
+                        .onChange(of: viewMode) { _ in readerUsesDoubleSided = useDoubleSided }
+                        .onChange(of: isChatOpen) { _ in readerUsesDoubleSided = useDoubleSided }
                     }
                     .frame(maxWidth: .infinity)
                     
@@ -499,20 +509,65 @@ struct ReaderView: View {
                 handleVocaWebAction(action)
             },
             onWebViewReady: { webView, readyLang, readyPage in
-                webViews[webViewKey(lang: readyLang, page: readyPage)] = webView
+                registerWebView(webView, lang: readyLang, page: readyPage)
+            },
+            onWebViewDismantled: { webView, readyLang, readyPage in
+                unregisterWebView(webView, lang: readyLang, page: readyPage)
             }
         )
+        .id("webview-\(lang)-\(p)")
         .modifier(PaperSheetModifier(viewMode: viewMode, page: p, isDoubleSided: isDoubleSided))
         .overlay(
-            Group {
-                if activeSelectionLang == lang && activeSelectionPage == p && (activeSelection != nil || selectedHighlightId != nil) {
-                    if let rect = activeRect {
-                        highlightPopupMenu()
-                            .position(x: rect.midX, y: max(30, rect.minY - 30))
+            GeometryReader { geo in
+                Group {
+                    if activeSelectionLang == lang && activeSelectionPage == p && (activeSelection != nil || selectedHighlightId != nil) {
+                        if let rect = activeRect {
+                            let pos = clampedToolbarPosition(
+                                rect: rect,
+                                in: geo.size,
+                                lang: lang,
+                                page: p,
+                                isDoubleSided: isDoubleSided
+                            )
+                            highlightPopupMenu()
+                                .position(x: pos.x, y: pos.y)
+                        }
                     }
                 }
             }
+            .allowsHitTesting(true)
         )
+    }
+
+    private func vocaPanelSafeInsets(lang: String, page: Int, isDoubleSided: Bool) -> (left: CGFloat, right: CGFloat) {
+        let base: CGFloat = 12
+        let spine: CGFloat = 56
+
+        if viewMode == "split" {
+            let isHorizontal = bilingualLayoutMode == "en-vi" || bilingualLayoutMode == "vi-en"
+            guard isHorizontal else { return (base, base) }
+            let isEnFirst = bilingualLayoutMode.hasPrefix("en")
+            if lang == "en" {
+                return isEnFirst ? (base, spine) : (spine, base)
+            }
+            return isEnFirst ? (spine, base) : (base, spine)
+        }
+
+        if isDoubleSided {
+            return page % 2 == 1 ? (base, spine) : (spine, base)
+        }
+        return (base, base)
+    }
+
+    private func clampedToolbarPosition(rect: CGRect, in size: CGSize, lang: String, page: Int, isDoubleSided: Bool) -> CGPoint {
+        let insets = vocaPanelSafeInsets(lang: lang, page: page, isDoubleSided: isDoubleSided)
+        let menuHalfWidth: CGFloat = 112
+        let menuHalfHeight: CGFloat = 28
+        let minX = menuHalfWidth + insets.left
+        let maxX = max(minX, size.width - menuHalfWidth - insets.right)
+        let x = min(max(rect.midX, minX), maxX)
+        let y = min(max(rect.minY - 30, menuHalfHeight + 8), size.height - menuHalfHeight - 8)
+        return CGPoint(x: x, y: y)
     }
     
     @ViewBuilder
@@ -545,7 +600,10 @@ struct ReaderView: View {
                     Image(systemName: "book.closed")
                         .foregroundColor(Color(hex: "38bdf8"))
                         .font(.system(size: 18))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
             
             // Add Note Icon
@@ -628,6 +686,7 @@ struct ReaderView: View {
             self.selectedColor = "#fde68a"
             self.activeRect = selectionInfo.rect
             self.showNoteInput = false
+            bumpSelectionOverlayRevision()
         case .highlightClicked(let id, let rect):
             dismissVocaPanel()
             self.selectedHighlightId = id
@@ -642,9 +701,13 @@ struct ReaderView: View {
             } else {
                 self.showNoteInput = false
             }
+            bumpSelectionOverlayRevision()
         case .clearSelection:
-            dismissVocaPanel()
             clearSelectionState()
+            bumpSelectionOverlayRevision()
+            guard !vocaLookupInProgress else { return }
+            guard vocaPanelMode == nil else { return }
+            dismissVocaPanel()
         }
     }
     
@@ -660,6 +723,30 @@ struct ReaderView: View {
         self.showNoteInput = false
     }
     
+    private func bumpSelectionOverlayRevision() {
+        selectionOverlayRevision += 1
+    }
+
+    private func registerWebView(_ webView: WKWebView, lang: String, page: Int) {
+        let key = webViewKey(lang: lang, page: page)
+        if webViews[key] !== webView {
+            webViews[key] = webView
+        }
+        if vocaPanelLang == lang, vocaPanelPage == page, vocaPanelWebView == nil {
+            vocaPanelWebView = webView
+        }
+    }
+
+    private func unregisterWebView(_ webView: WKWebView, lang: String, page: Int) {
+        let key = webViewKey(lang: lang, page: page)
+        if webViews[key] === webView {
+            webViews.removeValue(forKey: key)
+        }
+        if vocaPanelWebView === webView {
+            vocaPanelWebView = nil
+        }
+    }
+
     private func webViewKey(lang: String, page: Int) -> String {
         "\(lang)-\(page)"
     }
@@ -677,12 +764,26 @@ struct ReaderView: View {
         return dict
     }
 
-    private func presentVocaPanelInWebView() {
+    private func presentVocaPanelInWebView(retryCount: Int = 0) {
         guard let mode = vocaPanelMode,
               let rect = vocaPanelRect,
               let panelPage = vocaPanelPage,
-              !vocaPanelLang.isEmpty,
-              let webView = webViews[webViewKey(lang: vocaPanelLang, page: panelPage)] else { return }
+              !vocaPanelLang.isEmpty else { return }
+
+        let key = webViewKey(lang: vocaPanelLang, page: panelPage)
+        let webView = vocaPanelWebView ?? webViews[key]
+        guard let webView else {
+            if retryCount < 5 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    self.presentVocaPanelInWebView(retryCount: retryCount + 1)
+                }
+            } else {
+                showVocaToast("Không tìm thấy trang để hiển thị từ điển.")
+            }
+            return
+        }
+
+        let insets = vocaPanelSafeInsets(lang: vocaPanelLang, page: panelPage, isDoubleSided: readerUsesDoubleSided)
 
         var payload: [String: Any] = [
             "rect": [
@@ -690,6 +791,8 @@ struct ReaderView: View {
                 "y": rect.origin.y,
                 "width": rect.width,
                 "height": rect.height,
+                "insetLeft": insets.left,
+                "insetRight": insets.right,
             ],
         ]
         switch mode {
@@ -707,7 +810,23 @@ struct ReaderView: View {
 
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else { return }
-        webView.evaluateJavaScript("window.showIOSVocaPanel(\(json));", completionHandler: nil)
+
+        let panelJs = "window.showIOSVocaPanel(\(json));"
+        webView.evaluateJavaScript("typeof window.showIOSVocaPanel === 'function' ? 1 : 0") { result, _ in
+            DispatchQueue.main.async {
+                let isReady = (result as? Int == 1) || (result as? Bool == true)
+                if isReady {
+                    webView.evaluateJavaScript(panelJs, completionHandler: nil)
+                    self.vocaPanelWebView = webView
+                } else if retryCount < 5 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                        self.presentVocaPanelInWebView(retryCount: retryCount + 1)
+                    }
+                } else {
+                    self.showVocaToast("Không thể hiển thị từ điển trên trang này.")
+                }
+            }
+        }
     }
 
     private func removeVocaPanelFromWebView() {
@@ -749,6 +868,7 @@ struct ReaderView: View {
         vocaPanelRect = nil
         vocaPanelLang = ""
         vocaPanelPage = nil
+        vocaPanelWebView = nil
         vocaIsPlayingAudio = false
     }
 
@@ -775,13 +895,23 @@ struct ReaderView: View {
         guard let selection = activeSelection, activeSelectionLang == "en" else { return }
         let query = VocaService.cleanWord(selection.text)
         guard !query.isEmpty else { return }
-        
+
         let anchor = activeRect ?? CGRect(x: 180, y: 120, width: 40, height: 20)
-        vocaPanelLang = activeSelectionLang
-        vocaPanelPage = activeSelectionPage ?? page
+        let panelLang = activeSelectionLang
+        let panelPage = activeSelectionPage ?? page
+        let key = webViewKey(lang: panelLang, page: panelPage)
+
+        guard let webView = webViews[key] else {
+            showVocaToast("Không tìm thấy trang để tra từ.")
+            return
+        }
+
+        vocaPanelLang = panelLang
+        vocaPanelPage = panelPage
         vocaPanelRect = anchor
-        clearSelectionState()
-        
+        vocaPanelWebView = webView
+        vocaLookupInProgress = true
+
         Task {
             do {
                 let result = try await VocaService.lookupWord(query)
@@ -799,9 +929,16 @@ struct ReaderView: View {
                         vocaPanelMode = .notFound(query: query)
                     }
                     presentVocaPanelInWebView()
+                    clearSelectionState()
+                    bumpSelectionOverlayRevision()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        vocaLookupInProgress = false
+                    }
                 }
             } catch {
                 await MainActor.run {
+                    vocaLookupInProgress = false
+                    vocaPanelWebView = nil
                     dismissVocaPanel()
                     showVocaToast(error.localizedDescription)
                 }
@@ -814,7 +951,9 @@ struct ReaderView: View {
         let savedRect = vocaPanelRect
         let savedLang = vocaPanelLang
         let savedPage = vocaPanelPage
+        let savedWebView = vocaPanelWebView
 
+        vocaLookupInProgress = true
         hideVocaPanelInWebView()
         withAnimation { vocaProgressWord = query }
 
@@ -828,10 +967,18 @@ struct ReaderView: View {
                         vocaPanelRect = savedRect
                         vocaPanelLang = savedLang
                         vocaPanelPage = savedPage
+                        if let savedWebView {
+                            vocaPanelWebView = savedWebView
+                        } else if let savedPage {
+                            vocaPanelWebView = webViews[webViewKey(lang: savedLang, page: savedPage)]
+                        }
                         vocaPanelMode = .single(card)
                         presentVocaPanelInWebView()
                     } else {
                         dismissVocaPanel()
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        vocaLookupInProgress = false
                     }
                 }
             } catch {
@@ -840,9 +987,17 @@ struct ReaderView: View {
                     vocaPanelRect = savedRect
                     vocaPanelLang = savedLang
                     vocaPanelPage = savedPage
+                    if let savedWebView {
+                        vocaPanelWebView = savedWebView
+                    } else if let savedPage {
+                        vocaPanelWebView = webViews[webViewKey(lang: savedLang, page: savedPage)]
+                    }
                     vocaPanelMode = .notFound(query: query)
                     presentVocaPanelInWebView()
                     showVocaToast(error.localizedDescription)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        vocaLookupInProgress = false
+                    }
                 }
             }
         }

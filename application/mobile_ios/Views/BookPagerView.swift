@@ -19,6 +19,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
     var pageCount: Int
     @Binding var currentPage: Int
     var isDoubleSided: Bool // True if landscape iPad
+    var overlayRevision: Int = 0
     
     @ViewBuilder var content: (Int) -> Content
     
@@ -52,9 +53,18 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                let leftVC = currentVCs[0] as? PageHostingController,
                let rightVC = currentVCs[1] as? PageHostingController {
                 if leftVC.pageIndex == leftPage && rightVC.pageIndex == rightPage {
-                    leftVC.rootView = AnyView(content(leftPage))
-                    if rightPage <= pageCount {
-                        rightVC.rootView = AnyView(content(rightPage))
+                    let shouldRefreshContent =
+                        context.coordinator.lastLeftPage != leftPage
+                        || context.coordinator.lastRightPage != rightPage
+                        || context.coordinator.lastOverlayRevision != overlayRevision
+                    if shouldRefreshContent {
+                        leftVC.rootView = AnyView(content(leftPage))
+                        if rightPage <= pageCount {
+                            rightVC.rootView = AnyView(content(rightPage))
+                        }
+                        context.coordinator.lastLeftPage = leftPage
+                        context.coordinator.lastRightPage = rightPage
+                        context.coordinator.lastOverlayRevision = overlayRevision
                     }
                     needsUpdate = false
                 }
@@ -63,6 +73,9 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
             if needsUpdate {
                 let dir: UIPageViewController.NavigationDirection = (leftPage >= context.coordinator.lastPage) ? .forward : .reverse
                 context.coordinator.lastPage = leftPage
+                context.coordinator.lastLeftPage = leftPage
+                context.coordinator.lastRightPage = rightPage
+                context.coordinator.lastOverlayRevision = overlayRevision
                 
                 let leftVC = context.coordinator.createVC(page: leftPage)
                 let rightVC = context.coordinator.createVC(page: rightPage)
@@ -76,7 +89,14 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
             if currentVCs.count == 1,
                let vc = currentVCs[0] as? PageHostingController {
                 if vc.pageIndex == currentPage {
-                    vc.rootView = AnyView(content(currentPage))
+                    let shouldRefreshContent =
+                        context.coordinator.lastSinglePage != currentPage
+                        || context.coordinator.lastOverlayRevision != overlayRevision
+                    if shouldRefreshContent {
+                        vc.rootView = AnyView(content(currentPage))
+                        context.coordinator.lastSinglePage = currentPage
+                        context.coordinator.lastOverlayRevision = overlayRevision
+                    }
                     needsUpdate = false
                 }
             }
@@ -84,6 +104,8 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
             if needsUpdate {
                 let dir: UIPageViewController.NavigationDirection = (currentPage >= context.coordinator.lastPage) ? .forward : .reverse
                 context.coordinator.lastPage = currentPage
+                context.coordinator.lastSinglePage = currentPage
+                context.coordinator.lastOverlayRevision = overlayRevision
                 let vc = context.coordinator.createVC(page: currentPage)
                 
                 if uiViewController.spineLocation == .min || uiViewController.spineLocation == .max || uiViewController.spineLocation == .none {
@@ -102,6 +124,10 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
         var lastPage: Int
         var pendingPage: Int?
         var cachedVCs: [Int: PageHostingController] = [:]
+        var lastOverlayRevision: Int = -1
+        var lastLeftPage: Int = -1
+        var lastRightPage: Int = -1
+        var lastSinglePage: Int = -1
         
         init(_ parent: BookPagerView) {
             self.parent = parent

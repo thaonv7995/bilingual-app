@@ -59,6 +59,7 @@ struct BilingualWebView: UIViewRepresentable {
     let onSentenceClicked: (String?) -> Void
     let onVocaAction: (VocaWebAction) -> Void
     var onWebViewReady: ((WKWebView, String, Int) -> Void)? = nil
+    var onWebViewDismantled: ((WKWebView, String, Int) -> Void)? = nil
     
     func makeUIView(context: Context) -> WKWebView {
         let preferences = WKPreferences()
@@ -154,53 +155,73 @@ struct BilingualWebView: UIViewRepresentable {
                         .voca-lookup-panel {
                             position: fixed;
                             z-index: 10000;
-                            transform: translate(-50%, calc(-100% - 12px));
                             min-width: 200px;
-                            max-width: 280px;
+                            max-width: min(280px, calc(100vw - 24px)) !important;
                             padding: 10px 12px;
                             border-radius: 10px;
-                            background: rgba(255, 255, 255, 0.97);
+                            background-color: #ffffff !important;
                             border: 1px solid rgba(15, 23, 42, 0.12);
                             box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
-                            color: #0f172a;
+                            color: #0f172a !important;
                             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
                             font-size: 13px;
+                            opacity: 1 !important;
+                            isolation: isolate;
                         }
-                        .voca-lookup-panel--empty { opacity: 0.95; }
-                        .voca-lookup-panel--multi { max-width: 320px; }
+                        .voca-lookup-panel--multi { max-width: min(320px, calc(100vw - 24px)) !important; }
                         .voca-lookup-panel__head {
                             display: flex; align-items: center; justify-content: space-between; gap: 8px;
+                            background-color: transparent !important;
                         }
-                        .voca-lookup-panel__word { font-weight: 700; font-size: 14px; }
+                        .voca-lookup-panel__word {
+                            font-weight: 700; font-size: 14px;
+                            color: #0f172a !important;
+                            background-color: transparent !important;
+                        }
                         .voca-lookup-panel__hint {
-                            margin-top: 4px; color: #64748b; font-size: 12px; line-height: 1.4;
+                            margin-top: 4px; color: #64748b !important; font-size: 12px; line-height: 1.4;
+                            background-color: transparent !important;
                         }
                         .voca-lookup-panel__create {
                             margin-top: 10px; width: 100%;
                             border: 0; border-radius: 8px; padding: 8px 12px;
-                            background: #2563eb; color: #fff;
+                            background-color: #2563eb !important;
+                            color: #ffffff !important;
                             font-family: inherit; font-size: 12px; font-weight: 700;
                             cursor: pointer;
                         }
                         .voca-lookup-panel__voice {
-                            border: 0; background: #e0f2fe; border-radius: 6px; width: 28px; height: 28px;
+                            border: 0; background-color: #e0f2fe !important; border-radius: 6px; width: 28px; height: 28px;
                             cursor: pointer; font-size: 14px; line-height: 1;
                         }
-                        .voca-lookup-panel__ipa { margin-top: 4px; color: #475569; font-size: 12px; }
-                        .voca-lookup-panel__meaning { margin-top: 6px; color: #1e293b; line-height: 1.45; }
+                        .voca-lookup-panel__ipa {
+                            margin-top: 4px; color: #475569 !important; font-size: 12px;
+                            background-color: transparent !important;
+                        }
+                        .voca-lookup-panel__meaning {
+                            margin-top: 6px; color: #1e293b !important; line-height: 1.45;
+                            background-color: transparent !important;
+                        }
                         .voca-lookup-panel__list {
                             margin-top: 8px; display: flex; flex-direction: column; gap: 6px;
                             max-height: 220px; overflow-y: auto;
+                            background-color: transparent !important;
                         }
                         .voca-lookup-panel__item {
                             width: 100%; text-align: left; border: 1px solid rgba(15, 23, 42, 0.1);
-                            border-radius: 8px; padding: 8px 10px; background: #f8fafc;
+                            border-radius: 8px; padding: 8px 10px;
+                            background-color: #f8fafc !important;
                             cursor: pointer; font-family: inherit; color: inherit;
                             display: flex; flex-direction: column; gap: 2px;
                         }
-                        .voca-lookup-panel__item-word { font-weight: 700; font-size: 12px; line-height: 1.35; }
+                        .voca-lookup-panel__item-word {
+                            font-weight: 700; font-size: 12px; line-height: 1.35;
+                            color: #0f172a !important;
+                            background-color: transparent !important;
+                        }
                         .voca-lookup-panel__item-meaning {
-                            font-size: 11px; color: #475569; line-height: 1.35;
+                            font-size: 11px; color: #475569 !important; line-height: 1.35;
+                            background-color: transparent !important;
                         }
                     `;
                     if (document.head) {
@@ -342,6 +363,9 @@ struct BilingualWebView: UIViewRepresentable {
 
         function handleSelectionEnd(e) {
             setTimeout(() => {
+                if (e.target && typeof e.target.closest === 'function' && e.target.closest('.voca-lookup-panel')) {
+                    return;
+                }
                 const selection = window.getSelection();
                 const selectedText = selection.toString().trim();
                 const clickedMark = e.target.closest('mark.reader-highlight');
@@ -501,6 +525,56 @@ struct BilingualWebView: UIViewRepresentable {
 
         let iosVocaDismissHandler = null;
 
+        function stopVocaPanelEvent(e) {
+            e.stopPropagation();
+        }
+
+        function positionIOSVocaPanel(panel, rect) {
+            const margin = 12;
+            const gap = 12;
+            const x = Number(rect.x) || 0;
+            const y = Number(rect.y) || 0;
+            const w = Number(rect.width) || 0;
+            const h = Number(rect.height) || 0;
+            const insetLeft = Number(rect.insetLeft) || margin;
+            const insetRight = Number(rect.insetRight) || margin;
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+
+            panel.style.transform = 'none';
+            panel.style.visibility = 'hidden';
+            panel.style.left = '0px';
+            panel.style.top = '0px';
+            document.documentElement.appendChild(panel);
+
+            const pw = panel.offsetWidth;
+            const ph = panel.offsetHeight;
+            const anchorCenterX = x + w / 2;
+
+            let top = y - gap - ph;
+            if (top < margin) {
+                top = y + h + gap;
+            }
+            if (top + ph > vh - margin) {
+                top = Math.max(margin, vh - margin - ph);
+            }
+
+            let left = anchorCenterX - pw / 2;
+            const minLeft = insetLeft;
+            const maxLeft = Math.max(minLeft, vw - insetRight - pw);
+            left = Math.max(minLeft, Math.min(maxLeft, left));
+
+            panel.style.left = left + 'px';
+            panel.style.top = top + 'px';
+            panel.style.visibility = 'visible';
+        }
+
+        function attachVocaPanelInteractionGuards(panel) {
+            ['mousedown', 'mouseup', 'touchstart', 'touchend', 'pointerdown', 'pointerup'].forEach((eventName) => {
+                panel.addEventListener(eventName, stopVocaPanelEvent);
+            });
+        }
+
         function postIOSVocaMessage(payload) {
             window.webkit.messageHandlers.iosListener.postMessage(JSON.stringify(payload));
         }
@@ -508,7 +582,9 @@ struct BilingualWebView: UIViewRepresentable {
         window.removeIOSVocaPanel = function() {
             document.querySelectorAll('.voca-lookup-panel').forEach((el) => el.remove());
             if (iosVocaDismissHandler) {
-                document.removeEventListener('mousedown', iosVocaDismissHandler, true);
+                ['pointerdown', 'touchstart', 'mousedown'].forEach((eventName) => {
+                    document.removeEventListener(eventName, iosVocaDismissHandler, true);
+                });
                 iosVocaDismissHandler = null;
             }
         };
@@ -516,15 +592,9 @@ struct BilingualWebView: UIViewRepresentable {
         window.showIOSVocaPanel = function(payload) {
             window.removeIOSVocaPanel();
             const rect = payload.rect || {};
-            const x = Number(rect.x) || 0;
-            const y = Number(rect.y) || 0;
-            const w = Number(rect.width) || 0;
             const panel = document.createElement('div');
             panel.className = 'voca-lookup-panel';
-            panel.style.left = (x + w / 2) + 'px';
-            panel.style.top = (y - 8) + 'px';
-            panel.addEventListener('mousedown', (e) => e.stopPropagation());
-            panel.addEventListener('mouseup', (e) => e.stopPropagation());
+            attachVocaPanelInteractionGuards(panel);
 
             if (payload.mode === 'single' && payload.card) {
                 const card = payload.card;
@@ -538,8 +608,16 @@ struct BilingualWebView: UIViewRepresentable {
                 voiceBtn.className = 'voca-lookup-panel__voice';
                 voiceBtn.textContent = '🔊';
                 voiceBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
                     e.stopPropagation();
+                    if (voiceBtn.disabled) return;
+                    voiceBtn.disabled = true;
+                    voiceBtn.textContent = '…';
                     postIOSVocaMessage({ type: 'vocaPlayAudio', cardId: card.id || '' });
+                    setTimeout(() => {
+                        voiceBtn.disabled = false;
+                        voiceBtn.textContent = '🔊';
+                    }, 1200);
                 });
                 head.append(wordEl, voiceBtn);
                 panel.appendChild(head);
@@ -608,13 +686,15 @@ struct BilingualWebView: UIViewRepresentable {
                 panel.append(wordEl, hintEl, addBtn);
             }
 
-            document.body.appendChild(panel);
+            positionIOSVocaPanel(panel, rect);
             iosVocaDismissHandler = (e) => {
                 if (e.target.closest('.voca-lookup-panel')) return;
                 window.removeIOSVocaPanel();
                 postIOSVocaMessage({ type: 'vocaDismiss' });
             };
-            document.addEventListener('mousedown', iosVocaDismissHandler, true);
+            ['pointerdown', 'touchstart', 'mousedown'].forEach((eventName) => {
+                document.addEventListener(eventName, iosVocaDismissHandler, true);
+            });
         };
 
         // Run sentence segmentation on current document deferred
@@ -653,12 +733,20 @@ struct BilingualWebView: UIViewRepresentable {
         DispatchQueue.main.async {
             onWebViewReady?(webView, lang, page)
         }
-        
+
         return webView
+    }
+
+    private func registerWebView(_ webView: WKWebView, coordinator: Coordinator) {
+        coordinator.webView = webView
+        if coordinator.registeredWebView === webView { return }
+        coordinator.registeredWebView = webView
+        onWebViewReady?(webView, lang, page)
     }
     
     func updateUIView(_ uiView: WKWebView, context: Context) {
         context.coordinator.parent = self
+        registerWebView(uiView, coordinator: context.coordinator)
         
         // Inject jwt_token cookie to authorize remote subresources (like images)
         if !api.token.isEmpty,
@@ -722,6 +810,8 @@ struct BilingualWebView: UIViewRepresentable {
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
         NotificationCenter.default.removeObserver(coordinator)
         uiView.configuration.userContentController.removeAllScriptMessageHandlers()
+        coordinator.registeredWebView = nil
+        coordinator.parent.onWebViewDismantled?(uiView, coordinator.parent.lang, coordinator.parent.page)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -736,6 +826,7 @@ struct BilingualWebView: UIViewRepresentable {
         var loadedUrlString: String?
         var lastAppliedHighlights: [Highlight] = []
         var lastAppliedSentenceId: String? = nil
+        weak var registeredWebView: WKWebView?
         
         init(_ parent: BilingualWebView) {
             self.parent = parent
@@ -762,6 +853,10 @@ struct BilingualWebView: UIViewRepresentable {
         }
         
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            self.webView = webView
+            self.registeredWebView = nil
+            parent.onWebViewReady?(webView, parent.lang, parent.page)
+
             let scrollScript = """
                 (function() {
                     var isScrolling = false;
