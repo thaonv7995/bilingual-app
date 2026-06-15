@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 class APIService: ObservableObject {
     @Published var serverUrl: String = "https://books.thaonv.online"
     @Published var token: String = ""
@@ -57,20 +58,18 @@ class APIService: ObservableObject {
         let decoder = JSONDecoder()
         let result = try decoder.decode(LoginResponse.self, from: data)
         
-        await MainActor.run {
-            self.token = result.accessToken
-            self.refreshToken = result.refreshToken
-            self.username = result.username
-            self.isAdmin = result.isAdmin
-            self.isAuthenticated = true
-            
-            // Save to UserDefaults
-            UserDefaults.standard.set(self.token, forKey: "token")
-            UserDefaults.standard.set(self.refreshToken, forKey: "refreshToken")
-            UserDefaults.standard.set(self.serverUrl, forKey: "serverUrl")
-            UserDefaults.standard.set(self.username, forKey: "username")
-            UserDefaults.standard.set(self.isAdmin, forKey: "isAdmin")
-        }
+        self.token = result.accessToken
+        self.refreshToken = result.refreshToken
+        self.username = result.username
+        self.isAdmin = result.isAdmin
+        self.isAuthenticated = true
+        
+        // Save to UserDefaults
+        UserDefaults.standard.set(self.token, forKey: "token")
+        UserDefaults.standard.set(self.refreshToken, forKey: "refreshToken")
+        UserDefaults.standard.set(self.serverUrl, forKey: "serverUrl")
+        UserDefaults.standard.set(self.username, forKey: "username")
+        UserDefaults.standard.set(self.isAdmin, forKey: "isAdmin")
         
         return true
     }
@@ -113,7 +112,7 @@ class APIService: ObservableObject {
         
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            await MainActor.run { logout() }
+            logout()
             throw NSError(domain: "APIService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Phiên làm việc hết hạn"])
         }
         
@@ -128,12 +127,10 @@ class APIService: ObservableObject {
         }
         
         let result = try JSONDecoder().decode(RefreshResponse.self, from: data)
-        await MainActor.run {
-            self.token = result.accessToken
-            self.refreshToken = result.refreshToken
-            UserDefaults.standard.set(self.token, forKey: "token")
-            UserDefaults.standard.set(self.refreshToken, forKey: "refreshToken")
-        }
+        self.token = result.accessToken
+        self.refreshToken = result.refreshToken
+        UserDefaults.standard.set(self.token, forKey: "token")
+        UserDefaults.standard.set(self.refreshToken, forKey: "refreshToken")
         return result.accessToken
     }
     
@@ -213,9 +210,7 @@ class APIService: ObservableObject {
         }
         
         let result = try JSONDecoder().decode(HighlightResponse.self, from: data)
-        await MainActor.run {
-            self.highlights = result.highlights
-        }
+        self.highlights = result.highlights
         return result.highlights
     }
     

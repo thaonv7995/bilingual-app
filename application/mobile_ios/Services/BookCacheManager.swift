@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 class BookCacheManager: ObservableObject {
     static let shared = BookCacheManager()
     
@@ -60,15 +61,14 @@ class BookCacheManager: ObservableObject {
         }
     }
     
-    func downloadBook(slug: String, api: APIService) {
+    func downloadBook(slug: String, api: APIService) async {
         guard downloadStatus[slug] != .downloading else { return }
         
         downloadStatus[slug] = .downloading
         downloadProgress[slug] = 0.0
         
-        Task {
-            do {
-                let serverUrl = api.serverUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let serverUrl = api.serverUrl.trimmingCharacters(in: .whitespacesAndNewlines)
                 
                 // 1. Fetch manifest
                 guard let manifestUrl = URL(string: "\(serverUrl)/api/books/\(slug)/manifest") else {
@@ -176,9 +176,7 @@ class BookCacheManager: ObservableObject {
                         for try await _ in group {
                             downloadedCount += 1
                             let progress = Double(downloadedCount) / Double(totalFiles)
-                            await MainActor.run {
-                                self.downloadProgress[slug] = progress
-                            }
+                            self.downloadProgress[slug] = progress
                         }
                     }
                 }
@@ -187,19 +185,14 @@ class BookCacheManager: ObservableObject {
                 let manifestLocalURL = localBookDir(slug: slug).appendingPathComponent("manifest.json")
                 try finalData.write(to: manifestLocalURL)
                 
-                await MainActor.run {
-                    self.downloadStatus[slug] = .downloaded
-                    self.downloadProgress[slug] = 1.0
-                }
+                self.downloadStatus[slug] = .downloaded
+                self.downloadProgress[slug] = 1.0
                 
             } catch {
                 print("Failed to download book: \(error)")
-                await MainActor.run {
-                    self.downloadStatus[slug] = .notDownloaded
-                    self.downloadProgress[slug] = 0.0
-                }
+                self.downloadStatus[slug] = .notDownloaded
+                self.downloadProgress[slug] = 0.0
             }
-        }
     }
     
     func deleteCache(slug: String) {

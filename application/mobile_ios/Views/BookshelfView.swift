@@ -133,12 +133,14 @@ struct BookshelfView: View {
             await MainActor.run {
                 self.books = fetched
                 self.isLoading = false
-                
-                // Auto-download all books that are not downloaded yet
+            }
+            
+            // Auto-download all books that are not downloaded yet sequentially
+            Task { @MainActor in
                 for book in fetched {
                     let status = BookCacheManager.shared.downloadStatus[book.slug] ?? .notDownloaded
                     if status == .notDownloaded {
-                        BookCacheManager.shared.downloadBook(slug: book.slug, api: api)
+                        await BookCacheManager.shared.downloadBook(slug: book.slug, api: api)
                     }
                 }
             }
