@@ -9,7 +9,7 @@ SERVICE_NAME="bilingual-reader"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
 # Detect if we are inside the application source tree
-if [ -f "$(dirname "$0")/server.py" ] && [ -d "$(dirname "$0")/application" ]; then
+if [ -f "$0" ] && [ "$(basename "$0")" = "deploy.sh" ] && [ -f "$(dirname "$0")/server.py" ] && [ -d "$(dirname "$0")/application" ]; then
     IS_SOURCE_TREE=true
     APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 else
