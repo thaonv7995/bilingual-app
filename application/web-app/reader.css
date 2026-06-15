@@ -1095,6 +1095,65 @@ body.is-resizing .reader-iframe {
   animation: modalIn 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
+.modal-content--settings {
+  max-width: min(760px, 94vw);
+}
+
+.modal-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-section + .settings-section {
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-section__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+
+.settings-section__hint {
+  margin: -4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.settings-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 18px;
+}
+
+.settings-form-grid .form-group--full {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .modal-content--settings {
+    max-width: 94vw;
+  }
+
+  .settings-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .modal-header {
   padding: 20px 24px;
   border-bottom: 1px solid var(--border);
@@ -1107,15 +1166,6 @@ body.is-resizing .reader-iframe {
   font-weight: 700;
   font-size: 18px;
   color: white;
-}
-
-.modal-body {
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  overflow-y: auto;
-  flex: 1;
 }
 
 .form-group {

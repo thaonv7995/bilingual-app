@@ -3,6 +3,17 @@
 import { h, render } from './libs/preact.mjs';
 import { useState, useEffect, useRef, useMemo } from './libs/hooks.mjs';
 import htm from './libs/htm.mjs';
+import {
+  configureVocaClient,
+  defaultVocaSettings,
+  cleanWord,
+  lookupWord,
+  showVocaLookupResults,
+  showVocaNotFoundPanel,
+  removeVocaLookupPanel,
+  getVocaLookupPanelCss,
+  showVocaError,
+} from './voca-client.js';
 
 // Initialize htm with Preact
 const html = htm.bind(h);
@@ -13,6 +24,7 @@ const DEFAULT_SETTINGS = {
   baseURL: 'https://api.openai.com/v1',
   apiKey: '',
   model: 'gpt-4o-mini',
+  ...defaultVocaSettings(),
 };
 
 const HIGHLIGHT_COLORS = [
@@ -22,7 +34,8 @@ const HIGHLIGHT_COLORS = [
   { id: 'green', value: '#86efac', label: 'Xanh lá' },
 ];
 
-const PARAGRAPH_SELECTOR = 'p, .chapter-start, .no-indent, h1, h2, h3, li';
+const PARAGRAPH_SELECTOR =
+  'p, .chapter-start, .no-indent, h1, h2, h3, h4, h5, h6, li, blockquote, .section-title, .action-header, .action-title';
 
 let highlightAppContext = null;
 
@@ -368,6 +381,10 @@ function App() {
   const [formApiKey, setFormApiKey] = useState(settings.apiKey);
   const [formModel, setFormModel] = useState(settings.model);
   const [formLayoutMode, setFormLayoutMode] = useState(layoutMode);
+  const [formVocaBridgeOrigin, setFormVocaBridgeOrigin] = useState(settings.vocaBridgeOrigin || '');
+  const [formVocaBridgeToken, setFormVocaBridgeToken] = useState(settings.vocaBridgeToken || '');
+  const [formTtsEndpoint, setFormTtsEndpoint] = useState(settings.ttsEndpoint || '');
+  const [formTtsModel, setFormTtsModel] = useState(settings.ttsModel || 'edge-tts/en-US-SteffanNeural');
 
   const openSettings = () => {
     setFormProvider(settings.provider);
@@ -375,6 +392,10 @@ function App() {
     setFormApiKey(settings.apiKey);
     setFormModel(settings.model);
     setFormLayoutMode(layoutMode);
+    setFormVocaBridgeOrigin(settings.vocaBridgeOrigin || '');
+    setFormVocaBridgeToken(settings.vocaBridgeToken || '');
+    setFormTtsEndpoint(settings.ttsEndpoint || '');
+    setFormTtsModel(settings.ttsModel || 'edge-tts/en-US-SteffanNeural');
     setSettingsOpen(true);
   };
 
@@ -425,6 +446,10 @@ function App() {
       removeAllReaderHighlightUI();
     }
   }, [activeBook]);
+
+  useEffect(() => {
+    configureVocaClient(() => settings);
+  }, [settings]);
 
   useEffect(() => {
     localStorage.setItem('bilingual.reader.chatWidth', chatWidth);
@@ -1002,7 +1027,12 @@ function App() {
       provider: formProvider,
       baseURL: formBaseURL,
       apiKey: formApiKey,
-      model: formModel
+      model: formModel,
+      vocaBridgeOrigin: formVocaBridgeOrigin.trim(),
+      vocaBridgeToken: formVocaBridgeToken.trim(),
+      ttsEndpoint: formTtsEndpoint.trim(),
+      ttsModel: formTtsModel.trim(),
+      useApiTts: true,
     };
     setSettings(updated);
     localStorage.setItem('bilingual.reader.settings', JSON.stringify(updated));
@@ -1562,38 +1592,69 @@ Instructions:
   function renderSettingsModal() {
     return html`
       <div class="modal-backdrop" onClick=${() => setSettingsOpen(false)}>
-        <form class="modal-content" onSubmit=${saveSettings} onClick=${(e) => e.stopPropagation()}>
+        <form class="modal-content modal-content--settings" onSubmit=${saveSettings} onClick=${(e) => e.stopPropagation()}>
           <div class="modal-header">
-            <h3>Cấu hình Trợ lý AI</h3>
+            <h3>Cấu hình AI & Voca</h3>
             <button class="nav-btn" type="button" onClick=${() => setSettingsOpen(false)}>✕</button>
           </div>
           <div class="modal-body">
-            <div class="form-group">
-              <label class="form-label">API Provider</label>
-              <select class="form-select" value=${formProvider} onChange=${onProviderChange}>
-                <option value="openai">OpenAI (Official)</option>
-                <option value="gemini">Google Gemini (OpenAI compat)</option>
-                <option value="custom">Custom (Ollama / Local)</option>
-              </select>
-            </div>
+            <section class="settings-section">
+              <h4 class="settings-section__title">Trợ lý AI</h4>
+              <div class="settings-form-grid">
+                <div class="form-group form-group--full">
+                  <label class="form-label">API Provider</label>
+                  <select class="form-select" value=${formProvider} onChange=${onProviderChange}>
+                    <option value="openai">OpenAI (Official)</option>
+                    <option value="gemini">Google Gemini (OpenAI compat)</option>
+                    <option value="custom">Custom (Ollama / Local)</option>
+                  </select>
+                </div>
 
-            <div class="form-group">
-              <label class="form-label">API Base URL</label>
-              <input class="form-input" type="text" required value=${formBaseURL} onInput=${(e) => setFormBaseURL(e.target.value)} />
-            </div>
+                <div class="form-group form-group--full">
+                  <label class="form-label">API Base URL</label>
+                  <input class="form-input" type="text" required value=${formBaseURL} onInput=${(e) => setFormBaseURL(e.target.value)} />
+                </div>
 
-            <div class="form-group">
-              <label class="form-label">API Key</label>
-              <input class="form-input" type="password" placeholder="Nhập API Key của bạn" value=${formApiKey} onInput=${(e) => setFormApiKey(e.target.value)} />
-            </div>
+                <div class="form-group">
+                  <label class="form-label">API Key</label>
+                  <input class="form-input" type="password" placeholder="Nhập API Key của bạn" value=${formApiKey} onInput=${(e) => setFormApiKey(e.target.value)} />
+                </div>
 
-            <div class="form-group">
-              <label class="form-label">Model Name</label>
-              <input class="form-input" type="text" required value=${formModel} onInput=${(e) => setFormModel(e.target.value)} />
-            </div>
+                <div class="form-group">
+                  <label class="form-label">Model Name</label>
+                  <input class="form-input" type="text" required value=${formModel} onInput=${(e) => setFormModel(e.target.value)} />
+                </div>
+              </div>
+            </section>
 
-            <div class="form-group">
-              <label class="form-label">Bố cục song ngữ</label>
+            <section class="settings-section">
+              <h4 class="settings-section__title">Voca Dictionary Bridge</h4>
+              <p class="settings-section__hint">Dùng chung API Key / Model phía trên để tạo thẻ từ vựng và TTS phát âm.</p>
+              <div class="settings-form-grid">
+                <div class="form-group form-group--full">
+                  <label class="form-label">Voca Bridge URL</label>
+                  <input class="form-input" type="url" placeholder="https://voca-bridge.thaonv.online" value=${formVocaBridgeOrigin} onInput=${(e) => setFormVocaBridgeOrigin(e.target.value)} />
+                </div>
+
+                <div class="form-group form-group--full">
+                  <label class="form-label">Voca API Token</label>
+                  <input class="form-input" type="password" placeholder="Bearer token" value=${formVocaBridgeToken} onInput=${(e) => setFormVocaBridgeToken(e.target.value)} />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">TTS Endpoint (tùy chọn)</label>
+                  <input class="form-input" type="url" placeholder="https://api.openai.com/v1/audio/speech" value=${formTtsEndpoint} onInput=${(e) => setFormTtsEndpoint(e.target.value)} />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">TTS Voice Model</label>
+                  <input class="form-input" type="text" value=${formTtsModel} onInput=${(e) => setFormTtsModel(e.target.value)} />
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h4 class="settings-section__title">Bố cục song ngữ</h4>
               <div class="layout-options-grid">
                 <div class=${`layout-option-card ${formLayoutMode === 'en-vi' ? 'active' : ''}`} onClick=${() => setFormLayoutMode('en-vi')} title="English - Tiếng Việt (Trái - Phải)">
                   <div class="layout-preview preview-en-vi">
@@ -1623,7 +1684,7 @@ Instructions:
                   </div>
                 </div>
               </div>
-            </div>
+            </section>
           </div>
           <div class="modal-footer">
             <button class="btn-secondary" type="button" onClick=${() => setSettingsOpen(false)}>Hủy</button>
@@ -2041,7 +2102,7 @@ function segmentDocSentences(doc) {
   const article = doc.querySelector('article') || doc.body;
   if (!article) return;
   
-  const paragraphs = article.querySelectorAll('p, .chapter-start, .no-indent, h1, h2, h3, li');
+  const paragraphs = article.querySelectorAll(PARAGRAPH_SELECTOR);
   paragraphs.forEach((p, idx) => {
     if (!p.querySelector('.sentence-node')) {
       segmentParagraph(p, idx);
@@ -2210,6 +2271,14 @@ function injectHighlightCSS(doc, isEnglish) {
       from { opacity: 0; transform: rotate(-1.5deg) scale(0.92); }
       to { opacity: 1; transform: rotate(-1.5deg) scale(1); }
     }
+    .prose-page p, .prose-page li, .prose-page blockquote,
+    .prose-page .section-title, .prose-page .action-header, .prose-page .action-title,
+    .prose-page h1, .prose-page h2, .prose-page h3, .prose-page h4, .prose-page h5, .prose-page h6,
+    .sentence-node {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    ${getVocaLookupPanelCss()}
   `;
   doc.head.appendChild(style);
 }
@@ -2327,6 +2396,7 @@ function reapplyHighlightsInIframes(slug, pageNum, lang) {
 function removeReaderHighlightUI(doc) {
   if (!doc) return;
   doc.querySelectorAll('.reader-highlight-toolbar, .reader-highlight-sticky').forEach(el => el.remove());
+  removeVocaLookupPanel(doc);
 }
 
 function removeAllReaderHighlightUI() {
@@ -2457,6 +2527,31 @@ function showReaderHighlightToolbar(doc, anchorRect, options) {
   });
   toolbar.appendChild(noteBtn);
 
+  if (options.lang === 'en' && options.selectionInfo?.text) {
+    const lookupBtn = doc.createElement('button');
+    lookupBtn.type = 'button';
+    lookupBtn.className = 'reader-highlight-toolbar__icon';
+    lookupBtn.title = 'Tra cứu Voca';
+    lookupBtn.textContent = '📖';
+    lookupBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      toolbar.remove();
+      const word = cleanWord(options.selectionInfo.text);
+      if (!word) return;
+      try {
+        const result = await lookupWord(word);
+        if (result.found) {
+          showVocaLookupResults(doc, anchorRect, word, result);
+        } else {
+          showVocaNotFoundPanel(doc, anchorRect, word);
+        }
+      } catch (err) {
+        showVocaError(err instanceof Error ? err.message : 'Lookup failed.');
+      }
+    });
+    toolbar.appendChild(lookupBtn);
+  }
+
   if (options.mode === 'edit') {
     const delBtn = doc.createElement('button');
     delBtn.type = 'button';
@@ -2508,15 +2603,15 @@ function clearAllHighlights() {
 
 function registerIframeHighlightListeners(iframeWin, doc, iframeEl, lang) {
   doc.addEventListener('mousedown', (e) => {
-    if (e.target.closest('mark.reader-highlight, .reader-highlight-toolbar, .reader-highlight-sticky')) return;
+    if (e.target.closest('mark.reader-highlight, .reader-highlight-toolbar, .reader-highlight-sticky, .voca-lookup-panel')) return;
     removeReaderHighlightUI(doc);
   });
 
   doc.addEventListener('mouseup', (e) => {
-    if (e.target.closest('.reader-highlight-toolbar, .reader-highlight-sticky')) return;
+    if (e.target.closest('.reader-highlight-toolbar, .reader-highlight-sticky, .voca-lookup-panel')) return;
 
     setTimeout(() => {
-      if (e.target.closest('.reader-highlight-toolbar, .reader-highlight-sticky')) return;
+      if (e.target.closest('.reader-highlight-toolbar, .reader-highlight-sticky, .voca-lookup-panel')) return;
 
       const selection = iframeWin.getSelection();
       const selectedText = selection.toString().trim();

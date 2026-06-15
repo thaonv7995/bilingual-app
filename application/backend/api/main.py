@@ -109,6 +109,10 @@ def get_config():
 def get_app_js():
     return FileResponse(WEB_APP_DIR / "app.js")
 
+@app.get("/voca-client.js")
+def get_voca_client_js():
+    return FileResponse(WEB_APP_DIR / "voca-client.js")
+
 @app.get("/reader.css")
 def get_reader_css():
     return FileResponse(WEB_APP_DIR / "reader.css")
