@@ -715,22 +715,26 @@ struct ReaderView: View {
     }
 
     private func registerWebView(_ webView: WKWebView, lang: String, page: Int, containerMode: String) {
-        let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
-        if webViews[key] !== webView {
-            webViews[key] = webView
-        }
-        if vocaPanelLang == lang, vocaPanelPage == page, vocaPanelContainerMode == containerMode, vocaPanelWebView == nil {
-            vocaPanelWebView = webView
+        DispatchQueue.main.async {
+            let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
+            if webViews[key] !== webView {
+                webViews[key] = webView
+            }
+            if vocaPanelLang == lang, vocaPanelPage == page, vocaPanelContainerMode == containerMode, vocaPanelWebView == nil {
+                vocaPanelWebView = webView
+            }
         }
     }
 
     private func unregisterWebView(_ webView: WKWebView, lang: String, page: Int, containerMode: String) {
-        let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
-        if webViews[key] === webView {
-            webViews.removeValue(forKey: key)
-        }
-        if vocaPanelWebView === webView {
-            vocaPanelWebView = nil
+        DispatchQueue.main.async {
+            let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
+            if webViews[key] === webView {
+                webViews.removeValue(forKey: key)
+            }
+            if vocaPanelWebView === webView {
+                vocaPanelWebView = nil
+            }
         }
     }
 
