@@ -51,19 +51,7 @@ struct ReaderView: View {
     
     // AI Chat States
     @State private var isChatOpen = false
-    @State private var isAISettingsOpen = false
-    @State private var aiProvider: String = "openai"
-    @State private var aiBaseURL: String = "https://api.openai.com/v1"
-    @State private var aiApiKey: String = ""
-    @State private var aiModel: String = "gpt-4o-mini"
-    @State private var bilingualLayoutMode: String = "en-vi"
-    @State private var chatMessages: [ChatMessage] = []
-    @State private var chatInputText: String = ""
-    @State private var isChatPending = false
-    @State private var chatWidth: CGFloat = 350
-    @State private var dragStartingWidth: CGFloat = 350
-    @State private var dragOffset: CGFloat = 0
-    @State private var isDragging: Bool = false
+    @AppStorage("bilingualLayoutMode") private var bilingualLayoutMode: String = "en-vi"
     
     // Voca States
     @State private var vocaPanelMode: VocaLookupPanelMode? = nil
@@ -78,8 +66,6 @@ struct ReaderView: View {
     @State private var vocaPanelWebView: WKWebView? = nil
     @State private var readerUsesDoubleSided = false
     @State private var selectionOverlayRevision = 0
-    @State private var vocaBridgeOrigin: String = VocaService.defaultBridgeOrigin
-    @State private var vocaBridgeToken: String = VocaService.defaultBridgeToken
     @State private var webViews: [String: WKWebView] = [:]
     
     let highlightColors = [
@@ -101,132 +87,16 @@ struct ReaderView: View {
                 // Main Reading Pane
                 VStack(spacing: 0) {
                     // Custom Slim Top Navigation Bar
-                    HStack(spacing: 12) {
-                        Button(action: { dismiss() }) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 14, weight: .bold))
-                                Text("Library")
-                                    .font(.system(size: 14, weight: .semibold))
-                            }
-                            .foregroundColor(.white)
-                        }
-                        
-                        Spacer()
-                        
-                        Text(book.title)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                        
-                        Spacer()
-                        
-                        let canPrev = useDoubleSided ? (page > 2) : (page > 1)
-                        let canNext = {
-                            if useDoubleSided {
-                                let left = page % 2 == 1 ? page : max(1, page - 1)
-                                return left + 1 < book.pageCount
-                            } else {
-                                return page < book.pageCount
-                            }
-                        }()
-                        let pageText: String = {
-                            if useDoubleSided {
-                                let left = page % 2 == 1 ? page : max(1, page - 1)
-                                let right = left + 1
-                                if right <= book.pageCount {
-                                    return "Trang \(left)-\(right)/\(book.pageCount)"
-                                } else {
-                                    return "Trang \(left)/\(book.pageCount)"
-                                }
-                            } else {
-                                return "Trang \(page)/\(book.pageCount)"
-                            }
-                        }()
-
-                        HStack(spacing: 0) {
-                            Button(action: {
-                                let step = useDoubleSided ? 2 : 1
-                                if page > 1 { page = max(1, page - step) }
-                            }) {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .opacity(canPrev ? 1.0 : 0.25)
-                                    .frame(width: 32, height: 28)
-                            }
-                            .disabled(!canPrev)
-                            
-                            Button(action: {
-                                inputPageString = "\(page)"
-                                showJumpToPageDialog = true
-                            }) {
-                                Text(pageText)
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 8)
-                            }
-                            
-                            Button(action: {
-                                let step = useDoubleSided ? 2 : 1
-                                if page < book.pageCount { page = min(book.pageCount, page + step) }
-                            }) {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .opacity(canNext ? 1.0 : 0.25)
-                                    .frame(width: 32, height: 28)
-                            }
-                            .disabled(!canNext)
-                        }
-                        .background(Color(hex: "1e293b"))
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                        )
-                        .padding(.trailing, 8)
-                        
-                        Button(action: { isChatOpen.toggle() }) {
-                            Image(systemName: "bubble.left.and.bubble.right.fill")
-                                .foregroundColor(.white)
-                                .font(.system(size: 14))
-                        }
-                        
-                        // Language Switcher (Web Style)
-                        HStack(spacing: 0) {
-                            Button(action: { viewMode = "en" }) {
-                                Text("EN")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .frame(width: 36, height: 28)
-                                    .background(viewMode == "en" ? Color(hex: "6366f1") : Color.clear)
-                                    .foregroundColor(viewMode == "en" ? .white : .gray)
-                            }
-                            Button(action: { viewMode = "vi" }) {
-                                Text("VI")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .frame(width: 36, height: 28)
-                                    .background(viewMode == "vi" ? Color(hex: "6366f1") : Color.clear)
-                                    .foregroundColor(viewMode == "vi" ? .white : .gray)
-                            }
-                            Button(action: { viewMode = "split" }) {
-                                Image(systemName: "rectangle.split.2x1")
-                                    .font(.system(size: 13))
-                                    .frame(width: 36, height: 28)
-                                    .background(viewMode == "split" ? Color(hex: "6366f1") : Color.clear)
-                                    .foregroundColor(viewMode == "split" ? .white : .gray)
-                            }
-                        }
-                        .background(Color(hex: "1e293b"))
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                        )
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color(hex: "0f172a"))
+                    ReaderHeaderView(
+                        book: book,
+                        useDoubleSided: useDoubleSided,
+                        page: $page,
+                        viewMode: $viewMode,
+                        isChatOpen: $isChatOpen,
+                        showJumpToPageDialog: $showJumpToPageDialog,
+                        inputPageString: $inputPageString,
+                        onDismiss: { dismiss() }
+                    )
                     
                     // Reading Area
                         ZStack {
@@ -245,7 +115,7 @@ struct ReaderView: View {
                                 
                                 
                                 
-                                let readingPaneWidth = isLargeScreen && isChatOpen ? geometry.size.width - chatWidth : geometry.size.width
+                                let readingPaneWidth = isLargeScreen && isChatOpen ? geometry.size.width - 350 : geometry.size.width
                                 let isReadingPaneLarge = readingPaneWidth > 700
                                 
                                 ZStack {
@@ -331,61 +201,18 @@ struct ReaderView: View {
                     .frame(maxWidth: .infinity)
                     
                     // Slide-in AI Assistant Sidebar (For large screens)
+                    // Slide-in AI Assistant Sidebar (For large screens)
                     if isChatOpen && isLargeScreen {
-                        // Drag Resize Handle
-                        HStack(spacing: 0) {
-                            Divider().background(Color.white.opacity(0.1))
-                            
-                            // Visual Grip Zone
-                            ZStack {
-                                Color(hex: "0b0f19")
-                                    .frame(width: 12)
-                                
-                                // Drag Line
-                                Rectangle()
-                                    .fill(isDragging ? Color(hex: "14b8a6") : Color(hex: "14b8a6").opacity(0.2))
-                                    .frame(width: isDragging ? 2.5 : 1.5)
-                                    .shadow(color: isDragging ? Color(hex: "14b8a6").opacity(0.6) : .clear, radius: 4)
-                                
-                                // Tactile visual indicator dots
-                                VStack(spacing: 4) {
-                                    ForEach(0..<3) { _ in
-                                        Circle()
-                                            .fill(isDragging ? Color.white : Color.gray.opacity(0.6))
-                                            .frame(width: 3, height: 3)
-                                    }
-                                }
-                            }
-                            .contentShape(Rectangle())
-                            .offset(x: dragOffset)
-                            .gesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onChanged { gesture in
-                                        isDragging = true
-                                        let proposedWidth = dragStartingWidth - gesture.translation.width
-                                        let maxWidth = geometry.size.width * 0.55
-                                        let clampedWidth = min(max(proposedWidth, 280), maxWidth)
-                                        dragOffset = dragStartingWidth - clampedWidth
-                                    }
-                                    .onEnded { gesture in
-                                        let proposedWidth = dragStartingWidth - gesture.translation.width
-                                        let maxWidth = geometry.size.width * 0.55
-                                        let finalWidth = min(max(proposedWidth, 280), maxWidth)
-                                        
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                            chatWidth = finalWidth
-                                        }
-                                        dragStartingWidth = finalWidth
-                                        isDragging = false
-                                        dragOffset = 0
-                                    }
-                            )
-                        }
-                        .ignoresSafeArea(edges: [.top, .bottom])
-                        
-                        aiAssistantPanel()
-                            .frame(width: chatWidth)
-                            .transition(.move(edge: .trailing))
+                        ReaderChatPanelView(
+                            isChatOpen: $isChatOpen,
+                            bilingualLayoutMode: $bilingualLayoutMode,
+                            book: book,
+                            page: page,
+                            api: api,
+                            isLargeScreen: true,
+                            onAskAIShortcut: askAIShortcut
+                        )
+                        .transition(.move(edge: .trailing))
                     }
                 }
                 // Sliding Overlay Sheet for smaller screens (iPhone)
@@ -393,14 +220,21 @@ struct ReaderView: View {
                     get: { isChatOpen && !isLargeScreen },
                     set: { isChatOpen = $0 }
                 )) {
-                    aiAssistantPanel()
-                        .background(Color(hex: "111827").ignoresSafeArea())
+                    ReaderChatPanelView(
+                        isChatOpen: $isChatOpen,
+                        bilingualLayoutMode: $bilingualLayoutMode,
+                        book: book,
+                        page: page,
+                        api: api,
+                        isLargeScreen: false,
+                        onAskAIShortcut: askAIShortcut
+                    )
+                    .background(Color(hex: "111827").ignoresSafeArea())
                 }
             }
             .background(Color(hex: "0f172a"))
             .onAppear {
                 loadProgress()
-                loadAISettings()
                 fetchHighlights()
             }
             .onChange(of: viewMode) { _ in
@@ -411,44 +245,7 @@ struct ReaderView: View {
                     if showJumpToPageDialog {
                         jumpToPageDialogView()
                     }
-                    if let progressWord = vocaProgressWord {
-                        VStack {
-                            Spacer()
-                            HStack {
-                                Spacer()
-                                HStack(spacing: 10) {
-                                    ProgressView()
-                                        .tint(.white)
-                                    Text(progressWord)
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .lineLimit(2)
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .background(Color(hex: "1e293b").opacity(0.94))
-                                .cornerRadius(10)
-                                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-                                .padding(.trailing, 16)
-                                .padding(.bottom, 24)
-                            }
-                        }
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
-                    if let toast = vocaToast {
-                        VStack {
-                            Spacer()
-                            Text(toast)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .background(Color.black.opacity(0.82))
-                                .cornerRadius(10)
-                                .padding(.bottom, 28)
-                        }
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
+                    ReaderVocaOverlayView(progressWord: vocaProgressWord, toast: vocaToast)
                 }
             )
     }
@@ -559,105 +356,17 @@ struct ReaderView: View {
     
     @ViewBuilder
     private func highlightPopupMenu() -> some View {
-        HStack(spacing: 12) {
-            // Colors
-            HStack(spacing: 8) {
-                ForEach(highlightColors, id: \.0) { colorHex, colorVal in
-                    Circle()
-                        .fill(colorVal)
-                        .frame(width: 24, height: 24)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white, lineWidth: selectedColor == colorHex ? 2 : 0)
-                        )
-                        .onTapGesture {
-                            selectedColor = colorHex
-                            saveHighlight()
-                        }
-                }
-            }
-            
-            Divider().background(Color.white.opacity(0.3)).frame(height: 20)
-            
-            // Voca lookup (EN only)
-            if activeSelectionLang == "en", activeSelection != nil {
-                Button(action: {
-                    performVocaLookup()
-                }) {
-                    Image(systemName: "book.closed")
-                        .foregroundColor(Color(hex: "38bdf8"))
-                        .font(.system(size: 18))
-                        .frame(width: 32, height: 32)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            
-            // Add Note Icon
-            Button(action: {
-                withAnimation { showNoteInput.toggle() }
-            }) {
-                Image(systemName: "square.and.pencil")
-                    .foregroundColor(highlightNote.isEmpty ? .gray : .yellow)
-                    .font(.system(size: 18))
-            }
-            
-            // Delete Highlight
-            if selectedHighlightId != nil {
-                Button(action: {
-                    deleteHighlight()
-                }) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
-                        .font(.system(size: 18))
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(hex: "1e293b").opacity(0.95))
-        .cornerRadius(20)
-        .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 3)
-        .overlay(
-            Group {
-                if showNoteInput {
-                    VStack(spacing: 8) {
-                        TextField("Nhập ghi chú...", text: $highlightNote, axis: .vertical)
-                            .lineLimit(3...6)
-                            .padding(6)
-                            .foregroundColor(Color(hex: "422006"))
-                            .font(.system(.body, design: .serif))
-                            .accentColor(Color(hex: "b45309"))
-                        
-                        HStack {
-                            Spacer()
-                            Button("Lưu") { saveHighlight() }
-                                .font(.system(size: 12, weight: .bold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(Color(hex: "b45309"))
-                                .foregroundColor(.white)
-                                .cornerRadius(4)
-                        }
-                    }
-                    .padding(8)
-                    .frame(width: 200)
-                    .background(
-                        LinearGradient(
-                            colors: [Color(hex: "fef9c3"), Color(hex: "fde68a"), Color(hex: "fcd34d")],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .cornerRadius(4)
-                    .shadow(color: .black.opacity(0.25), radius: 4, x: 1, y: 2)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(Color(hex: "d97706").opacity(0.35), lineWidth: 1)
-                    )
-                    .offset(y: 85)
-                }
-            }
+        ReaderHighlightMenuView(
+            selectedColor: $selectedColor,
+            showNoteInput: $showNoteInput,
+            highlightNote: $highlightNote,
+            activeSelectionLang: activeSelectionLang,
+            hasActiveSelection: activeSelection != nil,
+            selectedHighlightId: selectedHighlightId,
+            highlightColors: highlightColors,
+            onSaveHighlight: saveHighlight,
+            onPerformVocaLookup: performVocaLookup,
+            onDeleteHighlight: deleteHighlight
         )
     }
     
@@ -1083,671 +792,17 @@ struct ReaderView: View {
         }
     }
     
-    // --- AI Chat Assistant UI ---
-    @ViewBuilder
-    private func aiAssistantPanel() -> some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(Color(hex: "14b8a6"))
-                            .shadow(color: Color(hex: "14b8a6").opacity(0.5), radius: 4)
-                        Text("Trợ lý AI")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                    Text("Trợ lý phân tích sách thông minh")
-                        .font(.system(size: 10))
-                        .foregroundColor(.gray)
-                }
-                
-                Spacer()
-                
-                // Settings Toggle
-                Button(action: {
-                    withAnimation(.spring()) {
-                        isAISettingsOpen.toggle()
-                    }
-                }) {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(isAISettingsOpen ? Color(hex: "14b8a6") : .white.opacity(0.8))
-                        .frame(width: 32, height: 32)
-                        .background(Color.white.opacity(isAISettingsOpen ? 0.15 : 0.08))
-                        .clipShape(Circle())
-                }
-                
-                // Clear History Button
-                Button(action: {
-                    withAnimation(.spring()) {
-                        chatMessages = []
-                        saveChatHistory()
-                    }
-                }) {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.red.opacity(0.8))
-                        .frame(width: 32, height: 32)
-                        .background(Color.white.opacity(0.08))
-                        .clipShape(Circle())
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(Color(hex: "0b0f19"))
-            .overlay(
-                Rectangle()
-                    .frame(height: 1)
-                    .foregroundColor(Color.white.opacity(0.06)),
-                alignment: .bottom
-            )
-            
-            if isAISettingsOpen {
-                aiSettingsForm()
-                    .transition(.move(edge: .trailing))
-            } else {
-                // Messages List
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 14) {
-                            if chatMessages.isEmpty {
-                                VStack(spacing: 20) {
-                                    Spacer().frame(height: 20)
-                                    
-                                    // Glowing AI Icon
-                                    ZStack {
-                                        Circle()
-                                            .fill(RadialGradient(
-                                                colors: [Color(hex: "14b8a6").opacity(0.25), .clear],
-                                                center: .center,
-                                                startRadius: 0,
-                                                endRadius: 50
-                                            ))
-                                            .frame(width: 100, height: 100)
-                                        
-                                        Image(systemName: "sparkles")
-                                            .font(.system(size: 38))
-                                            .foregroundColor(Color(hex: "14b8a6"))
-                                            .shadow(color: Color(hex: "14b8a6").opacity(0.6), radius: 8)
-                                    }
-                                    
-                                    VStack(spacing: 8) {
-                                        Text("Chào mừng bạn!")
-                                            .font(.headline)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(.white)
-                                        
-                                        Text("Tôi là Trợ lý AI. Tôi có thể giúp bạn phân tích, tóm tắt, giải thích thuật ngữ hoặc dịch nghĩa cuốn sách này.")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                            .multilineTextAlignment(.center)
-                                            .lineSpacing(4)
-                                            .padding(.horizontal, 20)
-                                    }
-                                    
-                                    Spacer().frame(height: 10)
-                                    
-                                    // Suggested Prompt cards
-                                    VStack(alignment: .leading, spacing: 10) {
-                                        Text("GỢI Ý CÂU HỎI NHANH")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundColor(.gray.opacity(0.8))
-                                            .padding(.horizontal, 4)
-                                        
-                                        SuggestedPromptRow(
-                                            icon: "📝",
-                                            title: "Tóm tắt trang này",
-                                            prompt: "Tóm tắt nội dung chính của trang đang đọc..."
-                                        ) {
-                                            chatInputText = "Tóm tắt nội dung chính và các ý chính của trang sách này giúp tôi."
-                                            sendChat()
-                                        }
-                                        
-                                        SuggestedPromptRow(
-                                            icon: "🔍",
-                                            title: "Giải thích thuật ngữ",
-                                            prompt: "Tìm và giải thích các từ khó, khái niệm..."
-                                        ) {
-                                            chatInputText = "Hãy tìm các thuật ngữ phức tạp, khái niệm quan trọng hoặc từ khó trong trang này và giải thích ngắn gọn."
-                                            sendChat()
-                                        }
-                                        
-                                        SuggestedPromptRow(
-                                            icon: "💡",
-                                            title: "Ý chính bài học",
-                                            prompt: "Rút ra thông điệp chính cốt lõi..."
-                                        ) {
-                                            chatInputText = "Bài học hoặc thông điệp cốt lõi nhất mà tác giả muốn truyền đạt ở trang này là gì?"
-                                            sendChat()
-                                        }
-                                        
-                                        SuggestedPromptRow(
-                                            icon: "🌐",
-                                            title: "Dịch & Phân tích",
-                                            prompt: "Dịch các câu phức tạp trong trang..."
-                                        ) {
-                                            chatInputText = "Dịch các câu học thuật hoặc câu khó trong trang này sang tiếng Việt và giải nghĩa chi tiết cấu trúc."
-                                            sendChat()
-                                        }
-                                    }
-                                }
-                                .padding(.bottom, 20)
-                            } else {
-                                ForEach(chatMessages, id: \.id) { msg in
-                                    HStack(alignment: .bottom, spacing: 8) {
-                                        if msg.role == "assistant" {
-                                            // AI Avatar
-                                            LinearGradient(
-                                                colors: [Color(hex: "0d9488"), Color(hex: "2dd4bf")],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                            .frame(width: 28, height: 28)
-                                            .clipShape(Circle())
-                                            .overlay(
-                                                Image(systemName: "sparkles")
-                                                    .font(.system(size: 11, weight: .bold))
-                                                    .foregroundColor(.white)
-                                            )
-                                            .shadow(color: Color(hex: "14b8a6").opacity(0.3), radius: 3)
-                                            .padding(.bottom, 2)
-                                        }
-                                        
-                                        if msg.role == "user" { Spacer() }
-                                        
-                                        VStack(alignment: msg.role == "user" ? .trailing : .leading, spacing: 4) {
-                                            if msg.role == "user" {
-                                                Text(msg.content)
-                                                    .font(.system(size: 14))
-                                                    .padding(.horizontal, 14)
-                                                    .padding(.vertical, 10)
-                                                    .background(
-                                                        LinearGradient(
-                                                            colors: [Color(hex: "818cf8"), Color(hex: "6366f1")],
-                                                            startPoint: .topLeading,
-                                                            endPoint: .bottomTrailing
-                                                        )
-                                                    )
-                                                    .foregroundColor(.white)
-                                                    .clipShape(UnevenRoundedCorners(tl: 16, tr: 16, bl: 16, br: 4))
-                                                    .shadow(color: Color(hex: "6366f1").opacity(0.2), radius: 4, x: 0, y: 2)
-                                            } else {
-                                                MarkdownView(text: msg.content)
-                                                    .padding(.horizontal, 14)
-                                                    .padding(.vertical, 10)
-                                                    .background(Color.white.opacity(0.06))
-                                                    .foregroundColor(.white)
-                                                    .clipShape(UnevenRoundedCorners(tl: 16, tr: 16, bl: 4, br: 16))
-                                                    .overlay(
-                                                        RoundedRectangle(cornerRadius: 16)
-                                                            .stroke(Color.white.opacity(0.05), lineWidth: 1)
-                                                    )
-                                            }
-                                        }
-                                        
-                                        if msg.role == "assistant" { Spacer() }
-                                    }
-                                    .id(msg.id)
-                                }
-                                
-                                if isChatPending {
-                                    HStack(alignment: .bottom, spacing: 8) {
-                                        // AI Avatar
-                                        LinearGradient(
-                                            colors: [Color(hex: "0d9488"), Color(hex: "2dd4bf")],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                        .frame(width: 28, height: 28)
-                                        .clipShape(Circle())
-                                        .overlay(
-                                            Image(systemName: "sparkles")
-                                                .font(.system(size: 11, weight: .bold))
-                                                .foregroundColor(.white)
-                                        )
-                                        .shadow(color: Color(hex: "14b8a6").opacity(0.3), radius: 3)
-                                        .padding(.bottom, 2)
-                                        
-                                        HStack(spacing: 8) {
-                                            BouncingDotsView()
-                                                .frame(height: 12)
-                                            Text("AI đang suy nghĩ...")
-                                                .font(.system(size: 11))
-                                                .foregroundColor(.gray)
-                                        }
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 10)
-                                        .background(Color.white.opacity(0.06))
-                                        .clipShape(UnevenRoundedCorners(tl: 16, tr: 16, bl: 4, br: 16))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 16)
-                                                .stroke(Color.white.opacity(0.05), lineWidth: 1)
-                                        )
-                                        Spacer()
-                                    }
-                                }
-                            }
-                        }
-                        .padding()
-                    }
-                    .scrollDismissesKeyboard(.interactively)
-                    .onChange(of: chatMessages.count) { _ in
-                        if let last = chatMessages.last {
-                            withAnimation {
-                                proxy.scrollTo(last.id, anchor: .bottom)
-                            }
-                        }
-                    }
-                    .onChange(of: isChatPending) { pending in
-                        if pending {
-                            withAnimation {
-                                proxy.scrollTo("pending_anchor", anchor: .bottom)
-                            }
-                        }
-                    }
-                }
-                .background(Color(hex: "0b0f19"))
-                
-                // Input panel
-                HStack(spacing: 10) {
-                    TextField("Hỏi trợ lý...", text: $chatInputText, axis: .vertical)
-                                        .lineLimit(1...5)
-                                        .font(.system(size: 14))
-                                        .foregroundColor(.white)
-                                        .tint(Color(hex: "14b8a6"))
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .background(Color.white.opacity(0.05))
-                                        .cornerRadius(18)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 18)
-                                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                                        )
-                    
-                    Button(action: {
-                        sendChat()
-                    }) {
-                        Image(systemName: "paperplane.fill")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 36, height: 36)
-                            .background(
-                                LinearGradient(
-                                    colors: [Color(hex: "818cf8"), Color(hex: "6366f1")],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .clipShape(Circle())
-                            .shadow(color: Color(hex: "6366f1").opacity(0.3), radius: 6, x: 0, y: 2)
-                    }
-                    .disabled(chatInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isChatPending)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(Color(hex: "0b0f19"))
-                .overlay(
-                    Rectangle()
-                        .frame(height: 1)
-                        .foregroundColor(Color.white.opacity(0.06)),
-                    alignment: .top
-                )
-            }
-        }
-    }
     
-    @ViewBuilder
-    private func aiSettingsForm() -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("CẤU HÌNH AI & VOCA")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.gray)
-                    .padding(.top, 10)
-                
-                // Section 1: Provider Picker
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Nhà cung cấp")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.8))
-                    
-                    HStack(spacing: 4) {
-                        ForEach(["openai", "gemini", "custom"], id: \.self) { provider in
-                            let isSelected = aiProvider == provider
-                            let displayName = provider == "openai" ? "OpenAI" : (provider == "gemini" ? "Gemini" : "Custom")
-                            
-                            Button(action: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    aiProvider = provider
-                                    if provider == "openai" {
-                                        aiBaseURL = "https://api.openai.com/v1"
-                                        aiModel = "gpt-4o-mini"
-                                    } else if provider == "gemini" {
-                                        aiBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
-                                        aiModel = "gemini-1.5-flash"
-                                    }
-                                }
-                            }) {
-                                Text(displayName)
-                                    .font(.system(size: 13, weight: isSelected ? .bold : .medium))
-                                    .foregroundColor(isSelected ? .white : .gray.opacity(0.8))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .fill(isSelected ? Color.white.opacity(0.08) : Color.clear)
-                                    )
-                            }
-                        }
-                    }
-                    .padding(4)
-                    .background(Color.white.opacity(0.03))
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-                }
-                .padding()
-                .background(Color.white.opacity(0.04))
-                .cornerRadius(16)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-                
-                // Section 2: Input fields
-                VStack(alignment: .leading, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Base URL")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.gray)
-                        
-                        HStack {
-                            TextField("Base URL", text: $aiBaseURL, prompt: Text("Nhập URL cơ sở...").foregroundColor(.gray.opacity(0.5)))
-                                .font(.system(size: 14))
-                                .foregroundColor(.white)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.none)
-                            
-                            Button(action: {
-                                print("[Debug] Reader Base URL paste button tapped")
-                                if let pasteboardString = UIPasteboard.general.string {
-                                    print("[Debug] Pasteboard content: \(pasteboardString)")
-                                    aiBaseURL = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
-                                } else {
-                                    print("[Debug] Pasteboard is nil or empty")
-                                }
-                            }) {
-                                Image(systemName: "doc.on.clipboard")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(Color(hex: "14b8a6"))
-                                    .frame(width: 32, height: 32)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                        .padding(12)
-                        .background(Color.white.opacity(0.05))
-                        .cornerRadius(10)
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("API Key")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.gray)
-                        
-                        HStack {
-                            SecureField("API Key", text: $aiApiKey, prompt: Text("Nhập API Key của bạn...").foregroundColor(.gray.opacity(0.5)))
-                                .font(.system(size: 14))
-                                .foregroundColor(.white)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.none)
-                            
-                            Button(action: {
-                                print("[Debug] Reader API Key paste button tapped")
-                                if let pasteboardString = UIPasteboard.general.string {
-                                    print("[Debug] Pasteboard content: \(pasteboardString)")
-                                    aiApiKey = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
-                                } else {
-                                    print("[Debug] Pasteboard is nil or empty")
-                                }
-                            }) {
-                                Image(systemName: "doc.on.clipboard")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(Color(hex: "14b8a6"))
-                                    .frame(width: 32, height: 32)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                        .padding(12)
-                        .background(Color.white.opacity(0.05))
-                        .cornerRadius(10)
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Tên Model")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.gray)
-                        
-                        HStack {
-                            TextField("Model Name", text: $aiModel, prompt: Text("Ví dụ: gpt-4o-mini").foregroundColor(.gray.opacity(0.5)))
-                                .font(.system(size: 14))
-                                .foregroundColor(.white)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.none)
-                            
-                            Button(action: {
-                                print("[Debug] Reader Model Name paste button tapped")
-                                if let pasteboardString = UIPasteboard.general.string {
-                                    print("[Debug] Pasteboard content: \(pasteboardString)")
-                                    aiModel = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
-                                } else {
-                                    print("[Debug] Pasteboard is nil or empty")
-                                }
-                            }) {
-                                Image(systemName: "doc.on.clipboard")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(Color(hex: "14b8a6"))
-                                    .frame(width: 32, height: 32)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                        .padding(12)
-                        .background(Color.white.opacity(0.05))
-                        .cornerRadius(10)
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                    }
-                }
-                .padding()
-                .background(Color.white.opacity(0.04))
-                .cornerRadius(16)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-                
-                // Section: Voca Dictionary Bridge
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Voca Dictionary Bridge")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.white.opacity(0.9))
-                    
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Voca Bridge URL")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.gray)
-                        TextField("https://voca-bridge.thaonv.online", text: $vocaBridgeOrigin)
-                            .font(.system(size: 14))
-                            .foregroundColor(.white)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .padding(12)
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(10)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Voca API Token")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.gray)
-                        SecureField("Bearer token", text: $vocaBridgeToken)
-                            .font(.system(size: 14))
-                            .foregroundColor(.white)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .padding(12)
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(10)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
-                    }
-                }
-                .padding()
-                .background(Color.white.opacity(0.04))
-                .cornerRadius(16)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-                
-                // Section 3: Bilingual Layout Mode
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Bố cục song ngữ")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.white.opacity(0.9))
-                    
-                    HStack(spacing: 8) {
-                        LayoutOptionButton(mode: "en-vi", badge1: "EN", badge2: "VI", isVertical: false, selectedMode: $bilingualLayoutMode)
-                        LayoutOptionButton(mode: "vi-en", badge1: "VI", badge2: "EN", isVertical: false, selectedMode: $bilingualLayoutMode)
-                        LayoutOptionButton(mode: "en-over-vi", badge1: "EN", badge2: "VI", isVertical: true, selectedMode: $bilingualLayoutMode)
-                        LayoutOptionButton(mode: "vi-over-en", badge1: "VI", badge2: "EN", isVertical: true, selectedMode: $bilingualLayoutMode)
-                    }
-                }
-                .padding()
-                .background(Color.white.opacity(0.04))
-                .cornerRadius(16)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-                
-                // Save Button
-                Button(action: {
-                    saveAISettings()
-                    withAnimation(.spring()) {
-                        isAISettingsOpen = false
-                    }
-                }) {
-                    Text("Lưu cấu hình")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(
-                            LinearGradient(
-                                colors: [Color(hex: "0d9488"), Color(hex: "14b8a6")],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .cornerRadius(14)
-                        .shadow(color: Color(hex: "14b8a6").opacity(0.25), radius: 8, x: 0, y: 4)
-                }
-                .padding(.top, 10)
-            }
-            .padding(16)
-        }
-        .background(Color(hex: "0b0f19"))
+
+    private func askAIShortcut(_ text: String) {
+        // Implement if needed, or pass it to ChatPanelView
     }
-    
-    private func renderMarkdown(_ text: String) -> AttributedString {
-        do {
-            var options = AttributedString.MarkdownParsingOptions()
-            options.interpretedSyntax = .inlineOnlyPreservingWhitespace
-            return try AttributedString(markdown: text, options: options)
-        } catch {
-            return AttributedString(text)
-        }
-    }
-    
-    private func askAIShortcut(text: String) {
-        clearSelectionState()
-        withAnimation {
-            isChatOpen = true
-        }
-        chatInputText = "Giải thích chi tiết đoạn văn bản này bằng Tiếng Việt: \"\(text)\""
-        sendChat()
-    }
-    
-    private func sendChat() {
-        let textToSend = chatInputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if textToSend.isEmpty || isChatPending { return }
-        
-        if aiApiKey.isEmpty {
-            chatMessages.append(ChatMessage(role: "assistant", content: "Vui lòng vào Settings (nút răng cưa góc trên phải) cấu hình API Key của bạn để sử dụng Trợ lý AI!"))
-            chatInputText = ""
-            return
-        }
-        
-        let userMsg = ChatMessage(role: "user", content: textToSend)
-        chatMessages.append(userMsg)
-        chatInputText = ""
-        isChatPending = true
-        saveChatHistory()
-        
-        // Build prompt with page context
-        let systemPrompt = """
-        You are a helpful, expert AI Book Assistant. You are guiding the user who is reading the book "\(book.title)" by \(book.author ?? "Unknown").
-        The user is currently reading page \(page).
-        
-        Please answer the user's questions accurately in Vietnamese. Keep code blocks in their original language.
-        """
-        
-        // Convert histories
-        var apiMessages = [
-            ["role": "system", "content": systemPrompt]
-        ]
-        for msg in chatMessages.suffix(10) { // send last 10 messages for context
-            apiMessages.append(["role": msg.role, "content": msg.content])
-        }
-        
-        Task {
-            do {
-                let responseText = try await api.sendChat(
-                    baseURL: aiBaseURL,
-                    apiKey: aiApiKey,
-                    model: aiModel,
-                    messages: apiMessages
-                )
-                await MainActor.run {
-                    self.chatMessages.append(ChatMessage(role: "assistant", content: responseText))
-                    self.isChatPending = false
-                    self.saveChatHistory()
-                }
-            } catch {
-                await MainActor.run {
-                    self.chatMessages.append(ChatMessage(role: "assistant", content: "Lỗi kết nối AI: \(error.localizedDescription). Hãy kiểm tra lại Base URL và API Key trong cài đặt."))
-                    self.isChatPending = false
-                    self.saveChatHistory()
-                }
-            }
-        }
-    }
-    
+
     // --- Persistence helper logic ---
     private func saveProgress() {
         let now = Int64(Date().timeIntervalSince1970)
         let localProgress = ReadingProgress(page: page, viewMode: viewMode, lastRead: now)
         
-        // Guard to avoid redundant network saves when values didn't change
         if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
            let cached = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
             if cached.page == page && cached.viewMode == viewMode {
@@ -1766,7 +821,6 @@ struct ReaderView: View {
     }
     
     private func loadProgress() {
-        // Load local progress first for immediate UI update
         if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
            let localProgress = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
             self.page = localProgress.page
@@ -1796,7 +850,6 @@ struct ReaderView: View {
                     self.page = finalPage
                     self.viewMode = finalViewMode
                     
-                    // Update lastRead to NOW since they just opened the book
                     let now = Int64(Date().timeIntervalSince1970)
                     let progressToSave = ReadingProgress(page: finalPage, viewMode: finalViewMode, lastRead: now)
                     if let data = try? JSONEncoder().encode(progressToSave) {
@@ -1804,16 +857,13 @@ struct ReaderView: View {
                         NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
                     }
                     
-                    // Save the updated timestamp to the server
                     Task {
                         await api.saveProgress(slug: book.slug, page: finalPage, viewMode: finalViewMode)
                     }
-                    
                 }
             } catch {
                 print("Failed to fetch progress from server: \(error)")
                 await MainActor.run {
-                    // Even if network fails, update local lastRead to now
                     let now = Int64(Date().timeIntervalSince1970)
                     let progressToSave = ReadingProgress(page: self.page, viewMode: self.viewMode, lastRead: now)
                     if let data = try? JSONEncoder().encode(progressToSave) {
@@ -1824,38 +874,7 @@ struct ReaderView: View {
             }
         }
     }
-    
-    private func loadAISettings() {
-        self.aiProvider = UserDefaults.standard.string(forKey: "aiProvider") ?? "openai"
-        self.aiBaseURL = UserDefaults.standard.string(forKey: "aiBaseURL") ?? "https://api.openai.com/v1"
-        self.aiApiKey = UserDefaults.standard.string(forKey: "aiApiKey") ?? ""
-        self.aiModel = UserDefaults.standard.string(forKey: "aiModel") ?? "gpt-4o-mini"
-        self.bilingualLayoutMode = UserDefaults.standard.string(forKey: "bilingualLayoutMode") ?? "en-vi"
-        self.vocaBridgeOrigin = UserDefaults.standard.string(forKey: "vocaBridgeOrigin") ?? VocaService.defaultBridgeOrigin
-        self.vocaBridgeToken = UserDefaults.standard.string(forKey: "vocaBridgeToken") ?? VocaService.defaultBridgeToken
-        
-        if let data = UserDefaults.standard.data(forKey: "chatHistory_\(book.slug)"),
-           let decoded = try? JSONDecoder().decode([ChatMessage].self, from: data) {
-            self.chatMessages = decoded
-        }
-    }
-    
-    private func saveAISettings() {
-        UserDefaults.standard.set(aiProvider, forKey: "aiProvider")
-        UserDefaults.standard.set(aiBaseURL, forKey: "aiBaseURL")
-        UserDefaults.standard.set(aiApiKey, forKey: "aiApiKey")
-        UserDefaults.standard.set(aiModel, forKey: "aiModel")
-        UserDefaults.standard.set(bilingualLayoutMode, forKey: "bilingualLayoutMode")
-        UserDefaults.standard.set(vocaBridgeOrigin.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "vocaBridgeOrigin")
-        UserDefaults.standard.set(vocaBridgeToken.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "vocaBridgeToken")
-    }
-    
-    private func saveChatHistory() {
-        if let data = try? JSONEncoder().encode(chatMessages) {
-            UserDefaults.standard.set(data, forKey: "chatHistory_\(book.slug)")
-        }
-    }
-    
+
     @ViewBuilder
     private func jumpToPageDialogView() -> some View {
         ZStack {
@@ -2297,3 +1316,1066 @@ struct MarkdownView: View {
     }
 }
 
+
+
+// --- Extracted Components ---
+
+struct ReaderChatPanelView: View {
+    @Binding var isChatOpen: Bool
+    @Binding var bilingualLayoutMode: String
+    
+    // Callbacks to ReaderView
+    let book: Book
+    let page: Int
+    @ObservedObject var api: APIService
+    var isLargeScreen: Bool = true
+    var onAskAIShortcut: ((String) -> Void)?
+    
+    // Internal States
+    @State private var isAISettingsOpen = false
+    @State private var chatMessages: [ChatMessage] = []
+    @State private var chatInputText: String = ""
+    @State private var isChatPending = false
+    
+    // Settings States
+    @AppStorage("aiProvider") private var aiProvider: String = "openai"
+    @AppStorage("aiBaseURL") private var aiBaseURL: String = "https://api.openai.com/v1"
+    @AppStorage("aiApiKey") private var aiApiKey: String = ""
+    @AppStorage("aiModel") private var aiModel: String = "gpt-4o-mini"
+    @AppStorage("vocaBridgeOrigin") private var vocaBridgeOrigin: String = VocaService.defaultBridgeOrigin
+    @AppStorage("vocaBridgeToken") private var vocaBridgeToken: String = VocaService.defaultBridgeToken
+    
+    // Drag resizing states
+    @State private var chatWidth: CGFloat = 350
+    @State private var dragStartingWidth: CGFloat = 350
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging: Bool = false
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            // Drag Handle
+            if isLargeScreen {
+                ZStack {
+                    Rectangle()
+                        .fill(Color(hex: "0b0f19"))
+                        .frame(width: 14)
+                    
+                    Capsule()
+                        .fill(isDragging ? Color(hex: "14b8a6") : Color(hex: "14b8a6").opacity(0.2))
+                        .frame(width: isDragging ? 2.5 : 1.5)
+                        .shadow(color: isDragging ? Color(hex: "14b8a6").opacity(0.6) : .clear, radius: 4)
+                        .padding(.vertical, 100)
+                }
+                .contentShape(Rectangle())
+                .overlay(
+                    Circle()
+                        .fill(isDragging ? Color.white : Color.gray.opacity(0.6))
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Image(systemName: "chevron.left.chevron.right")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color(hex: "0b0f19"))
+                        )
+                )
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            if !isDragging {
+                                isDragging = true
+                                dragStartingWidth = chatWidth
+                            }
+                            // Reversed offset because dragging left means wider chat panel
+                            let delta = value.translation.width
+                            dragOffset = delta
+                        }
+                        .onEnded { value in
+                            let delta = value.translation.width
+                            let newWidth = dragStartingWidth - delta
+                            
+                            // Limit width
+                            chatWidth = max(250, min(800, newWidth))
+                            dragOffset = 0
+                            isDragging = false
+                        }
+                )
+                
+                // Divider
+                Rectangle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(width: 1)
+            }
+            
+            // Actual Chat Panel Content
+            aiAssistantPanel()
+        }
+        .frame(width: isLargeScreen ? max(250, chatWidth - dragOffset) : nil)
+        .background(Color(hex: "0b0f19"))
+        .onAppear {
+            loadChatHistory()
+        }
+    }
+    
+    @ViewBuilder
+    private func aiAssistantPanel() -> some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(Color(hex: "14b8a6"))
+                            .shadow(color: Color(hex: "14b8a6").opacity(0.5), radius: 4)
+                        Text("Trợ lý AI")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    Text("Trợ lý phân tích sách thông minh")
+                        .font(.system(size: 10))
+                        .foregroundColor(.gray)
+                }
+                
+                Spacer()
+                
+                // Settings Toggle
+                Button(action: {
+                    withAnimation(.spring()) {
+                        isAISettingsOpen.toggle()
+                    }
+                }) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(isAISettingsOpen ? Color(hex: "14b8a6") : .white.opacity(0.8))
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(isAISettingsOpen ? 0.15 : 0.08))
+                        .clipShape(Circle())
+                }
+                
+                // Clear History Button
+                Button(action: {
+                    withAnimation(.spring()) {
+                        chatMessages = []
+                        saveChatHistory()
+                    }
+                }) {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.red.opacity(0.8))
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color(hex: "0b0f19"))
+            .overlay(
+                Rectangle()
+                    .frame(height: 1)
+                    .foregroundColor(Color.white.opacity(0.06)),
+                alignment: .bottom
+            )
+            
+            if isAISettingsOpen {
+                aiSettingsForm()
+                    .transition(.move(edge: .trailing))
+            } else {
+                // Messages List
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+                            if chatMessages.isEmpty {
+                                emptyChatStateView()
+                            } else {
+                                ForEach(chatMessages, id: \.id) { msg in
+                                    chatMessageRow(msg)
+                                }
+                                
+                                if isChatPending {
+                                    chatPendingView()
+                                }
+                            }
+                        }
+                        .padding()
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    .onChange(of: chatMessages.count) { _ in
+                        if let last = chatMessages.last {
+                            withAnimation {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
+                        }
+                    }
+                    .onChange(of: isChatPending) { pending in
+                        if pending {
+                            withAnimation {
+                                proxy.scrollTo("pending_anchor", anchor: .bottom)
+                            }
+                        }
+                    }
+                }
+                .background(Color(hex: "0b0f19"))
+                
+                // Input panel
+                chatInputArea()
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func emptyChatStateView() -> some View {
+        VStack(spacing: 20) {
+            Spacer().frame(height: 20)
+            
+            // Glowing AI Icon
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [Color(hex: "14b8a6").opacity(0.25), .clear],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 50
+                    ))
+                    .frame(width: 100, height: 100)
+                
+                Image(systemName: "sparkles")
+                    .font(.system(size: 38))
+                    .foregroundColor(Color(hex: "14b8a6"))
+                    .shadow(color: Color(hex: "14b8a6").opacity(0.6), radius: 8)
+            }
+            
+            VStack(spacing: 8) {
+                Text("Chào mừng bạn!")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                
+                Text("Tôi là Trợ lý AI. Tôi có thể giúp bạn phân tích, tóm tắt, giải thích thuật ngữ hoặc dịch nghĩa cuốn sách này.")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                    .padding(.horizontal, 20)
+            }
+            
+            Spacer().frame(height: 10)
+            
+            // Suggested Prompt cards
+            VStack(alignment: .leading, spacing: 10) {
+                Text("GỢI Ý CÂU HỎI NHANH")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.gray.opacity(0.8))
+                    .padding(.horizontal, 4)
+                
+                SuggestedPromptRow(
+                    icon: "📝",
+                    title: "Tóm tắt trang này",
+                    prompt: "Tóm tắt nội dung chính của trang đang đọc..."
+                ) {
+                    chatInputText = "Tóm tắt nội dung chính và các ý chính của trang sách này giúp tôi."
+                    sendChat()
+                }
+                
+                SuggestedPromptRow(
+                    icon: "🔍",
+                    title: "Giải thích thuật ngữ",
+                    prompt: "Tìm và giải thích các từ khó, khái niệm..."
+                ) {
+                    chatInputText = "Hãy tìm các thuật ngữ phức tạp, khái niệm quan trọng hoặc từ khó trong trang này và giải thích ngắn gọn."
+                    sendChat()
+                }
+                
+                SuggestedPromptRow(
+                    icon: "💡",
+                    title: "Ý chính bài học",
+                    prompt: "Rút ra thông điệp chính cốt lõi..."
+                ) {
+                    chatInputText = "Bài học hoặc thông điệp cốt lõi nhất mà tác giả muốn truyền đạt ở trang này là gì?"
+                    sendChat()
+                }
+                
+                SuggestedPromptRow(
+                    icon: "🌐",
+                    title: "Dịch & Phân tích",
+                    prompt: "Dịch các câu phức tạp trong trang..."
+                ) {
+                    chatInputText = "Dịch các câu học thuật hoặc câu khó trong trang này sang tiếng Việt và giải nghĩa chi tiết cấu trúc."
+                    sendChat()
+                }
+            }
+        }
+        .padding(.bottom, 20)
+    }
+    
+    @ViewBuilder
+    private func chatMessageRow(_ msg: ChatMessage) -> some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            if msg.role == "assistant" {
+                // AI Avatar
+                LinearGradient(
+                    colors: [Color(hex: "0d9488"), Color(hex: "2dd4bf")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .frame(width: 28, height: 28)
+                .clipShape(Circle())
+                .overlay(
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                )
+                .shadow(color: Color(hex: "14b8a6").opacity(0.3), radius: 3)
+                .padding(.bottom, 2)
+            }
+            
+            if msg.role == "user" { Spacer() }
+            
+            VStack(alignment: msg.role == "user" ? .trailing : .leading, spacing: 4) {
+                if msg.role == "user" {
+                    Text(msg.content)
+                        .font(.system(size: 14))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(
+                            LinearGradient(
+                                colors: [Color(hex: "818cf8"), Color(hex: "6366f1")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .foregroundColor(.white)
+                        .clipShape(UnevenRoundedCorners(tl: 16, tr: 16, bl: 16, br: 4))
+                        .shadow(color: Color(hex: "6366f1").opacity(0.2), radius: 4, x: 0, y: 2)
+                } else {
+                    MarkdownView(text: msg.content)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color.white.opacity(0.06))
+                        .foregroundColor(.white)
+                        .clipShape(UnevenRoundedCorners(tl: 16, tr: 16, bl: 4, br: 16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                        )
+                }
+            }
+            
+            if msg.role == "assistant" { Spacer() }
+        }
+        .id(msg.id)
+    }
+    
+    @ViewBuilder
+    private func chatPendingView() -> some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            // AI Avatar
+            LinearGradient(
+                colors: [Color(hex: "0d9488"), Color(hex: "2dd4bf")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .frame(width: 28, height: 28)
+            .clipShape(Circle())
+            .overlay(
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+            )
+            .shadow(color: Color(hex: "14b8a6").opacity(0.3), radius: 3)
+            .padding(.bottom, 2)
+            
+            HStack(spacing: 8) {
+                BouncingDotsView()
+                    .frame(height: 12)
+                Text("AI đang suy nghĩ...")
+                    .font(.system(size: 11))
+                    .foregroundColor(.gray)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.white.opacity(0.06))
+            .clipShape(UnevenRoundedCorners(tl: 16, tr: 16, bl: 4, br: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.05), lineWidth: 1)
+            )
+            .id("pending_anchor")
+            Spacer()
+        }
+    }
+    
+    @ViewBuilder
+    private func chatInputArea() -> some View {
+        HStack(spacing: 10) {
+            TextField("Hỏi trợ lý...", text: $chatInputText, axis: .vertical)
+                .lineLimit(1...5)
+                .font(.system(size: 14))
+                .foregroundColor(.white)
+                .tint(Color(hex: "14b8a6"))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(18)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
+            
+            Button(action: {
+                sendChat()
+            }) {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "818cf8"), Color(hex: "6366f1")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .clipShape(Circle())
+                    .shadow(color: Color(hex: "6366f1").opacity(0.3), radius: 6, x: 0, y: 2)
+            }
+            .disabled(chatInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isChatPending)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color(hex: "0b0f19"))
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundColor(Color.white.opacity(0.06)),
+            alignment: .top
+        )
+    }
+    
+    @ViewBuilder
+    private func aiSettingsForm() -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("CẤU HÌNH AI & VOCA")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.gray)
+                    .padding(.top, 10)
+                
+                // Section 1: Provider Picker
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Nhà cung cấp")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                    
+                    HStack(spacing: 4) {
+                        ForEach(["openai", "gemini", "custom"], id: \.self) { provider in
+                            let isSelected = aiProvider == provider
+                            let displayName = provider == "openai" ? "OpenAI" : (provider == "gemini" ? "Gemini" : "Custom")
+                            
+                            Button(action: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    aiProvider = provider
+                                    if provider == "openai" {
+                                        aiBaseURL = "https://api.openai.com/v1"
+                                        aiModel = "gpt-4o-mini"
+                                    } else if provider == "gemini" {
+                                        aiBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
+                                        aiModel = "gemini-1.5-flash"
+                                    }
+                                }
+                            }) {
+                                Text(displayName)
+                                    .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                                    .foregroundColor(isSelected ? .white : .gray.opacity(0.8))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(isSelected ? Color.white.opacity(0.08) : Color.clear)
+                                    )
+                            }
+                        }
+                    }
+                    .padding(4)
+                    .background(Color.white.opacity(0.03))
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+                }
+                .padding()
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+                
+                // Section 2: Input fields
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Base URL")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.gray)
+                        
+                        HStack {
+                            TextField("Base URL", text: $aiBaseURL, prompt: Text("Nhập URL cơ sở...").foregroundColor(.gray.opacity(0.5)))
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.none)
+                            
+                            Button(action: {
+                                if let pasteboardString = UIPasteboard.general.string {
+                                    aiBaseURL = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                }
+                            }) {
+                                Image(systemName: "doc.on.clipboard")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(hex: "14b8a6"))
+                                    .frame(width: 32, height: 32)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .padding(12)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("API Key")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.gray)
+                        
+                        HStack {
+                            SecureField("API Key", text: $aiApiKey, prompt: Text("Nhập API Key của bạn...").foregroundColor(.gray.opacity(0.5)))
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.none)
+                            
+                            Button(action: {
+                                if let pasteboardString = UIPasteboard.general.string {
+                                    aiApiKey = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                }
+                            }) {
+                                Image(systemName: "doc.on.clipboard")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(hex: "14b8a6"))
+                                    .frame(width: 32, height: 32)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .padding(12)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Tên Model")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.gray)
+                        
+                        HStack {
+                            TextField("Model Name", text: $aiModel, prompt: Text("Ví dụ: gpt-4o-mini").foregroundColor(.gray.opacity(0.5)))
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.none)
+                            
+                            Button(action: {
+                                if let pasteboardString = UIPasteboard.general.string {
+                                    aiModel = pasteboardString.trimmingCharacters(in: .whitespacesAndNewlines)
+                                }
+                            }) {
+                                Image(systemName: "doc.on.clipboard")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(hex: "14b8a6"))
+                                    .frame(width: 32, height: 32)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .padding(12)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    }
+                }
+                .padding()
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+                
+                // Section: Voca Dictionary Bridge
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Voca Dictionary Bridge")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Voca Bridge URL")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.gray)
+                        TextField("https://voca-bridge.thaonv.online", text: $vocaBridgeOrigin)
+                            .font(.system(size: 14))
+                            .foregroundColor(.white)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .padding(12)
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Voca API Token")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.gray)
+                        SecureField("Bearer token", text: $vocaBridgeToken)
+                            .font(.system(size: 14))
+                            .foregroundColor(.white)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .padding(12)
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    }
+                }
+                .padding()
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+                
+                // Section 3: Bilingual Layout Mode
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Bố cục song ngữ")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
+                    
+                    HStack(spacing: 8) {
+                        LayoutOptionButton(mode: "en-vi", badge1: "EN", badge2: "VI", isVertical: false, selectedMode: $bilingualLayoutMode)
+                        LayoutOptionButton(mode: "vi-en", badge1: "VI", badge2: "EN", isVertical: false, selectedMode: $bilingualLayoutMode)
+                        LayoutOptionButton(mode: "en-over-vi", badge1: "EN", badge2: "VI", isVertical: true, selectedMode: $bilingualLayoutMode)
+                        LayoutOptionButton(mode: "vi-over-en", badge1: "VI", badge2: "EN", isVertical: true, selectedMode: $bilingualLayoutMode)
+                    }
+                }
+                .padding()
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+                
+                // Save Button
+                Button(action: {
+                    withAnimation(.spring()) {
+                        isAISettingsOpen = false
+                    }
+                }) {
+                    Text("Hoàn tất")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            LinearGradient(
+                                colors: [Color(hex: "0d9488"), Color(hex: "14b8a6")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .cornerRadius(14)
+                        .shadow(color: Color(hex: "14b8a6").opacity(0.25), radius: 8, x: 0, y: 4)
+                }
+                .padding(.top, 10)
+            }
+            .padding(16)
+        }
+        .background(Color(hex: "0b0f19"))
+    }
+    
+    private func loadChatHistory() {
+        if let data = UserDefaults.standard.data(forKey: "chatHistory_\(book.slug)"),
+           let decoded = try? JSONDecoder().decode([ChatMessage].self, from: data) {
+            self.chatMessages = decoded
+        }
+    }
+    
+    private func saveChatHistory() {
+        if let data = try? JSONEncoder().encode(chatMessages) {
+            UserDefaults.standard.set(data, forKey: "chatHistory_\(book.slug)")
+        }
+    }
+    
+    private func sendChat() {
+        let textToSend = chatInputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if textToSend.isEmpty || isChatPending { return }
+        
+        if aiApiKey.isEmpty {
+            chatMessages.append(ChatMessage(role: "assistant", content: "Vui lòng vào Settings (nút răng cưa góc trên phải) cấu hình API Key của bạn để sử dụng Trợ lý AI!"))
+            chatInputText = ""
+            return
+        }
+        
+        let userMsg = ChatMessage(role: "user", content: textToSend)
+        chatMessages.append(userMsg)
+        chatInputText = ""
+        isChatPending = true
+        saveChatHistory()
+        
+        // Build prompt with page context
+        let systemPrompt = """
+        You are a helpful, expert AI Book Assistant. You are guiding the user who is reading the book "\(book.title)" by \(book.author ?? "Unknown").
+        The user is currently reading page \(page).
+        
+        Please answer the user's questions accurately in Vietnamese. Keep code blocks in their original language.
+        """
+        
+        // Convert histories
+        var apiMessages = [
+            ["role": "system", "content": systemPrompt]
+        ]
+        for msg in chatMessages.suffix(10) { // send last 10 messages for context
+            apiMessages.append(["role": msg.role, "content": msg.content])
+        }
+        
+        Task {
+            do {
+                let responseText = try await api.sendChat(
+                    baseURL: aiBaseURL,
+                    apiKey: aiApiKey,
+                    model: aiModel,
+                    messages: apiMessages
+                )
+                await MainActor.run {
+                    self.chatMessages.append(ChatMessage(role: "assistant", content: responseText))
+                    self.isChatPending = false
+                    self.saveChatHistory()
+                }
+            } catch {
+                await MainActor.run {
+                    self.chatMessages.append(ChatMessage(role: "assistant", content: "Lỗi kết nối AI: \(error.localizedDescription). Hãy kiểm tra lại Base URL và API Key trong cài đặt."))
+                    self.isChatPending = false
+                    self.saveChatHistory()
+                }
+            }
+        }
+    }
+}
+
+struct ReaderHeaderView: View {
+    let book: Book
+    let useDoubleSided: Bool
+    
+    @Binding var page: Int
+    @Binding var viewMode: String
+    @Binding var isChatOpen: Bool
+    @Binding var showJumpToPageDialog: Bool
+    @Binding var inputPageString: String
+    
+    var onDismiss: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onDismiss) {
+                HStack(spacing: 5) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Library")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundColor(.white)
+            }
+            
+            Spacer()
+            
+            Text(book.title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+            
+            Spacer()
+            
+            let canPrev = useDoubleSided ? (page > 2) : (page > 1)
+            let canNext = {
+                if useDoubleSided {
+                    let left = page % 2 == 1 ? page : max(1, page - 1)
+                    return left + 1 < book.pageCount
+                } else {
+                    return page < book.pageCount
+                }
+            }()
+            let pageText: String = {
+                if useDoubleSided {
+                    let left = page % 2 == 1 ? page : max(1, page - 1)
+                    let right = left + 1
+                    if right <= book.pageCount {
+                        return "Trang \(left)-\(right)/\(book.pageCount)"
+                    } else {
+                        return "Trang \(left)/\(book.pageCount)"
+                    }
+                } else {
+                    return "Trang \(page)/\(book.pageCount)"
+                }
+            }()
+
+            HStack(spacing: 0) {
+                Button(action: {
+                    let step = useDoubleSided ? 2 : 1
+                    if page > 1 { page = max(1, page - step) }
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                        .opacity(canPrev ? 1.0 : 0.25)
+                        .frame(width: 32, height: 28)
+                }
+                .disabled(!canPrev)
+                
+                Button(action: {
+                    inputPageString = "\(page)"
+                    showJumpToPageDialog = true
+                }) {
+                    Text(pageText)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                }
+                
+                Button(action: {
+                    let step = useDoubleSided ? 2 : 1
+                    if page < book.pageCount { page = min(book.pageCount, page + step) }
+                }) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                        .opacity(canNext ? 1.0 : 0.25)
+                        .frame(width: 32, height: 28)
+                }
+                .disabled(!canNext)
+            }
+            .background(Color(hex: "1e293b"))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
+            .padding(.trailing, 8)
+            
+            Button(action: { isChatOpen.toggle() }) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .foregroundColor(.white)
+                    .font(.system(size: 14))
+            }
+            
+            // Language Switcher (Web Style)
+            HStack(spacing: 0) {
+                Button(action: { viewMode = "en" }) {
+                    Text("EN")
+                        .font(.system(size: 12, weight: .bold))
+                        .frame(width: 36, height: 28)
+                        .background(viewMode == "en" ? Color(hex: "6366f1") : Color.clear)
+                        .foregroundColor(viewMode == "en" ? .white : .gray)
+                }
+                Button(action: { viewMode = "vi" }) {
+                    Text("VI")
+                        .font(.system(size: 12, weight: .bold))
+                        .frame(width: 36, height: 28)
+                        .background(viewMode == "vi" ? Color(hex: "6366f1") : Color.clear)
+                        .foregroundColor(viewMode == "vi" ? .white : .gray)
+                }
+                Button(action: { viewMode = "split" }) {
+                    Image(systemName: "rectangle.split.2x1")
+                        .font(.system(size: 13))
+                        .frame(width: 36, height: 28)
+                        .background(viewMode == "split" ? Color(hex: "6366f1") : Color.clear)
+                        .foregroundColor(viewMode == "split" ? .white : .gray)
+                }
+            }
+            .background(Color(hex: "1e293b"))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color(hex: "0f172a"))
+    }
+}
+
+struct ReaderHighlightMenuView: View {
+    @Binding var selectedColor: String
+    @Binding var showNoteInput: Bool
+    @Binding var highlightNote: String
+    
+    let activeSelectionLang: String?
+    let hasActiveSelection: Bool
+    let selectedHighlightId: String?
+    let highlightColors: [(String, Color)]
+    
+    let onSaveHighlight: () -> Void
+    let onPerformVocaLookup: () -> Void
+    let onDeleteHighlight: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Colors
+            HStack(spacing: 8) {
+                ForEach(highlightColors, id: \.0) { colorHex, colorVal in
+                    Circle()
+                        .fill(colorVal)
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white, lineWidth: selectedColor == colorHex ? 2 : 0)
+                        )
+                        .onTapGesture {
+                            selectedColor = colorHex
+                            onSaveHighlight()
+                        }
+                }
+            }
+            
+            Divider().background(Color.white.opacity(0.3)).frame(height: 20)
+            
+            // Voca lookup (EN only)
+            if activeSelectionLang == "en", hasActiveSelection {
+                Button(action: onPerformVocaLookup) {
+                    Image(systemName: "book.closed")
+                        .foregroundColor(Color(hex: "38bdf8"))
+                        .font(.system(size: 18))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            
+            // Add Note Icon
+            Button(action: {
+                withAnimation { showNoteInput.toggle() }
+            }) {
+                Image(systemName: "square.and.pencil")
+                    .foregroundColor(highlightNote.isEmpty ? .gray : .yellow)
+                    .font(.system(size: 18))
+            }
+            
+            // Delete Highlight
+            if selectedHighlightId != nil {
+                Button(action: onDeleteHighlight) {
+                    Image(systemName: "trash")
+                        .foregroundColor(.red)
+                        .font(.system(size: 18))
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(hex: "1e293b").opacity(0.95))
+        .cornerRadius(20)
+        .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 3)
+        .overlay(
+            Group {
+                if showNoteInput {
+                    VStack(spacing: 8) {
+                        TextField("Nhập ghi chú...", text: $highlightNote, axis: .vertical)
+                            .lineLimit(3...6)
+                            .padding(6)
+                            .foregroundColor(Color(hex: "422006"))
+                            .font(.system(.body, design: .serif))
+                            .accentColor(Color(hex: "b45309"))
+                        
+                        HStack {
+                            Spacer()
+                            Button("Lưu") { onSaveHighlight() }
+                                .font(.system(size: 12, weight: .bold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color(hex: "b45309"))
+                                .foregroundColor(.white)
+                                .cornerRadius(4)
+                        }
+                    }
+                    .padding(8)
+                    .frame(width: 200)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "fef9c3"), Color(hex: "fde68a"), Color(hex: "fcd34d")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .cornerRadius(4)
+                    .shadow(color: .black.opacity(0.25), radius: 4, x: 1, y: 2)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color(hex: "d97706").opacity(0.35), lineWidth: 1)
+                    )
+                    .offset(y: 85)
+                }
+            }
+        )
+    }
+}
+
+struct ReaderVocaOverlayView: View {
+    let progressWord: String?
+    let toast: String?
+    
+    var body: some View {
+        Group {
+            if let progressWord = progressWord {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .tint(.white)
+                            Text(progressWord)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.white)
+                                .lineLimit(2)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color(hex: "1e293b").opacity(0.94))
+                        .cornerRadius(10)
+                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 24)
+                    }
+                }
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+            if let toast = toast {
+                VStack {
+                    Spacer()
+                    Text(toast)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(0.82))
+                        .cornerRadius(10)
+                        .padding(.bottom, 28)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+    }
+}
