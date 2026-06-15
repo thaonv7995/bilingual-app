@@ -83,10 +83,10 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                 if uiViewController.spineLocation == .mid {
                     uiViewController.setViewControllers([leftVC, rightVC], direction: dir, animated: false)
                 }
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                context.coordinator.preloadNeighbors()
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    context.coordinator.preloadNeighbors()
+                }
             }
         } else {
             var needsUpdate = true
@@ -115,10 +115,10 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                 if uiViewController.spineLocation == .min || uiViewController.spineLocation == .max || uiViewController.spineLocation == .none {
                     uiViewController.setViewControllers([vc], direction: dir, animated: false)
                 }
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                context.coordinator.preloadNeighbors()
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    context.coordinator.preloadNeighbors()
+                }
             }
         }
     }
@@ -140,6 +140,17 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
         init(_ parent: BookPagerView) {
             self.parent = parent
             self.lastPage = parent.currentPage
+        }
+        
+        func pruneCache() {
+            let center = parent.currentPage
+            let threshold = parent.isDoubleSided ? 4 : 2
+            let keys = cachedVCs.keys
+            for key in keys {
+                if abs(key - center) > threshold {
+                    cachedVCs.removeValue(forKey: key)
+                }
+            }
         }
         
         func preloadNeighbors() {
@@ -168,7 +179,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
         func createVC(page: Int) -> PageHostingController {
             if let cached = cachedVCs[page] {
                 cached.rootView = AnyView(parent.content(page))
-                pruneCache(center: page)
+                pruneCache()
                 return cached
             }
             
@@ -177,7 +188,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                 let vc = PageHostingController(pageIndex: page, rootView: view)
                 cachedVCs[page] = vc
                 
-                pruneCache(center: page)
+                pruneCache()
                 
                 return vc
             } else {
@@ -186,15 +197,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
             }
         }
         
-        func pruneCache(center: Int) {
-            let keys = cachedVCs.keys
-            for key in keys {
-                if abs(key - center) > 2 {
-                    cachedVCs.removeValue(forKey: key)
-                }
-            }
-        }
-        
+
         func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
             guard let currentVC = viewController as? PageHostingController else { return nil }
             if currentVC.pageIndex > 1 {

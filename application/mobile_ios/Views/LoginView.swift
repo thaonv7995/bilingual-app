@@ -4,6 +4,9 @@ struct LoginView: View {
     @StateObject private var api = APIService.shared
     @State private var usernameInput = ""
     @State private var passwordInput = ""
+    @AppStorage("savedUsername") private var savedUsername = ""
+    @AppStorage("savedPassword") private var savedPassword = ""
+    @AppStorage("isRememberMe") private var isRememberMe = false
     @State private var isLoading = false
     @State private var errorMessage = ""
     
@@ -45,7 +48,7 @@ struct LoginView: View {
                             .fontWeight(.bold)
                             .foregroundColor(Color(hex: "94a3b8"))
                         
-                        TextField("http://localhost:27099", text: $api.serverUrl)
+                        TextField("https://books.thaonv.online", text: $api.serverUrl)
                             .padding()
                             .background(Color(hex: "0f172a"))
                             .cornerRadius(10)
@@ -85,6 +88,23 @@ struct LoginView: View {
                             .cornerRadius(10)
                             .foregroundColor(.white)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "334155"), lineWidth: 1))
+                    }
+                    // Remember Me Checkbox
+                    HStack {
+                        Button(action: {
+                            isRememberMe.toggle()
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: isRememberMe ? "checkmark.square.fill" : "square")
+                                    .foregroundColor(isRememberMe ? Color(hex: "6366f1") : Color(hex: "94a3b8"))
+                                    .font(.system(size: 20))
+                                
+                                Text("Lưu thông tin đăng nhập")
+                                    .font(.subheadline)
+                                    .foregroundColor(Color(hex: "94a3b8"))
+                            }
+                        }
+                        Spacer()
                     }
                     
                     if !errorMessage.isEmpty {
@@ -128,6 +148,12 @@ struct LoginView: View {
                 Spacer()
             }
         }
+        .onAppear {
+            if isRememberMe {
+                usernameInput = savedUsername
+                passwordInput = savedPassword
+            }
+        }
     }
     
     private func performLogin() {
@@ -143,6 +169,13 @@ struct LoginView: View {
             do {
                 _ = try await api.login(usernameInput: usernameInput, passwordInput: passwordInput)
                 await MainActor.run {
+                    if isRememberMe {
+                        savedUsername = usernameInput
+                        savedPassword = passwordInput
+                    } else {
+                        savedUsername = ""
+                        savedPassword = ""
+                    }
                     isLoading = false
                 }
             } catch {

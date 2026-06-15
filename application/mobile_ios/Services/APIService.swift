@@ -1,7 +1,7 @@
 import Foundation
 
 class APIService: ObservableObject {
-    @Published var serverUrl: String = "http://localhost:27099"
+    @Published var serverUrl: String = "https://books.thaonv.online"
     @Published var token: String = ""
     @Published var refreshToken: String = ""
     @Published var username: String = ""
@@ -18,7 +18,7 @@ class APIService: ObservableObject {
         if let savedToken = UserDefaults.standard.string(forKey: "token") {
             self.token = savedToken
             self.refreshToken = UserDefaults.standard.string(forKey: "refreshToken") ?? ""
-            self.serverUrl = UserDefaults.standard.string(forKey: "serverUrl") ?? "http://localhost:27099"
+            self.serverUrl = UserDefaults.standard.string(forKey: "serverUrl") ?? "https://books.thaonv.online"
             self.username = ServerUsernameHack()
             self.isAdmin = UserDefaults.standard.bool(forKey: "isAdmin")
             self.isAuthenticated = true
