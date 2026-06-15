@@ -130,8 +130,8 @@ class BookCacheManager: ObservableObject {
                     
                     try await withThrowingTaskGroup(of: Void.self) { group in
                         for filePath in batch {
+                            let currentToken = api.token
                             group.addTask {
-                                let currentToken = api.token
                                 let encodedPath = filePath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? filePath
                                 let fileUrlString = "\(serverUrl)/books/\(slug)/output/\(encodedPath)?token=\(currentToken)"
                                 guard let fileUrl = URL(string: fileUrlString) else {
