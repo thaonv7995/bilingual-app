@@ -917,6 +917,12 @@ struct BilingualWebView: UIViewRepresentable {
                 parent.onHighlightMessage(.clearSelection)
                 
                 if parent.viewMode == "split" {
+                    // Only synchronize scroll if the scroll is actively driven by a user gesture
+                    // (either dragging, tracking, or decelerating after a drag).
+                    guard scrollView.isDragging || scrollView.isDecelerating || scrollView.isTracking else {
+                        return
+                    }
+                    
                     let otherLang = parent.lang == "en" ? "vi" : "en"
                     let contentOffset = scrollView.contentOffset
                     
