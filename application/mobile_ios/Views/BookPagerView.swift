@@ -84,6 +84,10 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                     uiViewController.setViewControllers([leftVC, rightVC], direction: dir, animated: false)
                 }
             }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                context.coordinator.preloadNeighbors()
+            }
         } else {
             var needsUpdate = true
             if currentVCs.count == 1,
@@ -112,6 +116,10 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                     uiViewController.setViewControllers([vc], direction: dir, animated: false)
                 }
             }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                context.coordinator.preloadNeighbors()
+            }
         }
     }
     
@@ -132,6 +140,29 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
         init(_ parent: BookPagerView) {
             self.parent = parent
             self.lastPage = parent.currentPage
+        }
+        
+        func preloadNeighbors() {
+            let p = parent.currentPage
+            if parent.isDoubleSided {
+                let leftPage = p % 2 == 1 ? p : max(1, p - 1)
+                let rightPage = leftPage + 1
+                if leftPage > 2 {
+                    _ = createVC(page: leftPage - 2).view
+                    _ = createVC(page: leftPage - 1).view
+                }
+                if rightPage < parent.pageCount {
+                    _ = createVC(page: rightPage + 1).view
+                    _ = createVC(page: rightPage + 2).view
+                }
+            } else {
+                if p > 1 {
+                    _ = createVC(page: p - 1).view
+                }
+                if p < parent.pageCount {
+                    _ = createVC(page: p + 1).view
+                }
+            }
         }
         
         func createVC(page: Int) -> PageHostingController {
@@ -158,7 +189,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
         func pruneCache(center: Int) {
             let keys = cachedVCs.keys
             for key in keys {
-                if abs(key - center) > 4 {
+                if abs(key - center) > 2 {
                     cachedVCs.removeValue(forKey: key)
                 }
             }
@@ -198,6 +229,9 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
             if completed, let p = pendingPage {
                 parent.currentPage = p
                 lastPage = p
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    self?.preloadNeighbors()
+                }
             }
             pendingPage = nil
         }

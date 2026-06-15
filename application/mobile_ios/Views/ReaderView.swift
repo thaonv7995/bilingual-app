@@ -88,22 +88,7 @@ struct ReaderView: View {
         ("#f9a8d4", Color(hex: "f9a8d4")), // Pink
         ("#86efac", Color(hex: "86efac"))  // Green
     ]
-    
-    // Lazy page range: only load current page ± 2 to minimize WKWebView instances
-    private var lazyPageRange: [Int] {
-        let maxPage = max(1, book.pageCount)
-        let lower = max(1, page - 2)
-        let upper = min(maxPage, page + 2)
-        return Array(lower...upper)
-    }
-    
-    // Stable ID for the TabView range to avoid unnecessary recreation
-    private var lazyPageRangeId: String {
-        let maxPage = max(1, book.pageCount)
-        let lower = max(1, page - 2)
-        let upper = min(maxPage, page + 2)
-        return "\(lower)-\(upper)"
-    }
+
     
     var body: some View {
         GeometryReader { geometry in
@@ -264,38 +249,39 @@ struct ReaderView: View {
                                 let isReadingPaneLarge = readingPaneWidth > 700
                                 
                                 ZStack {
-                                    // Chế độ Song ngữ - Lazy loading only current page ± 1
-                                    TabView(selection: pageBinding) {
-                                        ForEach(lazyPageRange, id: \.self) { p in
-                                            let isHorizontal = (bilingualLayoutMode == "en-over-vi" || bilingualLayoutMode == "vi-over-en") ? false : isReadingPaneLarge
-                                            let isEnFirst = bilingualLayoutMode.hasPrefix("en")
-                                            let layout = isHorizontal ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
-                                            layout {
-                                                if isEnFirst {
-                                                    renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
-                                                        .padding(.leading, isHorizontal ? 28 : 16)
-                                                        .padding(.trailing, isHorizontal ? 4 : 16)
-                                                        .padding(.vertical, 6)
-                                                    renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
-                                                        .padding(.leading, isHorizontal ? 4 : 16)
-                                                        .padding(.trailing, isHorizontal ? 28 : 16)
-                                                        .padding(.vertical, 6)
-                                                } else {
-                                                    renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
-                                                        .padding(.leading, isHorizontal ? 28 : 16)
-                                                        .padding(.trailing, isHorizontal ? 4 : 16)
-                                                        .padding(.vertical, 6)
-                                                    renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
-                                                        .padding(.leading, isHorizontal ? 4 : 16)
-                                                        .padding(.trailing, isHorizontal ? 28 : 16)
-                                                        .padding(.vertical, 6)
-                                                }
+                                    // Chế độ Song ngữ
+                                    BookPagerView(
+                                        pageCount: max(1, book.pageCount),
+                                        currentPage: pageBinding,
+                                        isDoubleSided: false,
+                                        overlayRevision: selectionOverlayRevision
+                                    ) { p in
+                                        let isHorizontal = (bilingualLayoutMode == "en-over-vi" || bilingualLayoutMode == "vi-over-en") ? false : isReadingPaneLarge
+                                        let isEnFirst = bilingualLayoutMode.hasPrefix("en")
+                                        let layout = isHorizontal ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
+                                        layout {
+                                            if isEnFirst {
+                                                renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
+                                                    .padding(.leading, isHorizontal ? 28 : 16)
+                                                    .padding(.trailing, isHorizontal ? 4 : 16)
+                                                    .padding(.vertical, 6)
+                                                renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
+                                                    .padding(.leading, isHorizontal ? 4 : 16)
+                                                    .padding(.trailing, isHorizontal ? 28 : 16)
+                                                    .padding(.vertical, 6)
+                                            } else {
+                                                renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
+                                                    .padding(.leading, isHorizontal ? 28 : 16)
+                                                    .padding(.trailing, isHorizontal ? 4 : 16)
+                                                    .padding(.vertical, 6)
+                                                renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
+                                                    .padding(.leading, isHorizontal ? 4 : 16)
+                                                    .padding(.trailing, isHorizontal ? 28 : 16)
+                                                    .padding(.vertical, 6)
                                             }
-                                            .tag(p)
                                         }
                                     }
-                                    .tabViewStyle(.page(indexDisplayMode: .never))
-                                    .id("split_\(lazyPageRangeId)")
+                                    .id("split_\(bilingualLayoutMode)")
                                     .opacity(viewMode == "split" ? 1 : 0)
                                     .allowsHitTesting(viewMode == "split")
                                     
