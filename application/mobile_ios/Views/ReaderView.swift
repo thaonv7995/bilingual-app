@@ -75,6 +75,7 @@ struct ReaderView: View {
         ("#86efac", Color(hex: "86efac"))  // Green
     ]
 
+    @State private var isReadyToRender = false
     
     var body: some View {
         GeometryReader { geometry in
@@ -102,6 +103,11 @@ struct ReaderView: View {
                         ZStack {
                             Color(hex: "0f172a").ignoresSafeArea()
                             
+                            if !isReadyToRender {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(1.5)
+                            } else {
                                 let pageBinding = Binding(
                                     get: { self.page },
                                     set: { newPage in
@@ -191,9 +197,15 @@ struct ReaderView: View {
                                     .opacity(viewMode == "vi" ? 1 : 0)
                                     .allowsHitTesting(viewMode == "vi")
                                 }
+                            } // End of isReadyToRender block
                         }
                         .ignoresSafeArea(edges: .bottom)
-                        .onAppear { readerUsesDoubleSided = useDoubleSided }
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                isReadyToRender = true
+                            }
+                            readerUsesDoubleSided = useDoubleSided
+                        }
                         .onChange(of: useDoubleSided) { readerUsesDoubleSided = $0 }
                         .onChange(of: viewMode) { _ in readerUsesDoubleSided = useDoubleSided }
                         .onChange(of: isChatOpen) { _ in readerUsesDoubleSided = useDoubleSided }
