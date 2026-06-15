@@ -70,6 +70,7 @@ struct ReaderView: View {
     @State private var vocaPanelRect: CGRect? = nil
     @State private var vocaPanelLang: String = ""
     @State private var vocaPanelPage: Int? = nil
+    @State private var vocaPanelContainerMode: String = ""
     @State private var vocaProgressWord: String? = nil
     @State private var vocaIsPlayingAudio = false
     @State private var vocaToast: String? = nil
@@ -271,20 +272,20 @@ struct ReaderView: View {
                                             let layout = isHorizontal ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
                                             layout {
                                                 if isEnFirst {
-                                                    renderWebView(lang: "en", p: p, isDoubleSided: false)
+                                                    renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
                                                         .padding(.leading, isHorizontal ? 28 : 16)
                                                         .padding(.trailing, isHorizontal ? 4 : 16)
                                                         .padding(.vertical, 6)
-                                                    renderWebView(lang: "vi", p: p, isDoubleSided: false)
+                                                    renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
                                                         .padding(.leading, isHorizontal ? 4 : 16)
                                                         .padding(.trailing, isHorizontal ? 28 : 16)
                                                         .padding(.vertical, 6)
                                                 } else {
-                                                    renderWebView(lang: "vi", p: p, isDoubleSided: false)
+                                                    renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
                                                         .padding(.leading, isHorizontal ? 28 : 16)
                                                         .padding(.trailing, isHorizontal ? 4 : 16)
                                                         .padding(.vertical, 6)
-                                                    renderWebView(lang: "en", p: p, isDoubleSided: false)
+                                                    renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
                                                         .padding(.leading, isHorizontal ? 4 : 16)
                                                         .padding(.trailing, isHorizontal ? 28 : 16)
                                                         .padding(.vertical, 6)
@@ -306,7 +307,7 @@ struct ReaderView: View {
                                         overlayRevision: selectionOverlayRevision
                                     ) { p in
                                         let isLeft = p % 2 == 1
-                                        renderWebView(lang: "en", p: p, isDoubleSided: useDoubleSided)
+                                        renderWebView(lang: "en", p: p, isDoubleSided: useDoubleSided, containerMode: "en")
                                             .padding(.top, 6)
                                             .padding(.bottom, 6)
                                             .padding(.leading, useDoubleSided ? (isLeft ? 32 : 0) : 16)
@@ -324,7 +325,7 @@ struct ReaderView: View {
                                         overlayRevision: selectionOverlayRevision
                                     ) { p in
                                         let isLeft = p % 2 == 1
-                                        renderWebView(lang: "vi", p: p, isDoubleSided: useDoubleSided)
+                                        renderWebView(lang: "vi", p: p, isDoubleSided: useDoubleSided, containerMode: "vi")
                                             .padding(.top, 6)
                                             .padding(.bottom, 6)
                                             .padding(.leading, useDoubleSided ? (isLeft ? 32 : 0) : 16)
@@ -468,7 +469,7 @@ struct ReaderView: View {
     
     // --- Highlights UI / logic ---
     @ViewBuilder
-    private func renderWebView(lang: String, p: Int, isDoubleSided: Bool) -> some View {
+    private func renderWebView(lang: String, p: Int, isDoubleSided: Bool, containerMode: String) -> some View {
         let padPage = String(format: "%04d", p)
         let urlString = "\(api.serverUrl)/books/\(book.slug)/output/\(lang)/page_\(padPage).html?token=\(api.token)"
         
@@ -509,10 +510,10 @@ struct ReaderView: View {
                 handleVocaWebAction(action)
             },
             onWebViewReady: { webView, readyLang, readyPage in
-                registerWebView(webView, lang: readyLang, page: readyPage)
+                registerWebView(webView, lang: readyLang, page: readyPage, containerMode: containerMode)
             },
             onWebViewDismantled: { webView, readyLang, readyPage in
-                unregisterWebView(webView, lang: readyLang, page: readyPage)
+                unregisterWebView(webView, lang: readyLang, page: readyPage, containerMode: containerMode)
             }
         )
         .id("webview-\(lang)-\(p)")
@@ -727,18 +728,18 @@ struct ReaderView: View {
         selectionOverlayRevision += 1
     }
 
-    private func registerWebView(_ webView: WKWebView, lang: String, page: Int) {
-        let key = webViewKey(lang: lang, page: page)
+    private func registerWebView(_ webView: WKWebView, lang: String, page: Int, containerMode: String) {
+        let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
         if webViews[key] !== webView {
             webViews[key] = webView
         }
-        if vocaPanelLang == lang, vocaPanelPage == page, vocaPanelWebView == nil {
+        if vocaPanelLang == lang, vocaPanelPage == page, vocaPanelContainerMode == containerMode, vocaPanelWebView == nil {
             vocaPanelWebView = webView
         }
     }
 
-    private func unregisterWebView(_ webView: WKWebView, lang: String, page: Int) {
-        let key = webViewKey(lang: lang, page: page)
+    private func unregisterWebView(_ webView: WKWebView, lang: String, page: Int, containerMode: String) {
+        let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
         if webViews[key] === webView {
             webViews.removeValue(forKey: key)
         }
@@ -747,8 +748,8 @@ struct ReaderView: View {
         }
     }
 
-    private func webViewKey(lang: String, page: Int) -> String {
-        "\(lang)-\(page)"
+    private func webViewKey(lang: String, page: Int, containerMode: String) -> String {
+        "\(containerMode)-\(lang)-\(page)"
     }
 
     private func vocaCardPayload(_ card: VocaCard) -> [String: Any] {
@@ -768,9 +769,10 @@ struct ReaderView: View {
         guard let mode = vocaPanelMode,
               let rect = vocaPanelRect,
               let panelPage = vocaPanelPage,
-              !vocaPanelLang.isEmpty else { return }
+              !vocaPanelLang.isEmpty,
+              !vocaPanelContainerMode.isEmpty else { return }
 
-        let key = webViewKey(lang: vocaPanelLang, page: panelPage)
+        let key = webViewKey(lang: vocaPanelLang, page: panelPage, containerMode: vocaPanelContainerMode)
         let webView = vocaPanelWebView ?? webViews[key]
         guard let webView else {
             if retryCount < 5 {
@@ -832,7 +834,8 @@ struct ReaderView: View {
     private func removeVocaPanelFromWebView() {
         guard let panelPage = vocaPanelPage,
               !vocaPanelLang.isEmpty,
-              let webView = webViews[webViewKey(lang: vocaPanelLang, page: panelPage)] else { return }
+              !vocaPanelContainerMode.isEmpty,
+              let webView = webViews[webViewKey(lang: vocaPanelLang, page: panelPage, containerMode: vocaPanelContainerMode)] else { return }
         webView.evaluateJavaScript("window.removeIOSVocaPanel && window.removeIOSVocaPanel();", completionHandler: nil)
     }
 
@@ -868,6 +871,7 @@ struct ReaderView: View {
         vocaPanelRect = nil
         vocaPanelLang = ""
         vocaPanelPage = nil
+        vocaPanelContainerMode = ""
         vocaPanelWebView = nil
         vocaIsPlayingAudio = false
     }
@@ -899,7 +903,8 @@ struct ReaderView: View {
         let anchor = activeRect ?? CGRect(x: 180, y: 120, width: 40, height: 20)
         let panelLang = activeSelectionLang
         let panelPage = activeSelectionPage ?? page
-        let key = webViewKey(lang: panelLang, page: panelPage)
+        let containerMode = self.viewMode
+        let key = webViewKey(lang: panelLang, page: panelPage, containerMode: containerMode)
 
         guard let webView = webViews[key] else {
             showVocaToast("Không tìm thấy trang để tra từ.")
@@ -908,6 +913,7 @@ struct ReaderView: View {
 
         vocaPanelLang = panelLang
         vocaPanelPage = panelPage
+        vocaPanelContainerMode = containerMode
         vocaPanelRect = anchor
         vocaPanelWebView = webView
         vocaLookupInProgress = true
@@ -951,6 +957,7 @@ struct ReaderView: View {
         let savedRect = vocaPanelRect
         let savedLang = vocaPanelLang
         let savedPage = vocaPanelPage
+        let savedContainerMode = vocaPanelContainerMode
         let savedWebView = vocaPanelWebView
 
         vocaLookupInProgress = true
@@ -967,10 +974,11 @@ struct ReaderView: View {
                         vocaPanelRect = savedRect
                         vocaPanelLang = savedLang
                         vocaPanelPage = savedPage
+                        vocaPanelContainerMode = savedContainerMode
                         if let savedWebView {
                             vocaPanelWebView = savedWebView
-                        } else if let savedPage {
-                            vocaPanelWebView = webViews[webViewKey(lang: savedLang, page: savedPage)]
+                        } else if let savedPage, !savedContainerMode.isEmpty {
+                            vocaPanelWebView = webViews[webViewKey(lang: savedLang, page: savedPage, containerMode: savedContainerMode)]
                         }
                         vocaPanelMode = .single(card)
                         presentVocaPanelInWebView()
@@ -987,10 +995,11 @@ struct ReaderView: View {
                     vocaPanelRect = savedRect
                     vocaPanelLang = savedLang
                     vocaPanelPage = savedPage
+                    vocaPanelContainerMode = savedContainerMode
                     if let savedWebView {
                         vocaPanelWebView = savedWebView
-                    } else if let savedPage {
-                        vocaPanelWebView = webViews[webViewKey(lang: savedLang, page: savedPage)]
+                    } else if let savedPage, !savedContainerMode.isEmpty {
+                        vocaPanelWebView = webViews[webViewKey(lang: savedLang, page: savedPage, containerMode: savedContainerMode)]
                     }
                     vocaPanelMode = .notFound(query: query)
                     presentVocaPanelInWebView()
