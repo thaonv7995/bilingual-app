@@ -749,6 +749,7 @@ struct BilingualWebView: UIViewRepresentable {
         let webView = NoSelectionMenuWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
+        webView.scrollView.delegate = context.coordinator
         webView.scrollView.showsVerticalScrollIndicator = false
         webView.scrollView.showsHorizontalScrollIndicator = false
         webView.isOpaque = true
@@ -760,6 +761,14 @@ struct BilingualWebView: UIViewRepresentable {
             context.coordinator,
             selector: #selector(context.coordinator.handleScrollTo(_:)),
             name: NSNotification.Name("ScrollTo_\(lang)"),
+            object: nil
+        )
+
+        // Register observer for native programmatical scrolling
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(context.coordinator.handleScrollToOffset(_:)),
+            name: NSNotification.Name("ScrollToOffset_\(lang)"),
             object: nil
         )
 
@@ -780,6 +789,7 @@ struct BilingualWebView: UIViewRepresentable {
     func updateUIView(_ uiView: WKWebView, context: Context) {
         context.coordinator.parent = self
         registerWebView(uiView, coordinator: context.coordinator)
+        uiView.scrollView.delegate = context.coordinator
         
         // Inject jwt_token cookie to authorize remote subresources (like images)
         if !api.token.isEmpty,
@@ -842,6 +852,7 @@ struct BilingualWebView: UIViewRepresentable {
     
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
         NotificationCenter.default.removeObserver(coordinator)
+        uiView.scrollView.delegate = nil
         uiView.configuration.userContentController.removeAllScriptMessageHandlers()
         coordinator.registeredWebView = nil
         coordinator.parent.onWebViewDismantled?(uiView, coordinator.parent.lang, coordinator.parent.page)
@@ -851,7 +862,7 @@ struct BilingualWebView: UIViewRepresentable {
         Coordinator(self)
     }
     
-    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, UIScrollViewDelegate {
         var parent: BilingualWebView
         weak var webView: WKWebView?
         var lastReceivedScrollTop: CGFloat = 0
@@ -881,6 +892,39 @@ struct BilingualWebView: UIViewRepresentable {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         self.isUpdatingScroll = false
                     }
+                }
+            }
+        }
+
+        @objc func handleScrollToOffset(_ notification: Notification) {
+            guard parent.viewMode == "split" else { return }
+            
+            guard let userInfo = notification.userInfo,
+                  let offset = userInfo["contentOffset"] as? CGPoint,
+                  let webView = self.webView else { return }
+            
+            let otherScrollView = webView.scrollView
+            if abs(otherScrollView.contentOffset.y - offset.y) > 0.5 {
+                isUpdatingScroll = true
+                otherScrollView.setContentOffset(offset, animated: false)
+                isUpdatingScroll = false
+            }
+        }
+        
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            if !isUpdatingScroll {
+                // Clear selection when scrolling
+                parent.onHighlightMessage(.clearSelection)
+                
+                if parent.viewMode == "split" {
+                    let otherLang = parent.lang == "en" ? "vi" : "en"
+                    let contentOffset = scrollView.contentOffset
+                    
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("ScrollToOffset_\(otherLang)"),
+                        object: nil,
+                        userInfo: ["contentOffset": contentOffset]
+                    )
                 }
             }
         }

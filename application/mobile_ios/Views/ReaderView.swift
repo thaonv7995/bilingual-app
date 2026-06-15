@@ -301,6 +301,7 @@ struct ReaderView: View {
                 self.activeSentenceId = sentenceId
                 self.activeSentencePage = p
                 self.activeSentenceLang = lang
+                bumpSelectionOverlayRevision()
             },
             onVocaAction: { action in
                 handleVocaWebAction(action)
