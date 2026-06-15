@@ -135,6 +135,34 @@ struct BookshelfView: View {
                 self.isLoading = false
             }
             
+            // Sync progress for each book from server in background
+            Task {
+                for book in fetched {
+                    do {
+                        let serverProgress = try await api.fetchProgress(slug: book.slug)
+                        var shouldSave = true
+                        if let cachedData = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
+                           let cached = try? JSONDecoder().decode(ReadingProgress.self, from: cachedData) {
+                            let cachedTime = cached.lastRead ?? 0
+                            let serverTime = serverProgress.lastRead ?? 0
+                            if serverTime < cachedTime {
+                                shouldSave = false
+                            }
+                        }
+                        if shouldSave {
+                            if let data = try? JSONEncoder().encode(serverProgress) {
+                                UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
+                            }
+                        }
+                    } catch {
+                        print("Failed to sync progress for \(book.slug): \(error)")
+                    }
+                }
+                await MainActor.run {
+                    NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
+                }
+            }
+            
             // Auto-download all books that are not downloaded yet sequentially
             Task { @MainActor in
                 for book in fetched {
