@@ -2479,6 +2479,10 @@ function showReaderStickyNote(doc, anchorRect, options) {
 function showReaderHighlightToolbar(doc, anchorRect, options) {
   removeReaderHighlightUI(doc);
 
+  const existing = options.highlightId && highlightAppContext?.slug
+    ? loadHighlights(highlightAppContext.slug).find(h => h.id === options.highlightId)
+    : null;
+
   const toolbar = doc.createElement('div');
   toolbar.className = 'reader-highlight-toolbar';
   toolbar.style.left = `${anchorRect.left + anchorRect.width / 2}px`;
@@ -2513,9 +2517,6 @@ function showReaderHighlightToolbar(doc, anchorRect, options) {
   noteBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     toolbar.remove();
-    const existing = options.highlightId && highlightAppContext?.slug
-      ? loadHighlights(highlightAppContext.slug).find(h => h.id === options.highlightId)
-      : null;
     showReaderStickyNote(doc, anchorRect, {
       mode: options.mode,
       lang: options.lang,
@@ -2527,7 +2528,8 @@ function showReaderHighlightToolbar(doc, anchorRect, options) {
   });
   toolbar.appendChild(noteBtn);
 
-  if (options.lang === 'en' && options.selectionInfo?.text) {
+  const text = options.selectionInfo?.text || existing?.text;
+  if (options.lang === 'en' && text) {
     const lookupBtn = doc.createElement('button');
     lookupBtn.type = 'button';
     lookupBtn.className = 'reader-highlight-toolbar__icon';
@@ -2536,7 +2538,7 @@ function showReaderHighlightToolbar(doc, anchorRect, options) {
     lookupBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       toolbar.remove();
-      const word = cleanWord(options.selectionInfo.text);
+      const word = cleanWord(text);
       if (!word) return;
       try {
         const result = await lookupWord(word);

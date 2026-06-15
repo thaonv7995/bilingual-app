@@ -607,8 +607,16 @@ struct ReaderView: View {
     }
     
     private func performVocaLookup() {
-        guard let selection = activeSelection, activeSelectionLang == "en" else { return }
-        let query = VocaService.cleanWord(selection.text)
+        var textToLookup: String? = nil
+        if let selection = activeSelection {
+            textToLookup = selection.text
+        } else if let highlightId = selectedHighlightId,
+                  let existing = api.highlights.first(where: { $0.id == highlightId }) {
+            textToLookup = existing.text
+        }
+        
+        guard let text = textToLookup, activeSelectionLang == "en" else { return }
+        let query = VocaService.cleanWord(text)
         guard !query.isEmpty else { return }
 
         let anchor = activeRect ?? CGRect(x: 180, y: 120, width: 40, height: 20)
@@ -2266,7 +2274,7 @@ struct ReaderHighlightMenuView: View {
             Divider().background(Color.white.opacity(0.3)).frame(height: 20)
             
             // Voca lookup (EN only)
-            if activeSelectionLang == "en", hasActiveSelection {
+            if activeSelectionLang == "en" {
                 Button(action: onPerformVocaLookup) {
                     Image(systemName: "book.closed")
                         .foregroundColor(Color(hex: "38bdf8"))
