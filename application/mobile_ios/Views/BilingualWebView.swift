@@ -102,28 +102,56 @@ struct BilingualWebView: UIViewRepresentable {
                         .page-nav {
                             display: none !important;
                         }
-                        html, body, main, article, .sheet-flow, .prose-page {
+                        html {
+                            margin: 0 !important;
+                            padding: 0 !important;
+                            width: 100% !important;
+                            max-width: 100% !important;
+                            height: auto !important;
+                            min-height: 100% !important;
+                            box-sizing: border-box !important;
+                            overflow-x: hidden !important;
+                            overflow-y: auto !important;
+                            background-color: #F9F7F1 !important;
+                        }
+                        body, body.book-standalone {
+                            margin: 0 !important;
+                            padding: 24px 24px 40px 24px !important;
+                            width: 100% !important;
+                            max-width: 100% !important;
+                            height: auto !important;
+                            min-height: 100% !important;
+                            box-sizing: border-box !important;
+                            display: block !important;
+                            overflow-x: hidden !important;
+                            overflow-y: auto !important;
+                            background-color: #F9F7F1 !important;
+                            color: #333333 !important;
+                            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+                        }
+                        main, article, .prose-page {
                             margin: 0 !important;
                             padding: 0 !important;
                             width: 100% !important;
                             max-width: 100% !important;
                             box-sizing: border-box !important;
-                            overflow-x: hidden !important;
-                            background-color: #F9F7F1 !important;
-                            color: #333333 !important;
-                            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+                            background-color: transparent !important;
+                            color: inherit !important;
                         }
-                        .book-page {
+                        .book-page, .book-page--sheet, .sheet-flow {
                             margin: 0 auto !important;
                             padding: 0 !important;
+                            width: 100% !important;
+                            max-width: 100% !important;
+                            height: auto !important;
+                            min-height: 0 !important;
+                            max-height: none !important;
                             box-sizing: border-box !important;
+                            overflow: visible !important;
                         }
                         div, p, h1, h2, h3, h4, h5, h6, ul, ol, li {
                             background-color: transparent !important;
                             color: inherit !important;
-                        }
-                        body {
-                            padding: 24px 24px 40px 24px !important;
                         }
                         * {
                             box-sizing: border-box !important;
@@ -702,37 +730,13 @@ struct BilingualWebView: UIViewRepresentable {
             });
         };
 
-        window.scaleBookPage = function() {
-            const pageEl = document.querySelector('.book-page');
-            if (!pageEl) return;
-            pageEl.style.transform = 'none';
-            pageEl.style.transformOrigin = 'top center';
-            pageEl.style.margin = '0 auto';
-            const containerWidth = Math.max(window.innerWidth - 48, 100);
-            const containerHeight = Math.max(window.innerHeight - 64, 100);
-            const targetWidth = 794;
-            const targetHeight = 1123;
-            const scaleX = containerWidth / targetWidth;
-            const scaleY = containerHeight / targetHeight;
-            const scale = Math.min(scaleX, scaleY, 1);
-            pageEl.style.setProperty('transform', 'scale(' + scale + ')', 'important');
-            pageEl.style.setProperty('transform-origin', 'top center', 'important');
-            pageEl.style.setProperty('width', targetWidth + 'px', 'important');
-            pageEl.style.setProperty('height', targetHeight + 'px', 'important');
-            document.body.style.setProperty('height', (targetHeight * scale + 64) + 'px', 'important');
-            document.body.style.setProperty('overflow', 'hidden', 'important');
-            document.documentElement.style.setProperty('overflow', 'hidden', 'important');
-        };
-        window.addEventListener('resize', window.scaleBookPage);
-
-        // Run sentence segmentation and scaling on current document deferred
+        // Run sentence segmentation on current document deferred
         requestAnimationFrame(() => {
             setTimeout(() => {
                 try {
                     segmentDocSentences(document);
-                    window.scaleBookPage();
                 } catch(e) {
-                    console.error("Failed to segment sentences/scale page: ", e);
+                    console.error("Failed to segment sentences: ", e);
                 }
             }, 0);
         });
@@ -899,7 +903,6 @@ struct BilingualWebView: UIViewRepresentable {
                 })();
             """
             webView.evaluateJavaScript(scrollScript, completionHandler: nil)
-            webView.evaluateJavaScript("if (window.scaleBookPage) { window.scaleBookPage(); }", completionHandler: nil)
             
             // Reapply highlights immediately after finish loading
             let filtered = parent.api.highlights.filter { $0.page == parent.page && $0.lang == parent.lang }
