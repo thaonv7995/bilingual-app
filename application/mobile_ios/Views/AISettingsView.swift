@@ -11,6 +11,8 @@ struct AISettingsView: View {
     @State private var aiApiKey: String = ""
     @State private var aiModel: String = "gpt-4o-mini"
     @State private var bilingualLayoutMode: String = "en-vi"
+    @State private var vocaBridgeOrigin: String = VocaService.defaultBridgeOrigin
+    @State private var vocaBridgeToken: String = VocaService.defaultBridgeToken
     
     var body: some View {
         NavigationView {
@@ -192,6 +194,50 @@ struct AISettingsView: View {
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
                         
+                        // Section: Voca Dictionary Bridge
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Voca Dictionary Bridge")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.white.opacity(0.9))
+                            
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Voca Bridge URL")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.gray)
+                                TextField("https://voca-bridge.thaonv.online", text: $vocaBridgeOrigin)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.white)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                    .padding(12)
+                                    .background(Color.white.opacity(0.05))
+                                    .cornerRadius(10)
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Voca API Token")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.gray)
+                                SecureField("Bearer token", text: $vocaBridgeToken)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.white)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                    .padding(12)
+                                    .background(Color.white.opacity(0.05))
+                                    .cornerRadius(10)
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            }
+                        }
+                        .padding()
+                        .background(Color.white.opacity(0.04))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                        
                         // Section 3: Bilingual Layout Mode
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Bố cục song ngữ")
@@ -314,7 +360,7 @@ struct AISettingsView: View {
                     .padding(16)
                 }
             }
-            .navigationTitle("Cấu hình AI & Bố cục")
+            .navigationTitle("Cấu hình AI & Voca")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -339,6 +385,8 @@ struct AISettingsView: View {
         self.aiApiKey = UserDefaults.standard.string(forKey: "aiApiKey") ?? ""
         self.aiModel = UserDefaults.standard.string(forKey: "aiModel") ?? "gpt-4o-mini"
         self.bilingualLayoutMode = UserDefaults.standard.string(forKey: "bilingualLayoutMode") ?? "en-vi"
+        self.vocaBridgeOrigin = UserDefaults.standard.string(forKey: "vocaBridgeOrigin") ?? VocaService.defaultBridgeOrigin
+        self.vocaBridgeToken = UserDefaults.standard.string(forKey: "vocaBridgeToken") ?? VocaService.defaultBridgeToken
     }
     
     private func saveSettings() {
@@ -347,5 +395,7 @@ struct AISettingsView: View {
         UserDefaults.standard.set(aiApiKey, forKey: "aiApiKey")
         UserDefaults.standard.set(aiModel, forKey: "aiModel")
         UserDefaults.standard.set(bilingualLayoutMode, forKey: "bilingualLayoutMode")
+        UserDefaults.standard.set(vocaBridgeOrigin.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "vocaBridgeOrigin")
+        UserDefaults.standard.set(vocaBridgeToken.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "vocaBridgeToken")
     }
 }

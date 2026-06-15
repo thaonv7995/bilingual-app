@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 struct ChatMessage: Identifiable, Codable {
     var id = UUID()
@@ -63,6 +64,18 @@ struct ReaderView: View {
     @State private var dragStartingWidth: CGFloat = 350
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging: Bool = false
+    
+    // Voca States
+    @State private var vocaPanelMode: VocaLookupPanelMode? = nil
+    @State private var vocaPanelRect: CGRect? = nil
+    @State private var vocaPanelLang: String = ""
+    @State private var vocaPanelPage: Int? = nil
+    @State private var vocaProgressWord: String? = nil
+    @State private var vocaIsPlayingAudio = false
+    @State private var vocaToast: String? = nil
+    @State private var vocaBridgeOrigin: String = VocaService.defaultBridgeOrigin
+    @State private var vocaBridgeToken: String = VocaService.defaultBridgeToken
+    @State private var webViews: [String: WKWebView] = [:]
     
     let highlightColors = [
         ("#fde68a", Color(hex: "fde68a")), // Yellow
@@ -401,6 +414,44 @@ struct ReaderView: View {
                     if showJumpToPageDialog {
                         jumpToPageDialogView()
                     }
+                    if let progressWord = vocaProgressWord {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                HStack(spacing: 10) {
+                                    ProgressView()
+                                        .tint(.white)
+                                    Text(progressWord)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .lineLimit(2)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(Color(hex: "1e293b").opacity(0.94))
+                                .cornerRadius(10)
+                                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                                .padding(.trailing, 16)
+                                .padding(.bottom, 24)
+                            }
+                        }
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
+                    if let toast = vocaToast {
+                        VStack {
+                            Spacer()
+                            Text(toast)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(Color.black.opacity(0.82))
+                                .cornerRadius(10)
+                                .padding(.bottom, 28)
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 }
             )
     }
@@ -443,6 +494,12 @@ struct ReaderView: View {
                 self.activeSentenceId = sentenceId
                 self.activeSentencePage = p
                 self.activeSentenceLang = lang
+            },
+            onVocaAction: { action in
+                handleVocaWebAction(action)
+            },
+            onWebViewReady: { webView, readyLang, readyPage in
+                webViews[webViewKey(lang: readyLang, page: readyPage)] = webView
             }
         )
         .modifier(PaperSheetModifier(viewMode: viewMode, page: p, isDoubleSided: isDoubleSided))
@@ -480,13 +537,13 @@ struct ReaderView: View {
             
             Divider().background(Color.white.opacity(0.3)).frame(height: 20)
             
-            // Ask AI
-            if let selection = activeSelection {
+            // Voca lookup (EN only)
+            if activeSelectionLang == "en", activeSelection != nil {
                 Button(action: {
-                    askAIShortcut(text: selection.text)
+                    performVocaLookup()
                 }) {
-                    Image(systemName: "sparkles")
-                        .foregroundColor(.purple)
+                    Image(systemName: "book.closed")
+                        .foregroundColor(Color(hex: "38bdf8"))
                         .font(.system(size: 18))
                 }
             }
@@ -562,6 +619,7 @@ struct ReaderView: View {
     private func handleHighlightMessage(_ msg: HighlightMessage, lang: String, page: Int) {
         switch msg {
         case .textSelected(let selectionInfo):
+            dismissVocaPanel()
             self.activeSelection = selectionInfo
             self.activeSelectionLang = lang
             self.activeSelectionPage = page
@@ -571,6 +629,7 @@ struct ReaderView: View {
             self.activeRect = selectionInfo.rect
             self.showNoteInput = false
         case .highlightClicked(let id, let rect):
+            dismissVocaPanel()
             self.selectedHighlightId = id
             self.activeSelection = nil
             self.activeRect = rect
@@ -584,6 +643,7 @@ struct ReaderView: View {
                 self.showNoteInput = false
             }
         case .clearSelection:
+            dismissVocaPanel()
             clearSelectionState()
         }
     }
@@ -598,6 +658,209 @@ struct ReaderView: View {
         self.activeSentenceLang = nil
         self.activeRect = nil
         self.showNoteInput = false
+    }
+    
+    private func webViewKey(lang: String, page: Int) -> String {
+        "\(lang)-\(page)"
+    }
+
+    private func vocaCardPayload(_ card: VocaCard) -> [String: Any] {
+        var dict: [String: Any] = [
+            "id": card.id,
+            "word": card.word,
+            "meaningVi": card.meaningVi,
+        ]
+        if let ipa = card.ipa { dict["ipa"] = ipa }
+        if let pronunciation = card.pronunciation { dict["pronunciation"] = pronunciation }
+        if let audioUrl = card.audioUrl { dict["audioUrl"] = audioUrl }
+        if let level = card.level { dict["level"] = level }
+        return dict
+    }
+
+    private func presentVocaPanelInWebView() {
+        guard let mode = vocaPanelMode,
+              let rect = vocaPanelRect,
+              let panelPage = vocaPanelPage,
+              !vocaPanelLang.isEmpty,
+              let webView = webViews[webViewKey(lang: vocaPanelLang, page: panelPage)] else { return }
+
+        var payload: [String: Any] = [
+            "rect": [
+                "x": rect.origin.x,
+                "y": rect.origin.y,
+                "width": rect.width,
+                "height": rect.height,
+            ],
+        ]
+        switch mode {
+        case .single(let card):
+            payload["mode"] = "single"
+            payload["card"] = vocaCardPayload(card)
+        case .multi(let query, let cards):
+            payload["mode"] = "multi"
+            payload["query"] = query
+            payload["cards"] = cards.map(vocaCardPayload)
+        case .notFound(let query):
+            payload["mode"] = "notFound"
+            payload["query"] = query
+        }
+
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.showIOSVocaPanel(\(json));", completionHandler: nil)
+    }
+
+    private func removeVocaPanelFromWebView() {
+        guard let panelPage = vocaPanelPage,
+              !vocaPanelLang.isEmpty,
+              let webView = webViews[webViewKey(lang: vocaPanelLang, page: panelPage)] else { return }
+        webView.evaluateJavaScript("window.removeIOSVocaPanel && window.removeIOSVocaPanel();", completionHandler: nil)
+    }
+
+    private func handleVocaWebAction(_ action: VocaWebAction) {
+        switch action {
+        case .addWord(let word):
+            vocaPanelMode = .notFound(query: word)
+            addSelectionToVoca()
+        case .playAudio(let cardId):
+            if case .single(let card) = vocaPanelMode, card.id == cardId {
+                playVocaAudio(card)
+            } else {
+                playVocaAudio(VocaCard(
+                    id: cardId,
+                    word: cardId,
+                    meaningVi: "",
+                    ipa: nil,
+                    pronunciation: nil,
+                    audioUrl: nil,
+                    level: nil
+                ))
+            }
+        case .selectCard(let card):
+            vocaPanelMode = .single(card)
+            presentVocaPanelInWebView()
+        case .dismiss:
+            clearVocaPanelState()
+        }
+    }
+
+    private func clearVocaPanelState() {
+        vocaPanelMode = nil
+        vocaPanelRect = nil
+        vocaPanelLang = ""
+        vocaPanelPage = nil
+        vocaIsPlayingAudio = false
+    }
+
+    private func dismissVocaPanel() {
+        removeVocaPanelFromWebView()
+        clearVocaPanelState()
+        vocaProgressWord = nil
+    }
+
+    private func hideVocaPanelInWebView() {
+        removeVocaPanelFromWebView()
+        vocaPanelMode = nil
+        vocaIsPlayingAudio = false
+    }
+    
+    private func showVocaToast(_ message: String) {
+        withAnimation { vocaToast = message }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation { vocaToast = nil }
+        }
+    }
+    
+    private func performVocaLookup() {
+        guard let selection = activeSelection, activeSelectionLang == "en" else { return }
+        let query = VocaService.cleanWord(selection.text)
+        guard !query.isEmpty else { return }
+        
+        let anchor = activeRect ?? CGRect(x: 180, y: 120, width: 40, height: 20)
+        vocaPanelLang = activeSelectionLang
+        vocaPanelPage = activeSelectionPage ?? page
+        vocaPanelRect = anchor
+        clearSelectionState()
+        
+        Task {
+            do {
+                let result = try await VocaService.lookupWord(query)
+                await MainActor.run {
+                    if result.found {
+                        let cards = result.resolvedCards
+                        if cards.count == 1 {
+                            vocaPanelMode = .single(cards[0])
+                        } else if cards.count > 1 {
+                            vocaPanelMode = .multi(query: query, cards: cards)
+                        } else {
+                            vocaPanelMode = .notFound(query: query)
+                        }
+                    } else {
+                        vocaPanelMode = .notFound(query: query)
+                    }
+                    presentVocaPanelInWebView()
+                }
+            } catch {
+                await MainActor.run {
+                    dismissVocaPanel()
+                    showVocaToast(error.localizedDescription)
+                }
+            }
+        }
+    }
+    
+    private func addSelectionToVoca() {
+        guard case .notFound(let query) = vocaPanelMode else { return }
+        let savedRect = vocaPanelRect
+        let savedLang = vocaPanelLang
+        let savedPage = vocaPanelPage
+
+        hideVocaPanelInWebView()
+        withAnimation { vocaProgressWord = query }
+
+        Task {
+            do {
+                try await VocaService.addWordToVoca(query)
+                let result = try await VocaService.lookupWord(query)
+                await MainActor.run {
+                    withAnimation { vocaProgressWord = nil }
+                    if result.found, let card = result.resolvedCards.first {
+                        vocaPanelRect = savedRect
+                        vocaPanelLang = savedLang
+                        vocaPanelPage = savedPage
+                        vocaPanelMode = .single(card)
+                        presentVocaPanelInWebView()
+                    } else {
+                        dismissVocaPanel()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    withAnimation { vocaProgressWord = nil }
+                    vocaPanelRect = savedRect
+                    vocaPanelLang = savedLang
+                    vocaPanelPage = savedPage
+                    vocaPanelMode = .notFound(query: query)
+                    presentVocaPanelInWebView()
+                    showVocaToast(error.localizedDescription)
+                }
+            }
+        }
+    }
+    
+    private func playVocaAudio(_ card: VocaCard) {
+        vocaIsPlayingAudio = true
+        Task {
+            do {
+                try await VocaService.playCardAudio(card)
+                await MainActor.run { vocaIsPlayingAudio = false }
+            } catch {
+                await MainActor.run {
+                    vocaIsPlayingAudio = false
+                    showVocaToast(error.localizedDescription)
+                }
+            }
+        }
     }
     
     private func fetchHighlights() {
@@ -986,7 +1249,7 @@ struct ReaderView: View {
     private func aiSettingsForm() -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text("CẤU HÌNH AI AGENT")
+                Text("CẤU HÌNH AI & VOCA")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.gray)
                     .padding(.top, 10)
@@ -1147,6 +1410,50 @@ struct ReaderView: View {
                         .background(Color.white.opacity(0.05))
                         .cornerRadius(10)
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    }
+                }
+                .padding()
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+                
+                // Section: Voca Dictionary Bridge
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Voca Dictionary Bridge")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Voca Bridge URL")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.gray)
+                        TextField("https://voca-bridge.thaonv.online", text: $vocaBridgeOrigin)
+                            .font(.system(size: 14))
+                            .foregroundColor(.white)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .padding(12)
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Voca API Token")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.gray)
+                        SecureField("Bearer token", text: $vocaBridgeToken)
+                            .font(.system(size: 14))
+                            .foregroundColor(.white)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .padding(12)
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
                     }
                 }
                 .padding()
@@ -1370,6 +1677,8 @@ struct ReaderView: View {
         self.aiApiKey = UserDefaults.standard.string(forKey: "aiApiKey") ?? ""
         self.aiModel = UserDefaults.standard.string(forKey: "aiModel") ?? "gpt-4o-mini"
         self.bilingualLayoutMode = UserDefaults.standard.string(forKey: "bilingualLayoutMode") ?? "en-vi"
+        self.vocaBridgeOrigin = UserDefaults.standard.string(forKey: "vocaBridgeOrigin") ?? VocaService.defaultBridgeOrigin
+        self.vocaBridgeToken = UserDefaults.standard.string(forKey: "vocaBridgeToken") ?? VocaService.defaultBridgeToken
         
         if let data = UserDefaults.standard.data(forKey: "chatHistory_\(book.slug)"),
            let decoded = try? JSONDecoder().decode([ChatMessage].self, from: data) {
@@ -1383,6 +1692,8 @@ struct ReaderView: View {
         UserDefaults.standard.set(aiApiKey, forKey: "aiApiKey")
         UserDefaults.standard.set(aiModel, forKey: "aiModel")
         UserDefaults.standard.set(bilingualLayoutMode, forKey: "bilingualLayoutMode")
+        UserDefaults.standard.set(vocaBridgeOrigin.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "vocaBridgeOrigin")
+        UserDefaults.standard.set(vocaBridgeToken.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "vocaBridgeToken")
     }
     
     private func saveChatHistory() {

@@ -161,7 +161,6 @@ export async function addWordToVoca(word) {
 
     await consumeCreateStream(response);
     removeVocaProgressToast(jobId);
-    showVocaToast(`Added "${normalized}" to Voca`, { success: true });
     return { ok: true };
   } catch (error) {
     removeVocaProgressToast(jobId);
@@ -216,13 +215,15 @@ function ensureVocaToastStyles() {
   style.textContent = `
     .voca-toast {
       position: fixed; right: 20px; bottom: 20px; z-index: 100000;
-      display: flex; align-items: center; gap: 12px; max-width: 380px; min-width: 260px;
+      display: flex; align-items: center; gap: 10px; max-width: 320px; min-width: auto;
       padding: 12px 16px; border-radius: 10px; color: #fff;
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px;
       box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25);
       opacity: 0; transform: translateY(20px); transition: all 0.3s ease;
       border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(30, 41, 59, 0.95);
     }
+    .voca-toast-progress { min-width: 120px; }
     .voca-toast.voca-show { opacity: 1; transform: translateY(0); }
     .voca-toast-success { background: rgba(21, 128, 61, 0.95); }
     .voca-toast-error { background: rgba(185, 28, 28, 0.95); }
@@ -260,14 +261,11 @@ function createJobId() {
 function showVocaProgressToast(jobId, word) {
   ensureVocaToastStyles();
   const toast = document.createElement('div');
-  toast.className = 'voca-toast';
+  toast.className = 'voca-toast voca-toast-progress';
   toast.dataset.vocaJobId = jobId;
   toast.innerHTML = `
     <span class="voca-spinner"></span>
-    <span class="voca-toast-content">
-      <span class="voca-toast-title">Adding "${word}"</span>
-      <span class="voca-toast-text">Please wait...</span>
-    </span>`;
+    <span class="voca-toast-title">${escapeHtml(word)}</span>`;
   document.documentElement.appendChild(toast);
   progressToasts.set(jobId, toast);
   requestAnimationFrame(() => toast.classList.add('voca-show'));
@@ -462,18 +460,15 @@ export function showVocaNotFoundPanel(doc, anchorRect, word) {
   addBtn.textContent = 'Thêm vào Voca';
   addBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
-    addBtn.disabled = true;
-    addBtn.textContent = 'Đang thêm...';
+    panel.remove();
     try {
       await addWordToVoca(word);
-      panel.remove();
       const result = await lookupWord(word);
       if (result.found) {
         showVocaLookupResults(doc, anchorRect, word, result);
       }
     } catch {
-      addBtn.disabled = false;
-      addBtn.textContent = 'Thêm vào Voca';
+      showVocaNotFoundPanel(doc, anchorRect, word);
     }
   });
 

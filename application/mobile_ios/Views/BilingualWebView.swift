@@ -15,6 +15,28 @@ enum HighlightMessage {
     case clearSelection
 }
 
+enum VocaWebAction {
+    case addWord(String)
+    case playAudio(cardId: String)
+    case selectCard(VocaCard)
+    case dismiss
+}
+
+private func selectionRect(from dict: [String: Any]?) -> CGRect? {
+    guard let dict else { return nil }
+    func number(_ key: String) -> CGFloat? {
+        if let value = dict[key] as? CGFloat { return value }
+        if let value = dict[key] as? Double { return CGFloat(value) }
+        if let value = dict[key] as? Int { return CGFloat(value) }
+        if let value = dict[key] as? NSNumber { return CGFloat(value.doubleValue) }
+        return nil
+    }
+    guard let x = number("x"), let y = number("y"), let width = number("width"), let height = number("height") else {
+        return nil
+    }
+    return CGRect(x: x, y: y, width: width, height: height)
+}
+
 class NoSelectionMenuWebView: WKWebView {
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         return false
@@ -35,6 +57,8 @@ struct BilingualWebView: UIViewRepresentable {
     let onScroll: (CGFloat) -> Void
     let onHighlightMessage: (HighlightMessage) -> Void
     let onSentenceClicked: (String?) -> Void
+    let onVocaAction: (VocaWebAction) -> Void
+    var onWebViewReady: ((WKWebView, String, Int) -> Void)? = nil
     
     func makeUIView(context: Context) -> WKWebView {
         let preferences = WKPreferences()
@@ -120,6 +144,64 @@ struct BilingualWebView: UIViewRepresentable {
                             background: #2563eb;
                             border: 1px solid #fff;
                         }
+                        .prose-page p, .prose-page li, .prose-page blockquote,
+                        .prose-page .section-title, .prose-page .action-header, .prose-page .action-title,
+                        .prose-page h1, .prose-page h2, .prose-page h3, .prose-page h4, .prose-page h5, .prose-page h6,
+                        .sentence-node {
+                            -webkit-user-select: text;
+                            user-select: text;
+                        }
+                        .voca-lookup-panel {
+                            position: fixed;
+                            z-index: 10000;
+                            transform: translate(-50%, calc(-100% - 12px));
+                            min-width: 200px;
+                            max-width: 280px;
+                            padding: 10px 12px;
+                            border-radius: 10px;
+                            background: rgba(255, 255, 255, 0.97);
+                            border: 1px solid rgba(15, 23, 42, 0.12);
+                            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+                            color: #0f172a;
+                            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                            font-size: 13px;
+                        }
+                        .voca-lookup-panel--empty { opacity: 0.95; }
+                        .voca-lookup-panel--multi { max-width: 320px; }
+                        .voca-lookup-panel__head {
+                            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+                        }
+                        .voca-lookup-panel__word { font-weight: 700; font-size: 14px; }
+                        .voca-lookup-panel__hint {
+                            margin-top: 4px; color: #64748b; font-size: 12px; line-height: 1.4;
+                        }
+                        .voca-lookup-panel__create {
+                            margin-top: 10px; width: 100%;
+                            border: 0; border-radius: 8px; padding: 8px 12px;
+                            background: #2563eb; color: #fff;
+                            font-family: inherit; font-size: 12px; font-weight: 700;
+                            cursor: pointer;
+                        }
+                        .voca-lookup-panel__voice {
+                            border: 0; background: #e0f2fe; border-radius: 6px; width: 28px; height: 28px;
+                            cursor: pointer; font-size: 14px; line-height: 1;
+                        }
+                        .voca-lookup-panel__ipa { margin-top: 4px; color: #475569; font-size: 12px; }
+                        .voca-lookup-panel__meaning { margin-top: 6px; color: #1e293b; line-height: 1.45; }
+                        .voca-lookup-panel__list {
+                            margin-top: 8px; display: flex; flex-direction: column; gap: 6px;
+                            max-height: 220px; overflow-y: auto;
+                        }
+                        .voca-lookup-panel__item {
+                            width: 100%; text-align: left; border: 1px solid rgba(15, 23, 42, 0.1);
+                            border-radius: 8px; padding: 8px 10px; background: #f8fafc;
+                            cursor: pointer; font-family: inherit; color: inherit;
+                            display: flex; flex-direction: column; gap: 2px;
+                        }
+                        .voca-lookup-panel__item-word { font-weight: 700; font-size: 12px; line-height: 1.35; }
+                        .voca-lookup-panel__item-meaning {
+                            font-size: 11px; color: #475569; line-height: 1.35;
+                        }
                     `;
                     if (document.head) {
                         document.head.appendChild(style);
@@ -145,10 +227,11 @@ struct BilingualWebView: UIViewRepresentable {
         
         // 2. Inject highlighting core JS logic at .atDocumentEnd (needs DOM elements)
         let jsSource = """
-        const PARAGRAPH_SELECTOR = 'p, li, blockquote, pre, h1, h2, h3, h4, h5, h6';
+        const PARAGRAPH_SELECTOR = 'p, .chapter-start, .no-indent, h1, h2, h3, h4, h5, h6, li, blockquote, .section-title, .action-header, .action-title';
 
         window.getParagraphs = function() {
-            return Array.from(document.body.querySelectorAll(PARAGRAPH_SELECTOR));
+            const article = document.querySelector('article') || document.body;
+            return Array.from(article.querySelectorAll(PARAGRAPH_SELECTOR));
         };
 
         window.wrapTextRange = function(paragraph, startOffset, endOffset, highlightData) {
@@ -408,13 +491,131 @@ struct BilingualWebView: UIViewRepresentable {
         function segmentDocSentences(doc) {
             const article = doc.querySelector('article') || doc.body;
             if (!article) return;
-            const paragraphs = article.querySelectorAll('p, .chapter-start, .no-indent, h1, h2, h3, li');
+            const paragraphs = article.querySelectorAll(PARAGRAPH_SELECTOR);
             paragraphs.forEach((p, idx) => {
                 if (!p.querySelector('.sentence-node')) {
                     segmentParagraph(p, idx);
                 }
             });
         }
+
+        let iosVocaDismissHandler = null;
+
+        function postIOSVocaMessage(payload) {
+            window.webkit.messageHandlers.iosListener.postMessage(JSON.stringify(payload));
+        }
+
+        window.removeIOSVocaPanel = function() {
+            document.querySelectorAll('.voca-lookup-panel').forEach((el) => el.remove());
+            if (iosVocaDismissHandler) {
+                document.removeEventListener('mousedown', iosVocaDismissHandler, true);
+                iosVocaDismissHandler = null;
+            }
+        };
+
+        window.showIOSVocaPanel = function(payload) {
+            window.removeIOSVocaPanel();
+            const rect = payload.rect || {};
+            const x = Number(rect.x) || 0;
+            const y = Number(rect.y) || 0;
+            const w = Number(rect.width) || 0;
+            const panel = document.createElement('div');
+            panel.className = 'voca-lookup-panel';
+            panel.style.left = (x + w / 2) + 'px';
+            panel.style.top = (y - 8) + 'px';
+            panel.addEventListener('mousedown', (e) => e.stopPropagation());
+            panel.addEventListener('mouseup', (e) => e.stopPropagation());
+
+            if (payload.mode === 'single' && payload.card) {
+                const card = payload.card;
+                const head = document.createElement('div');
+                head.className = 'voca-lookup-panel__head';
+                const wordEl = document.createElement('span');
+                wordEl.className = 'voca-lookup-panel__word';
+                wordEl.textContent = card.word || '';
+                const voiceBtn = document.createElement('button');
+                voiceBtn.type = 'button';
+                voiceBtn.className = 'voca-lookup-panel__voice';
+                voiceBtn.textContent = '🔊';
+                voiceBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    postIOSVocaMessage({ type: 'vocaPlayAudio', cardId: card.id || '' });
+                });
+                head.append(wordEl, voiceBtn);
+                panel.appendChild(head);
+                const ipa = card.ipa || card.pronunciation || '';
+                if (ipa) {
+                    const ipaEl = document.createElement('div');
+                    ipaEl.className = 'voca-lookup-panel__ipa';
+                    ipaEl.textContent = ipa.startsWith('/') ? ipa : '/' + ipa + '/';
+                    panel.appendChild(ipaEl);
+                }
+                if (card.meaningVi) {
+                    const meaningEl = document.createElement('div');
+                    meaningEl.className = 'voca-lookup-panel__meaning';
+                    meaningEl.textContent = card.meaningVi;
+                    panel.appendChild(meaningEl);
+                }
+            } else if (payload.mode === 'multi' && Array.isArray(payload.cards)) {
+                panel.classList.add('voca-lookup-panel--multi');
+                const queryEl = document.createElement('div');
+                queryEl.className = 'voca-lookup-panel__word';
+                queryEl.textContent = payload.query || '';
+                panel.appendChild(queryEl);
+                const hintEl = document.createElement('div');
+                hintEl.className = 'voca-lookup-panel__hint';
+                hintEl.textContent = payload.cards.length + ' kết quả trong từ điển';
+                panel.appendChild(hintEl);
+                const list = document.createElement('div');
+                list.className = 'voca-lookup-panel__list';
+                payload.cards.forEach((card) => {
+                    const item = document.createElement('button');
+                    item.type = 'button';
+                    item.className = 'voca-lookup-panel__item';
+                    const wordEl = document.createElement('span');
+                    wordEl.className = 'voca-lookup-panel__item-word';
+                    wordEl.textContent = card.word || '';
+                    item.appendChild(wordEl);
+                    if (card.meaningVi) {
+                        const meaningEl = document.createElement('span');
+                        meaningEl.className = 'voca-lookup-panel__item-meaning';
+                        meaningEl.textContent = card.meaningVi;
+                        item.appendChild(meaningEl);
+                    }
+                    item.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        postIOSVocaMessage({ type: 'vocaSelectCard', card: card });
+                    });
+                    list.appendChild(item);
+                });
+                panel.appendChild(list);
+            } else {
+                panel.classList.add('voca-lookup-panel--empty');
+                const wordEl = document.createElement('div');
+                wordEl.className = 'voca-lookup-panel__word';
+                wordEl.textContent = payload.query || '';
+                const hintEl = document.createElement('div');
+                hintEl.className = 'voca-lookup-panel__hint';
+                hintEl.textContent = 'Chưa có trong từ điển';
+                const addBtn = document.createElement('button');
+                addBtn.type = 'button';
+                addBtn.className = 'voca-lookup-panel__create';
+                addBtn.textContent = 'Thêm vào Voca';
+                addBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    postIOSVocaMessage({ type: 'vocaAdd', word: payload.query || '' });
+                });
+                panel.append(wordEl, hintEl, addBtn);
+            }
+
+            document.body.appendChild(panel);
+            iosVocaDismissHandler = (e) => {
+                if (e.target.closest('.voca-lookup-panel')) return;
+                window.removeIOSVocaPanel();
+                postIOSVocaMessage({ type: 'vocaDismiss' });
+            };
+            document.addEventListener('mousedown', iosVocaDismissHandler, true);
+        };
 
         // Run sentence segmentation on current document deferred
         requestAnimationFrame(() => {
@@ -448,6 +649,10 @@ struct BilingualWebView: UIViewRepresentable {
             name: NSNotification.Name("ScrollTo_\(lang)"),
             object: nil
         )
+
+        DispatchQueue.main.async {
+            onWebViewReady?(webView, lang, page)
+        }
         
         return webView
     }
@@ -609,30 +814,41 @@ struct BilingualWebView: UIViewRepresentable {
                                let end = selectionData["endOffset"] as? Int,
                                let text = selectionData["text"] as? String {
                                 
-                                var rect: CGRect? = nil
-                                if let rectDict = selectionData["rect"] as? [String: Any],
-                                   let rx = rectDict["x"] as? CGFloat,
-                                   let ry = rectDict["y"] as? CGFloat,
-                                   let rw = rectDict["width"] as? CGFloat,
-                                   let rh = rectDict["height"] as? CGFloat {
-                                    rect = CGRect(x: rx, y: ry, width: rw, height: rh)
-                                }
+                                var rect: CGRect? = selectionRect(from: selectionData["rect"] as? [String: Any])
                                 
                                 let info = SelectionInfo(paragraphIndex: pIndex, startOffset: start, endOffset: end, text: text, rect: rect)
                                 parent.onHighlightMessage(.textSelected(selectionInfo: info))
                             }
                         } else if type == "highlightClicked" {
                             if let id = json["id"] as? String {
-                                var rect: CGRect? = nil
-                                if let rectDict = json["rect"] as? [String: Any],
-                                   let rx = rectDict["x"] as? CGFloat,
-                                   let ry = rectDict["y"] as? CGFloat,
-                                   let rw = rectDict["width"] as? CGFloat,
-                                   let rh = rectDict["height"] as? CGFloat {
-                                    rect = CGRect(x: rx, y: ry, width: rw, height: rh)
-                                }
+                                let rect = selectionRect(from: json["rect"] as? [String: Any])
                                 parent.onHighlightMessage(.highlightClicked(id: id, rect: rect))
                             }
+                        } else if type == "vocaAdd" {
+                            if let word = json["word"] as? String {
+                                parent.onVocaAction(.addWord(word))
+                            }
+                        } else if type == "vocaPlayAudio" {
+                            if let cardId = json["cardId"] as? String, !cardId.isEmpty {
+                                parent.onVocaAction(.playAudio(cardId: cardId))
+                            }
+                        } else if type == "vocaSelectCard" {
+                            if let cardDict = json["card"] as? [String: Any],
+                               let id = cardDict["id"] as? String,
+                               let word = cardDict["word"] as? String {
+                                let card = VocaCard(
+                                    id: id,
+                                    word: word,
+                                    meaningVi: cardDict["meaningVi"] as? String ?? "",
+                                    ipa: cardDict["ipa"] as? String,
+                                    pronunciation: cardDict["pronunciation"] as? String,
+                                    audioUrl: cardDict["audioUrl"] as? String,
+                                    level: cardDict["level"] as? String
+                                )
+                                parent.onVocaAction(.selectCard(card))
+                            }
+                        } else if type == "vocaDismiss" {
+                            parent.onVocaAction(.dismiss)
                         } else if type == "sentenceClicked" {
                             if let sId = json["sentenceId"] as? String {
                                 parent.onSentenceClicked(sId)

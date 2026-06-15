@@ -19,6 +19,8 @@
 		A0827BBC64B63C39E54883D2 /* Book.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD24421EAA5774ABB6536580 /* Book.swift */; };
 		A80052D358A61956D1231899 /* BookPagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */; };
 		B73ADA8B14F6A58D0A2C0728 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB39B254369C911E5008B8A0 /* APIService.swift */; };
+		E7A3B2C1D4F5A6789012ABCD /* VocaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8B4C3D2E5A6B7890123BCDE /* VocaService.swift */; };
+		B0D6E5F4A7C8D9012345DEF0 /* VocaLookupOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9C5D4E3F6B7C8901234CDEF /* VocaLookupOverlay.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +37,8 @@
 		D57B156C7DBCD09A96394153 /* BilingualWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualWebView.swift; sourceTree = "<group>"; };
 		F25A14856419E8E55800C330 /* LayoutOptionButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutOptionButton.swift; sourceTree = "<group>"; };
 		FB921731167CE40A439D7728 /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
+		F8B4C3D2E5A6B7890123BCDE /* VocaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaService.swift; sourceTree = "<group>"; };
+		A9C5D4E3F6B7C8901234CDEF /* VocaLookupOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaLookupOverlay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -43,6 +47,7 @@
 			children = (
 				AB39B254369C911E5008B8A0 /* APIService.swift */,
 				99AF811F0CC00281EC4C8B04 /* BookCacheManager.swift */,
+				F8B4C3D2E5A6B7890123BCDE /* VocaService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -94,6 +99,7 @@
 				F25A14856419E8E55800C330 /* LayoutOptionButton.swift */,
 				6AD4860B8B690109EFB9878A /* LoginView.swift */,
 				FB921731167CE40A439D7728 /* ReaderView.swift */,
+				A9C5D4E3F6B7C8901234CDEF /* VocaLookupOverlay.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -174,6 +180,8 @@
 				83039E648CE6CD6CFEEBAA03 /* LayoutOptionButton.swift in Sources */,
 				8CBD3ECD5460D98952AEEDCF /* LoginView.swift in Sources */,
 				04D65506177CC1C5E2EEC4D6 /* ReaderView.swift in Sources */,
+				E7A3B2C1D4F5A6789012ABCD /* VocaService.swift in Sources */,
+				B0D6E5F4A7C8D9012345DEF0 /* VocaLookupOverlay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
