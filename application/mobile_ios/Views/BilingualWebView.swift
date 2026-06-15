@@ -1,5 +1,40 @@
 import SwiftUI
 import WebKit
+import PencilKit
+
+class BilingualCanvasView: PKCanvasView {
+    private let localUndoManager = UndoManager()
+    
+    override var undoManager: UndoManager? {
+        return localUndoManager
+    }
+    
+    override var canBecomeFirstResponder: Bool {
+        return true
+    }
+    
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(undo(_:)) {
+            return localUndoManager.canUndo
+        }
+        if action == #selector(redo(_:)) {
+            return localUndoManager.canRedo
+        }
+        return super.canPerformAction(action, withSender: sender)
+    }
+    
+    @objc func undo(_ sender: Any?) {
+        if localUndoManager.canUndo {
+            localUndoManager.undo()
+        }
+    }
+    
+    @objc func redo(_ sender: Any?) {
+        if localUndoManager.canRedo {
+            localUndoManager.redo()
+        }
+    }
+}
 
 struct SelectionInfo: Codable {
     let paragraphIndex: Int
@@ -53,6 +88,7 @@ struct BilingualWebView: UIViewRepresentable {
     let page: Int
     let viewMode: String
     let activeSentenceId: String?
+    let isPencilModeActive: Bool
     @ObservedObject var api = APIService.shared
     let onScroll: (CGFloat) -> Void
     let onHighlightMessage: (HighlightMessage) -> Void
@@ -791,6 +827,13 @@ struct BilingualWebView: UIViewRepresentable {
         registerWebView(uiView, coordinator: context.coordinator)
         uiView.scrollView.delegate = context.coordinator
         
+        context.coordinator.updatePencilCanvas(
+            isPencilModeActive: isPencilModeActive,
+            bookSlug: bookSlug,
+            page: page,
+            lang: lang
+        )
+        
         // Inject jwt_token cookie to authorize remote subresources (like images)
         if !api.token.isEmpty,
            let serverURL = URL(string: api.serverUrl),
@@ -855,6 +898,20 @@ struct BilingualWebView: UIViewRepresentable {
         uiView.scrollView.delegate = nil
         uiView.configuration.userContentController.removeAllScriptMessageHandlers()
         coordinator.registeredWebView = nil
+        
+        if let canvas = coordinator.canvasView {
+            canvas.resignFirstResponder()
+            canvas.drawingGestureRecognizer.isEnabled = false
+            if let window = uiView.window ?? coordinator.getActiveWindow(),
+               let toolPicker = PKToolPicker.shared(for: window) {
+                toolPicker.setVisible(false, forFirstResponder: canvas)
+                toolPicker.removeObserver(canvas)
+            }
+            canvas.removeFromSuperview()
+        }
+        coordinator.contentSizeObserver = nil
+        coordinator.canvasView = nil
+        
         coordinator.parent.onWebViewDismantled?(uiView, coordinator.parent.lang, coordinator.parent.page)
     }
 
@@ -862,7 +919,7 @@ struct BilingualWebView: UIViewRepresentable {
         Coordinator(self)
     }
     
-    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, UIScrollViewDelegate {
+    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, UIScrollViewDelegate, PKCanvasViewDelegate {
         var parent: BilingualWebView
         weak var webView: WKWebView?
         var lastReceivedScrollTop: CGFloat = 0
@@ -871,6 +928,11 @@ struct BilingualWebView: UIViewRepresentable {
         var lastAppliedHighlights: [Highlight] = []
         var lastAppliedSentenceId: String? = nil
         weak var registeredWebView: WKWebView?
+        
+        var canvasView: BilingualCanvasView?
+        var contentSizeObserver: NSKeyValueObservation?
+        var lastLoadedPageKey: String?
+        var isDrawingLoading = false
         
         init(_ parent: BilingualWebView) {
             self.parent = parent
@@ -1039,5 +1101,111 @@ struct BilingualWebView: UIViewRepresentable {
                 }
             }
         }
+        
+        func updatePencilCanvas(isPencilModeActive: Bool, bookSlug: String, page: Int, lang: String) {
+            guard let webView = self.webView else { return }
+            
+            let canvas: BilingualCanvasView
+            if let existing = self.canvasView {
+                canvas = existing
+            } else {
+                canvas = BilingualCanvasView()
+                canvas.backgroundColor = .clear
+                canvas.isOpaque = false
+                canvas.delegate = self
+                canvas.drawingPolicy = .anyInput
+                
+                webView.scrollView.addSubview(canvas)
+                self.canvasView = canvas
+                
+                contentSizeObserver = webView.scrollView.observe(\.contentSize, options: [.initial, .new]) { [weak canvas] scrollView, _ in
+                    guard let canvas = canvas else { return }
+                    let newFrame = CGRect(origin: .zero, size: scrollView.contentSize)
+                    if canvas.frame != newFrame {
+                        canvas.frame = newFrame
+                    }
+                }
+            }
+            
+            canvas.isUserInteractionEnabled = isPencilModeActive
+            canvas.drawingGestureRecognizer.isEnabled = isPencilModeActive
+            webView.scrollView.bringSubviewToFront(canvas)
+            
+            let pageKey = "\(bookSlug)_\(page)_\(lang)"
+            if lastLoadedPageKey != pageKey {
+                lastLoadedPageKey = pageKey
+                isDrawingLoading = true
+                loadDrawing(canvasView: canvas, slug: bookSlug, page: page, lang: lang)
+                isDrawingLoading = false
+            }
+            
+            if let window = webView.window ?? getActiveWindow(),
+               let toolPicker = PKToolPicker.shared(for: window) {
+                if isPencilModeActive {
+                    toolPicker.addObserver(canvas)
+                    toolPicker.setVisible(true, forFirstResponder: canvas)
+                    canvas.becomeFirstResponder()
+                } else {
+                    toolPicker.setVisible(false, forFirstResponder: canvas)
+                    toolPicker.removeObserver(canvas)
+                    canvas.resignFirstResponder()
+                }
+            }
+        }
+        
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            guard !isDrawingLoading else { return }
+            saveDrawing(canvasView: canvasView, slug: parent.bookSlug, page: parent.page, lang: parent.lang)
+        }
+        
+        private func saveDrawing(canvasView: PKCanvasView, slug: String, page: Int, lang: String) {
+            let drawing = canvasView.drawing
+            let fileManager = FileManager.default
+            let drawingsDir = BookCacheManager.shared.localBookDir(slug: slug).appendingPathComponent("drawings", isDirectory: true)
+            let fileURL = drawingsDir.appendingPathComponent("page_\(page)_\(lang).bin")
+            
+            if drawing.bounds.isEmpty {
+                if fileManager.fileExists(atPath: fileURL.path) {
+                    try? fileManager.removeItem(at: fileURL)
+                }
+                return
+            }
+            
+            do {
+                try fileManager.createDirectory(at: drawingsDir, withIntermediateDirectories: true, attributes: nil)
+                let data = drawing.dataRepresentation()
+                try data.write(to: fileURL)
+            } catch {
+                print("Failed to save drawing: \(error)")
+            }
+        }
+        
+        private func loadDrawing(canvasView: PKCanvasView, slug: String, page: Int, lang: String) {
+            let fileURL = BookCacheManager.shared.localBookDir(slug: slug)
+                .appendingPathComponent("drawings", isDirectory: true)
+                .appendingPathComponent("page_\(page)_\(lang).bin")
+            
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                do {
+                    let data = try Data(contentsOf: fileURL)
+                    let drawing = try PKDrawing(data: data)
+                    canvasView.drawing = drawing
+                } catch {
+                    print("Failed to load drawing: \(error)")
+                }
+            } else {
+                canvasView.drawing = PKDrawing()
+            }
+        }
+        
+        func getActiveWindow() -> UIWindow? {
+            return UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+                .first { $0.isKeyWindow }
+        }
     }
 }
+
+
+

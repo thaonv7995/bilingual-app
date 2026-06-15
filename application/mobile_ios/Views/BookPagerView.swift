@@ -20,6 +20,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
     @Binding var currentPage: Int
     var isDoubleSided: Bool // True if landscape iPad
     var overlayRevision: Int = 0
+    var isPencilModeActive: Bool = false
     
     @ViewBuilder var content: (Int) -> Content
     
@@ -57,6 +58,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                         context.coordinator.lastLeftPage != leftPage
                         || context.coordinator.lastRightPage != rightPage
                         || context.coordinator.lastOverlayRevision != overlayRevision
+                        || context.coordinator.lastPencilModeActive != isPencilModeActive
                     if shouldRefreshContent {
                         leftVC.rootView = AnyView(content(leftPage))
                         if rightPage <= pageCount {
@@ -65,6 +67,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                         context.coordinator.lastLeftPage = leftPage
                         context.coordinator.lastRightPage = rightPage
                         context.coordinator.lastOverlayRevision = overlayRevision
+                        context.coordinator.lastPencilModeActive = isPencilModeActive
                     }
                     needsUpdate = false
                 }
@@ -76,6 +79,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                 context.coordinator.lastLeftPage = leftPage
                 context.coordinator.lastRightPage = rightPage
                 context.coordinator.lastOverlayRevision = overlayRevision
+                context.coordinator.lastPencilModeActive = isPencilModeActive
                 
                 let leftVC = context.coordinator.createVC(page: leftPage)
                 let rightVC = context.coordinator.createVC(page: rightPage)
@@ -96,10 +100,12 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                     let shouldRefreshContent =
                         context.coordinator.lastSinglePage != currentPage
                         || context.coordinator.lastOverlayRevision != overlayRevision
+                        || context.coordinator.lastPencilModeActive != isPencilModeActive
                     if shouldRefreshContent {
                         vc.rootView = AnyView(content(currentPage))
                         context.coordinator.lastSinglePage = currentPage
                         context.coordinator.lastOverlayRevision = overlayRevision
+                        context.coordinator.lastPencilModeActive = isPencilModeActive
                     }
                     needsUpdate = false
                 }
@@ -110,6 +116,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                 context.coordinator.lastPage = currentPage
                 context.coordinator.lastSinglePage = currentPage
                 context.coordinator.lastOverlayRevision = overlayRevision
+                context.coordinator.lastPencilModeActive = isPencilModeActive
                 let vc = context.coordinator.createVC(page: currentPage)
                 
                 if uiViewController.spineLocation == .min || uiViewController.spineLocation == .max || uiViewController.spineLocation == .none {
@@ -136,6 +143,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
         var lastLeftPage: Int = -1
         var lastRightPage: Int = -1
         var lastSinglePage: Int = -1
+        var lastPencilModeActive: Bool? = nil
         
         init(_ parent: BookPagerView) {
             self.parent = parent

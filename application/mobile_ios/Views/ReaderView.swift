@@ -53,6 +53,9 @@ struct ReaderView: View {
     @State private var isChatOpen = false
     @AppStorage("bilingualLayoutMode") private var bilingualLayoutMode: String = "en-vi"
     
+    // Apple Pencil Drawing State
+    @State private var isPencilModeActive = false
+    
     // Voca States
     @State private var vocaPanelMode: VocaLookupPanelMode? = nil
     @State private var vocaPanelRect: CGRect? = nil
@@ -94,6 +97,7 @@ struct ReaderView: View {
                         page: $page,
                         viewMode: $viewMode,
                         isChatOpen: $isChatOpen,
+                        isPencilModeActive: $isPencilModeActive,
                         showJumpToPageDialog: $showJumpToPageDialog,
                         inputPageString: $inputPageString,
                         onDismiss: { dismiss() }
@@ -130,7 +134,8 @@ struct ReaderView: View {
                                         pageCount: max(1, book.pageCount),
                                         currentPage: pageBinding,
                                         isDoubleSided: false,
-                                        overlayRevision: selectionOverlayRevision
+                                        overlayRevision: selectionOverlayRevision,
+                                        isPencilModeActive: isPencilModeActive
                                     ) { p in
                                         let isHorizontal = (bilingualLayoutMode == "en-over-vi" || bilingualLayoutMode == "vi-over-en") ? false : isReadingPaneLarge
                                         let isEnFirst = bilingualLayoutMode.hasPrefix("en")
@@ -166,7 +171,8 @@ struct ReaderView: View {
                                         pageCount: max(1, book.pageCount),
                                         currentPage: pageBinding,
                                         isDoubleSided: useDoubleSided,
-                                        overlayRevision: selectionOverlayRevision
+                                        overlayRevision: selectionOverlayRevision,
+                                        isPencilModeActive: isPencilModeActive
                                     ) { p in
                                         let isLeft = p % 2 == 1
                                         renderWebView(lang: "en", p: p, isDoubleSided: useDoubleSided, containerMode: "en")
@@ -184,7 +190,8 @@ struct ReaderView: View {
                                         pageCount: max(1, book.pageCount),
                                         currentPage: pageBinding,
                                         isDoubleSided: useDoubleSided,
-                                        overlayRevision: selectionOverlayRevision
+                                        overlayRevision: selectionOverlayRevision,
+                                        isPencilModeActive: isPencilModeActive
                                     ) { p in
                                         let isLeft = p % 2 == 1
                                         renderWebView(lang: "vi", p: p, isDoubleSided: useDoubleSided, containerMode: "vi")
@@ -284,6 +291,7 @@ struct ReaderView: View {
             page: p,
             viewMode: viewMode,
             activeSentenceId: targetSentenceId,
+            isPencilModeActive: isPencilModeActive,
             onScroll: { scrollTop in
                 if viewMode == "split" {
                     let otherLang = lang == "en" ? "vi" : "en"
@@ -2105,6 +2113,7 @@ struct ReaderHeaderView: View {
     @Binding var page: Int
     @Binding var viewMode: String
     @Binding var isChatOpen: Bool
+    @Binding var isPencilModeActive: Bool
     @Binding var showJumpToPageDialog: Bool
     @Binding var inputPageString: String
     
@@ -2196,6 +2205,12 @@ struct ReaderHeaderView: View {
                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
             )
             .padding(.trailing, 8)
+            
+            Button(action: { isPencilModeActive.toggle() }) {
+                Image(systemName: isPencilModeActive ? "pencil.tip.crop.circle.badge.minus" : "pencil.tip.crop.circle")
+                    .foregroundColor(isPencilModeActive ? Color(hex: "818cf8") : .white)
+                    .font(.system(size: 15))
+            }
             
             Button(action: { isChatOpen.toggle() }) {
                 Image(systemName: "bubble.left.and.bubble.right.fill")
