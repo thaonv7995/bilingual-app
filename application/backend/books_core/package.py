@@ -171,7 +171,12 @@ def unpack_book(bkb_path: str | Path, dest_parent_dir: str | Path) -> dict[str, 
             if name.startswith("output/"):
                 # Get the relative path after output/
                 rel_path = Path(name).relative_to("output")
-                dest_file = book_dir / "output" / rel_path
+                dest_file = (book_dir / "output" / rel_path).resolve()
+                output_dir_resolved = (book_dir / "output").resolve()
+                
+                # Robust path traversal check
+                if dest_file.parts[:len(output_dir_resolved.parts)] != output_dir_resolved.parts:
+                    raise ValueError(f"Path traversal attempt detected in archive for file: {name}")
                 
                 # Check if it is a directory or file
                 if name.endswith("/"):

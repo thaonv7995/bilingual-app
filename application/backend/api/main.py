@@ -16,7 +16,7 @@ app = FastAPI(title="Bilingual Digital Library API")
 # Enable CORS for frontend flexibility
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=".*",  # allow_origins=["*"] is invalid with allow_credentials=True
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

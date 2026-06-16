@@ -1,7 +1,7 @@
 import os
 import time
 from typing import Optional, List
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Text
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Text, event
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 from sqlalchemy.pool import NullPool
@@ -10,9 +10,18 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./bilingual_reader.db")
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
+    connect_args={"check_same_thread": False, "timeout": 30} if DATABASE_URL.startswith("sqlite") else {},
     poolclass=NullPool if DATABASE_URL.startswith("sqlite") else None
 )
+
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    if DATABASE_URL.startswith("sqlite"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

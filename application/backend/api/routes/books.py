@@ -3,7 +3,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, Response, status, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -88,7 +88,16 @@ def serve_secure_book_static(slug: str, path: str, request: Request, db: Session
             )
 
     # Serve the requested file safely
-    file_path = BOOKS_DIR / slug / "output" / path
+    base_dir = (BOOKS_DIR / slug / "output").resolve()
+    file_path = (base_dir / path).resolve()
+    
+    # Robust path traversal check
+    if file_path.parts[:len(base_dir.parts)] != base_dir.parts:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access Denied: Invalid path."
+        )
+
     if not file_path.is_file():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -179,7 +188,12 @@ def upload_bkb(
             tmp_path.unlink()
 
 @router.get("/{slug}/download")
-def download_bkb(slug: str, current_user: User = Depends(get_current_user_or_apikey), db: Session = Depends(get_db)):
+def download_bkb(
+    slug: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user_or_apikey),
+    db: Session = Depends(get_db)
+):
     """Download the book as a .bkb package file."""
     # Check permissions
     if not current_user.is_admin:
@@ -194,18 +208,24 @@ def download_bkb(slug: str, current_user: User = Depends(get_current_user_or_api
     if not book_dir.is_dir():
         raise HTTPException(status_code=404, detail="Book directory not found")
         
-    # Create temp directory for packing
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        bkb_out_path = Path(tmp_dir) / f"{slug}.bkb"
-        try:
-            pack_book(book_dir, bkb_out_path)
-            return FileResponse(
-                bkb_out_path,
-                media_type="application/octet-stream",
-                filename=f"{slug}.bkb"
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to package book: {e}")
+    # Create a unique temp file (not inside a TemporaryDirectory that deletes itself on return)
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".bkb", delete=False)
+    tmp_file.close()
+    bkb_out_path = Path(tmp_file.name)
+    
+    try:
+        pack_book(book_dir, bkb_out_path)
+        # Register a background task to delete the file after response is sent
+        background_tasks.add_task(bkb_out_path.unlink, missing_ok=True)
+        return FileResponse(
+            bkb_out_path,
+            media_type="application/octet-stream",
+            filename=f"{slug}.bkb"
+        )
+    except Exception as e:
+        if bkb_out_path.exists():
+            bkb_out_path.unlink()
+        raise HTTPException(status_code=500, detail=f"Failed to package book: {e}")
 
 @router.get("/{slug}/manifest")
 def get_book_manifest(slug: str, current_user: User = Depends(get_current_user_or_apikey), db: Session = Depends(get_db)):
@@ -329,6 +349,12 @@ def create_or_update_highlight(
         )
         db.add(db_hl)
     else:
+        # Prevent IDOR: Check ownership and book slug
+        if not current_user.is_admin and db_hl.username != current_user.username:
+            raise HTTPException(status_code=403, detail="Not allowed to modify this highlight")
+        if db_hl.book_slug != slug:
+            raise HTTPException(status_code=400, detail="Highlight does not belong to this book")
+            
         # Update fields
         db_hl.color = highlight_data.get("color", db_hl.color)
         db_hl.note = highlight_data.get("note", db_hl.note)
@@ -347,6 +373,10 @@ def delete_highlight(
     db_hl = db.query(Highlight).filter(Highlight.id == hl_id, Highlight.book_slug == slug).first()
     if not db_hl:
         raise HTTPException(status_code=404, detail="Highlight not found")
+        
+    # Prevent IDOR: Check ownership
+    if not current_user.is_admin and db_hl.username != current_user.username:
+        raise HTTPException(status_code=403, detail="Not allowed to delete this highlight")
         
     db.delete(db_hl)
     db.commit()
