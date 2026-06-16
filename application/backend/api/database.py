@@ -4,10 +4,14 @@ from typing import Optional, List
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
+from sqlalchemy.pool import NullPool
+
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./bilingual_reader.db")
 
 engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+    DATABASE_URL,
+    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
+    poolclass=NullPool if DATABASE_URL.startswith("sqlite") else None
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
