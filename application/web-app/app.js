@@ -1126,7 +1126,7 @@ Instructions:
 
     // 4. Dispatch completions fetch via local proxy /api/chat to bypass CORS
     try {
-      const response = await fetch('/api/chat', {
+      const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
