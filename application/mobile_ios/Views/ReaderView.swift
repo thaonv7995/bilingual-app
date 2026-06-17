@@ -228,8 +228,12 @@ struct ReaderView: View {
                             bilingualLayoutMode: $bilingualLayoutMode,
                             book: book,
                             page: page,
+                            viewMode: viewMode,
                             api: api,
                             isLargeScreen: true,
+                            pageContextBuilder: { page, mode in
+                                await buildPageContext(for: page, viewMode: mode)
+                            },
                             onAskAIShortcut: askAIShortcut
                         )
                         .transition(.move(edge: .trailing))
@@ -245,8 +249,12 @@ struct ReaderView: View {
                         bilingualLayoutMode: $bilingualLayoutMode,
                         book: book,
                         page: page,
+                        viewMode: viewMode,
                         api: api,
                         isLargeScreen: false,
+                        pageContextBuilder: { page, mode in
+                            await buildPageContext(for: page, viewMode: mode)
+                        },
                         onAskAIShortcut: askAIShortcut
                     )
                     .background(Color(hex: "111827").ignoresSafeArea())
@@ -986,6 +994,95 @@ struct ReaderView: View {
             }
         }
     }
+
+    private func chatContainerMode(for viewMode: String) -> String {
+        switch viewMode {
+        case "en": return "en"
+        case "vi": return "vi"
+        default: return "split"
+        }
+    }
+
+    private func chatLangs(for viewMode: String) -> [String] {
+        viewMode == "split" ? ["en", "vi"] : [viewMode]
+    }
+
+    private func extractTextFromWebView(_ webView: WKWebView) async -> String {
+        await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript("document.body ? document.body.innerText.trim() : ''") { result, _ in
+                let text = (result as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                continuation.resume(returning: text)
+            }
+        }
+    }
+
+    private func plainText(fromHTML html: String) -> String {
+        guard let data = html.data(using: .utf8) else { return "" }
+        let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+            .documentType: NSAttributedString.DocumentType.html,
+            .characterEncoding: String.Encoding.utf8.rawValue
+        ]
+        guard let attributed = try? NSAttributedString(data: data, options: options, documentAttributes: nil) else {
+            return ""
+        }
+        return attributed.string.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func plainTextFromCachedPage(lang: String, page: Int) -> String? {
+        guard let url = BookCacheManager.shared.localPageURL(slug: book.slug, lang: lang, page: page),
+              let html = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let text = plainText(fromHTML: html)
+        return text.isEmpty ? nil : text
+    }
+
+    private func fetchPagePlainText(lang: String, page: Int) async -> String? {
+        if let cached = plainTextFromCachedPage(lang: lang, page: page) {
+            return cached
+        }
+
+        let padPage = String(format: "%04d", page)
+        let urlString = "\(api.serverUrl)/books/\(book.slug)/output/\(lang)/page_\(padPage).html?token=\(api.token)"
+        guard let url = URL(string: urlString) else { return nil }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
+                  let html = String(data: data, encoding: .utf8) else { return nil }
+            let text = plainText(fromHTML: html)
+            return text.isEmpty ? nil : text
+        } catch {
+            return nil
+        }
+    }
+
+    private func pageTextSection(lang: String, page: Int, containerMode: String) async -> String? {
+        let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
+        if let webView = webViews[key] {
+            let liveText = await extractTextFromWebView(webView)
+            if !liveText.isEmpty {
+                return "=== \(lang.uppercased()) PAGE \(page) ===\n\(liveText)"
+            }
+        }
+
+        if let fallbackText = await fetchPagePlainText(lang: lang, page: page) {
+            return "=== \(lang.uppercased()) PAGE \(page) ===\n\(fallbackText)"
+        }
+
+        return nil
+    }
+
+    private func buildPageContext(for page: Int, viewMode: String) async -> String {
+        let containerMode = chatContainerMode(for: viewMode)
+        var sections: [String] = []
+
+        for lang in chatLangs(for: viewMode) {
+            if let section = await pageTextSection(lang: lang, page: page, containerMode: containerMode) {
+                sections.append(section)
+            }
+        }
+
+        return sections.joined(separator: "\n\n")
+    }
 }
 
 struct UnevenRoundedCorners: Shape {
@@ -1357,8 +1454,10 @@ struct ReaderChatPanelView: View {
     // Callbacks to ReaderView
     let book: Book
     let page: Int
+    let viewMode: String
     @ObservedObject var api: APIService
     var isLargeScreen: Bool = true
+    var pageContextBuilder: (Int, String) async -> String = { _, _ in "" }
     var onAskAIShortcut: ((String) -> Void)?
     
     // Internal States
@@ -2046,95 +2145,6 @@ struct ReaderChatPanelView: View {
         }
     }
     
-    private func chatContainerMode(for viewMode: String) -> String {
-        switch viewMode {
-        case "en": return "en"
-        case "vi": return "vi"
-        default: return "split"
-        }
-    }
-    
-    private func chatLangs(for viewMode: String) -> [String] {
-        viewMode == "split" ? ["en", "vi"] : [viewMode]
-    }
-    
-    private func extractTextFromWebView(_ webView: WKWebView) async -> String {
-        await withCheckedContinuation { continuation in
-            webView.evaluateJavaScript("document.body ? document.body.innerText.trim() : ''") { result, _ in
-                let text = (result as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                continuation.resume(returning: text)
-            }
-        }
-    }
-    
-    private func plainText(fromHTML html: String) -> String {
-        guard let data = html.data(using: .utf8) else { return "" }
-        let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
-            .documentType: NSAttributedString.DocumentType.html,
-            .characterEncoding: String.Encoding.utf8.rawValue
-        ]
-        guard let attributed = try? NSAttributedString(data: data, options: options, documentAttributes: nil) else {
-            return ""
-        }
-        return attributed.string.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
-    private func plainTextFromCachedPage(lang: String, page: Int) -> String? {
-        guard let url = BookCacheManager.shared.localPageURL(slug: book.slug, lang: lang, page: page),
-              let html = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        let text = plainText(fromHTML: html)
-        return text.isEmpty ? nil : text
-    }
-    
-    private func fetchPagePlainText(lang: String, page: Int) async -> String? {
-        if let cached = plainTextFromCachedPage(lang: lang, page: page) {
-            return cached
-        }
-        
-        let padPage = String(format: "%04d", page)
-        let urlString = "\(api.serverUrl)/books/\(book.slug)/output/\(lang)/page_\(padPage).html?token=\(api.token)"
-        guard let url = URL(string: urlString) else { return nil }
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
-                  let html = String(data: data, encoding: .utf8) else { return nil }
-            let text = plainText(fromHTML: html)
-            return text.isEmpty ? nil : text
-        } catch {
-            return nil
-        }
-    }
-    
-    private func pageTextSection(lang: String, page: Int, containerMode: String) async -> String? {
-        let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
-        if let webView = webViews[key] {
-            let liveText = await extractTextFromWebView(webView)
-            if !liveText.isEmpty {
-                return "=== \(lang.uppercased()) PAGE \(page) ===\n\(liveText)"
-            }
-        }
-        
-        if let fallbackText = await fetchPagePlainText(lang: lang, page: page) {
-            return "=== \(lang.uppercased()) PAGE \(page) ===\n\(fallbackText)"
-        }
-        
-        return nil
-    }
-    
-    private func buildPageContext(for page: Int, viewMode: String) async -> String {
-        let containerMode = chatContainerMode(for: viewMode)
-        var sections: [String] = []
-        
-        for lang in chatLangs(for: viewMode) {
-            if let section = await pageTextSection(lang: lang, page: page, containerMode: containerMode) {
-                sections.append(section)
-            }
-        }
-        
-        return sections.joined(separator: "\n\n")
-    }
-    
     private func sendChat(with presetText: String? = nil) {
         let textToSend = (presetText ?? chatInputText).trimmingCharacters(in: .whitespacesAndNewlines)
         if textToSend.isEmpty || isChatPending { return }
@@ -2155,7 +2165,7 @@ struct ReaderChatPanelView: View {
         let contextViewMode = viewMode
         
         Task { @MainActor in
-            let activePageText = await buildPageContext(for: contextPage, viewMode: contextViewMode)
+            let activePageText = await pageContextBuilder(contextPage, contextViewMode)
             let pageContextBlock = activePageText.isEmpty
                 ? "Page text unavailable. Ask the user to wait for the page to finish loading, then try again."
                 : activePageText
