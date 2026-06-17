@@ -1,7 +1,7 @@
 import time
 import secrets
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Response, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -22,8 +22,16 @@ class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
 @router.post("/register")
-def register(username: str, password: str, db: Session = Depends(get_db)):
+def register(
+    username: str,
+    password: str,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
     user_exists = db.query(User).filter(User.username == username).first()
     if user_exists:
         raise HTTPException(status_code=400, detail="Username already registered")
@@ -84,14 +92,15 @@ def login(username: str, password: str, response: Response, db: Session = Depend
 def refresh_token_endpoint(
     response: Response,
     request: Request,
-    body_payload: Optional[dict] = None,
+    body_payload: Optional[RefreshTokenRequest] = Body(default=None),
     db: Session = Depends(get_db)
 ):
-    """Generates a new access token using a valid refresh token."""
-    # 1. Read refresh token from cookie or payload body
+    """Generates a new access token using a valid refresh token.
+    Accepts refresh token from HttpOnly cookie (web) or JSON body (mobile)."""
+    # 1. Read refresh token from cookie (web) or JSON body (mobile)
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token and body_payload:
-        refresh_token = body_payload.get("refresh_token")
+        refresh_token = body_payload.refresh_token
         
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token missing")

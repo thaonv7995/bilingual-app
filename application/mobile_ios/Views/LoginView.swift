@@ -5,10 +5,11 @@ struct LoginView: View {
     @State private var usernameInput = ""
     @State private var passwordInput = ""
     @AppStorage("savedUsername") private var savedUsername = ""
-    @AppStorage("savedPassword") private var savedPassword = ""
     @AppStorage("isRememberMe") private var isRememberMe = false
     @State private var isLoading = false
     @State private var errorMessage = ""
+    
+    private let keychainPasswordKey = "bilingual.savedPassword"
     
     var body: some View {
         ZStack {
@@ -151,7 +152,7 @@ struct LoginView: View {
         .onAppear {
             if isRememberMe {
                 usernameInput = savedUsername
-                passwordInput = savedPassword
+                passwordInput = KeychainHelper.load(key: keychainPasswordKey) ?? ""
             }
         }
     }
@@ -171,10 +172,10 @@ struct LoginView: View {
                 await MainActor.run {
                     if isRememberMe {
                         savedUsername = usernameInput
-                        savedPassword = passwordInput
+                        KeychainHelper.save(key: keychainPasswordKey, value: passwordInput)
                     } else {
                         savedUsername = ""
-                        savedPassword = ""
+                        KeychainHelper.delete(key: keychainPasswordKey)
                     }
                     isLoading = false
                 }

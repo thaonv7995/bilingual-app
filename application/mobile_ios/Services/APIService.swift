@@ -8,6 +8,7 @@ class APIService: ObservableObject {
     @Published var username: String = ""
     @Published var isAdmin: Bool = false
     @Published var isAuthenticated: Bool = false
+    @Published var isVerifyingSession: Bool = false
     
     // Shared highlights state
     @Published var highlights: [Highlight] = []
@@ -23,11 +24,65 @@ class APIService: ObservableObject {
             self.username = ServerUsernameHack()
             self.isAdmin = UserDefaults.standard.bool(forKey: "isAdmin")
             self.isAuthenticated = true
+            
+            // Verify session with server on launch
+            self.isVerifyingSession = true
+            Task { await self.verifySession() }
         }
     }
     
     private func ServerUsernameHack() -> String {
         return UserDefaults.standard.string(forKey: "username") ?? ""
+    }
+    
+    /// Verify the saved session is still valid on app launch.
+    /// If the access token is expired, attempt a refresh. If refresh also fails, logout.
+    func verifySession() async {
+        defer { isVerifyingSession = false }
+        
+        guard !token.isEmpty else {
+            logout()
+            return
+        }
+        
+        guard let url = URL(string: "\(serverUrl)/api/auth/me") else {
+            logout()
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode == 200 {
+                    // Session valid — sync user info
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        self.username = json["username"] as? String ?? self.username
+                        self.isAdmin = json["is_admin"] as? Bool ?? self.isAdmin
+                        UserDefaults.standard.set(self.username, forKey: "username")
+                        UserDefaults.standard.set(self.isAdmin, forKey: "isAdmin")
+                    }
+                    return
+                } else if httpResponse.statusCode == 401 {
+                    // Access token expired, attempt refresh
+                    do {
+                        _ = try await performTokenRefresh()
+                        // Refresh succeeded, session restored
+                        return
+                    } catch {
+                        // Refresh also failed
+                        logout()
+                        return
+                    }
+                }
+            }
+            // Any other error — keep session but don't logout (could be network issue)
+        } catch {
+            // Network error — keep current session, don't force logout on connectivity issues
+            print("[APIService] Session verify failed (network): \(error.localizedDescription)")
+        }
     }
     
     func login(usernameInput: String, passwordInput: String) async throws -> Bool {
