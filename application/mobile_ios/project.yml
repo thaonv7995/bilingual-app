@@ -25,7 +25,7 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
-        CODE_SIGNING_ALLOWED: false
+        CODE_SIGNING_ALLOWED: true
 
 schemes:
   BilingualReader:

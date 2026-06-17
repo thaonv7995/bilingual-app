@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		04D65506177CC1C5E2EEC4D6 /* ReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB921731167CE40A439D7728 /* ReaderView.swift */; };
+		097E87C8B3B90780DA137B8D /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D9000B187782F546998E2BF /* KeychainHelper.swift */; };
+		1690126573FBE98AC4C4EDA9 /* VocaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62D6D2E8A59E1377CCAAFF3F /* VocaService.swift */; };
 		34A892B65037498539E88D18 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5538CACD35C531C90CC07521 /* Assets.xcassets */; };
 		3DA094D67BA2E7AE2EBEBECA /* BookshelfView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 159815F66B6C0D29720BE1A9 /* BookshelfView.swift */; };
 		45013FC446C2D70BCB2CD11E /* BilingualWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57B156C7DBCD09A96394153 /* BilingualWebView.swift */; };
@@ -17,10 +19,9 @@
 		88CBC4EE202827D2947AE3C3 /* AISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D97E70A5694862660AFD0E6 /* AISettingsView.swift */; };
 		8CBD3ECD5460D98952AEEDCF /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AD4860B8B690109EFB9878A /* LoginView.swift */; };
 		A0827BBC64B63C39E54883D2 /* Book.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD24421EAA5774ABB6536580 /* Book.swift */; };
+		A1BA470D62BF9898AC198718 /* VocaLookupOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B57B29C65DC5F4921F24F9 /* VocaLookupOverlay.swift */; };
 		A80052D358A61956D1231899 /* BookPagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */; };
 		B73ADA8B14F6A58D0A2C0728 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB39B254369C911E5008B8A0 /* APIService.swift */; };
-		E7A3B2C1D4F5A6789012ABCD /* VocaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8B4C3D2E5A6B7890123BCDE /* VocaService.swift */; };
-		B0D6E5F4A7C8D9012345DEF0 /* VocaLookupOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9C5D4E3F6B7C8901234CDEF /* VocaLookupOverlay.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,17 +29,18 @@
 		1D97E70A5694862660AFD0E6 /* AISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsView.swift; sourceTree = "<group>"; };
 		5538CACD35C531C90CC07521 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualReaderApp.swift; sourceTree = "<group>"; };
+		62D6D2E8A59E1377CCAAFF3F /* VocaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaService.swift; sourceTree = "<group>"; };
 		6AD4860B8B690109EFB9878A /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		6D9000B187782F546998E2BF /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		83C106C930837C2F0DA5DB0C /* BilingualReader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BilingualReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPagerView.swift; sourceTree = "<group>"; };
 		99AF811F0CC00281EC4C8B04 /* BookCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCacheManager.swift; sourceTree = "<group>"; };
 		AB39B254369C911E5008B8A0 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		B2B57B29C65DC5F4921F24F9 /* VocaLookupOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaLookupOverlay.swift; sourceTree = "<group>"; };
 		CD24421EAA5774ABB6536580 /* Book.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Book.swift; sourceTree = "<group>"; };
 		D57B156C7DBCD09A96394153 /* BilingualWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualWebView.swift; sourceTree = "<group>"; };
 		F25A14856419E8E55800C330 /* LayoutOptionButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutOptionButton.swift; sourceTree = "<group>"; };
 		FB921731167CE40A439D7728 /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
-		F8B4C3D2E5A6B7890123BCDE /* VocaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaService.swift; sourceTree = "<group>"; };
-		A9C5D4E3F6B7C8901234CDEF /* VocaLookupOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaLookupOverlay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -47,7 +49,8 @@
 			children = (
 				AB39B254369C911E5008B8A0 /* APIService.swift */,
 				99AF811F0CC00281EC4C8B04 /* BookCacheManager.swift */,
-				F8B4C3D2E5A6B7890123BCDE /* VocaService.swift */,
+				6D9000B187782F546998E2BF /* KeychainHelper.swift */,
+				62D6D2E8A59E1377CCAAFF3F /* VocaService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -99,7 +102,7 @@
 				F25A14856419E8E55800C330 /* LayoutOptionButton.swift */,
 				6AD4860B8B690109EFB9878A /* LoginView.swift */,
 				FB921731167CE40A439D7728 /* ReaderView.swift */,
-				A9C5D4E3F6B7C8901234CDEF /* VocaLookupOverlay.swift */,
+				B2B57B29C65DC5F4921F24F9 /* VocaLookupOverlay.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -177,11 +180,12 @@
 				6BB60AE66CC4E8F4A88C555A /* BookCacheManager.swift in Sources */,
 				A80052D358A61956D1231899 /* BookPagerView.swift in Sources */,
 				3DA094D67BA2E7AE2EBEBECA /* BookshelfView.swift in Sources */,
+				097E87C8B3B90780DA137B8D /* KeychainHelper.swift in Sources */,
 				83039E648CE6CD6CFEEBAA03 /* LayoutOptionButton.swift in Sources */,
 				8CBD3ECD5460D98952AEEDCF /* LoginView.swift in Sources */,
 				04D65506177CC1C5E2EEC4D6 /* ReaderView.swift in Sources */,
-				E7A3B2C1D4F5A6789012ABCD /* VocaService.swift in Sources */,
-				B0D6E5F4A7C8D9012345DEF0 /* VocaLookupOverlay.swift in Sources */,
+				A1BA470D62BF9898AC198718 /* VocaLookupOverlay.swift in Sources */,
+				1690126573FBE98AC4C4EDA9 /* VocaService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

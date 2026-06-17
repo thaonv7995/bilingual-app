@@ -26,7 +26,7 @@ struct LoginResponse: Codable {
     }
 }
 
-struct Book: Codable, Identifiable {
+struct Book: Codable, Identifiable, Equatable {
     var id: String { slug }
     let slug: String
     let title: String
