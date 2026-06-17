@@ -7,11 +7,46 @@ struct BookshelfView: View {
     @State private var selectedBook: Book?
     @State private var showSettings = false
     @State private var rotationDegrees: Double = 0.0
+    @State private var progressUpdateCounter: Int = 0
     
     // Adaptive grid columns for iPhone/iPad layouts
     let columns = [
         GridItem(.adaptive(minimum: 160, maximum: 220), spacing: 20)
     ]
+    
+    /// Sort books so that the most recently read or most recently added appear first.
+    /// Logic mirrors the web app: each book gets a virtual "added time" based on its
+    /// array index (later index = added later = higher base time). The effective sort
+    /// key is max(virtualAddedTime, lastReadTimestamp). This ensures newly added books
+    /// appear at the top, and reading any book bumps it to position 1.
+    private var sortedBooks: [Book] {
+        guard !books.isEmpty else { return [] }
+        // Force SwiftUI to re-evaluate when progress updates
+        _ = progressUpdateCounter
+        
+        let n = books.count
+        let now = Date().timeIntervalSince1970
+        
+        return books
+            .enumerated()
+            .map { (i, book) -> (Book, TimeInterval) in
+                // Virtual "added time": later books get a time closer to now
+                let addedTime = now - Double(n - 1 - i)
+                
+                // Last read timestamp from local progress cache
+                var lastRead: TimeInterval = 0
+                if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
+                   let progress = try? JSONDecoder().decode(ReadingProgress.self, from: data),
+                   let lr = progress.lastRead {
+                    lastRead = TimeInterval(lr)
+                }
+                
+                let sortKey = max(addedTime, lastRead)
+                return (book, sortKey)
+            }
+            .sorted { $0.1 > $1.1 }
+            .map { $0.0 }
+    }
     
     var body: some View {
         NavigationView {
@@ -35,7 +70,7 @@ struct BookshelfView: View {
                 } else {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 25) {
-                            ForEach(books) { book in
+                            ForEach(sortedBooks) { book in
                                 BookCard(book: book, onSelect: {
                                     selectedBook = book
                                 })
@@ -110,6 +145,16 @@ struct BookshelfView: View {
             }
             .onAppear {
                 Task { await loadBooks() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ReadingProgressUpdated"))) { _ in
+                progressUpdateCounter += 1
+            }
+            .onChange(of: selectedBook) { newValue in
+                // When user returns from reader (selectedBook becomes nil),
+                // trigger re-sort so the just-read book appears first
+                if newValue == nil {
+                    progressUpdateCounter += 1
+                }
             }
             .onChange(of: isLoading) { loading in
                 if loading {

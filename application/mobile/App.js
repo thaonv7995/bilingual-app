@@ -45,7 +45,8 @@ export default function App() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
-      setBooks(data);
+      // Reverse so newest books (added later) appear first
+      setBooks([...data].reverse());
     } catch (e) {
       console.error('Failed to fetch books:', e);
     }

@@ -19,7 +19,7 @@ const logoutBtn = document.getElementById("logout-btn");
 const progressBar = document.getElementById("progress-bar");
 const progressContainer = document.getElementById("progress-container");
 const uploadStatus = document.getElementById("upload-status");
-const booksListBody = document.getElementById("books-list-body");
+const booksGridContainer = document.getElementById("books-grid-container");
 
 // API Keys DOM elements
 const btnCreateApiKey = document.getElementById("btn-create-apikey");
@@ -268,34 +268,47 @@ async function loadDashboardData() {
 
 // --- Book Management Actions ---
 function renderBooksList(books) {
-  booksListBody.innerHTML = "";
+  booksGridContainer.innerHTML = "";
   if (books.length === 0) {
-    booksListBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 3rem 0;">Chưa có cuốn sách nào trong thư viện.</td></tr>`;
+    booksGridContainer.innerHTML = `<div class="admin-books-empty">Chưa có cuốn sách nào trong thư viện.</div>`;
     return;
   }
 
-  books.forEach(b => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>
-        <div class="cover-preview">
-          ${b.cover ? `<img src="${b.cover}" alt="cover" />` : '<span style="color:var(--text-muted);font-size:0.65rem;">No Cover</span>'}
+  // Reverse to show newest books first
+  const reversed = [...books].reverse();
+
+  reversed.forEach(b => {
+    const card = document.createElement("div");
+    card.className = "admin-book-card";
+
+    const coverContent = b.cover
+      ? `<img src="${b.cover}" alt="${b.title}" />`
+      : `<div class="admin-book-card__cover-fallback"><h4>${b.title}</h4></div>`;
+
+    card.innerHTML = `
+      <div class="admin-book-card__cover">
+        ${coverContent}
+        <div class="admin-book-card__actions-overlay">
+          <button class="btn btn-secondary btn-sm" onclick="downloadBook('${b.slug}')">
+            <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M5 20H19V18H5V20M19 9H15V3H9V9H5L12 16L19 9Z"/></svg>
+            Tải về .bkb
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="deleteBook('${b.slug}', '${b.title.replace(/'/g, "\\'")}')">
+            <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/></svg>
+            Xóa sách
+          </button>
         </div>
-      </td>
-      <td>
-        <div style="font-weight: 500; color: var(--text-main); font-size: 0.875rem;">${b.title}</div>
-        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Tác giả: ${b.author || 'Không rõ'}</div>
-      </td>
-      <td style="font-family: monospace; font-size: 0.8125rem; color: var(--text-muted);">${b.slug}</td>
-      <td style="font-weight: 400; color: var(--text-muted);">${b.pageCount} trang</td>
-      <td>
-        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-          <button class="btn btn-secondary btn-sm" onclick="downloadBook('${b.slug}')">Tải về (.bkb)</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteBook('${b.slug}', '${b.title}')">Xóa</button>
+      </div>
+      <div class="admin-book-card__body">
+        <div class="admin-book-card__title" title="${b.title}">${b.title}</div>
+        <div class="admin-book-card__author">${b.author || 'Không rõ tác giả'}</div>
+        <div class="admin-book-card__meta">
+          <span>${b.pageCount} trang</span>
+          <span class="admin-book-card__slug" title="${b.slug}">${b.slug}</span>
         </div>
-      </td>
+      </div>
     `;
-    booksListBody.appendChild(tr);
+    booksGridContainer.appendChild(card);
   });
 }
 
