@@ -1602,8 +1602,7 @@ struct ReaderChatPanelView: View {
                     title: "Tóm tắt trang này",
                     prompt: "Tóm tắt nội dung chính của trang đang đọc..."
                 ) {
-                    chatInputText = "Tóm tắt nội dung chính và các ý chính của trang sách này giúp tôi."
-                    sendChat()
+                    sendChat(with: "Tóm tắt nội dung chính và các ý chính của trang sách này giúp tôi.")
                 }
                 
                 SuggestedPromptRow(
@@ -1611,8 +1610,7 @@ struct ReaderChatPanelView: View {
                     title: "Giải thích thuật ngữ",
                     prompt: "Tìm và giải thích các từ khó, khái niệm..."
                 ) {
-                    chatInputText = "Hãy tìm các thuật ngữ phức tạp, khái niệm quan trọng hoặc từ khó trong trang này và giải thích ngắn gọn."
-                    sendChat()
+                    sendChat(with: "Hãy tìm các thuật ngữ phức tạp, khái niệm quan trọng hoặc từ khó trong trang này và giải thích ngắn gọn.")
                 }
                 
                 SuggestedPromptRow(
@@ -1620,8 +1618,7 @@ struct ReaderChatPanelView: View {
                     title: "Ý chính bài học",
                     prompt: "Rút ra thông điệp chính cốt lõi..."
                 ) {
-                    chatInputText = "Bài học hoặc thông điệp cốt lõi nhất mà tác giả muốn truyền đạt ở trang này là gì?"
-                    sendChat()
+                    sendChat(with: "Bài học hoặc thông điệp cốt lõi nhất mà tác giả muốn truyền đạt ở trang này là gì?")
                 }
                 
                 SuggestedPromptRow(
@@ -1629,8 +1626,7 @@ struct ReaderChatPanelView: View {
                     title: "Dịch & Phân tích",
                     prompt: "Dịch các câu phức tạp trong trang..."
                 ) {
-                    chatInputText = "Dịch các câu học thuật hoặc câu khó trong trang này sang tiếng Việt và giải nghĩa chi tiết cấu trúc."
-                    sendChat()
+                    sendChat(with: "Dịch các câu học thuật hoặc câu khó trong trang này sang tiếng Việt và giải nghĩa chi tiết cấu trúc.")
                 }
             }
         }
@@ -2050,8 +2046,97 @@ struct ReaderChatPanelView: View {
         }
     }
     
-    private func sendChat() {
-        let textToSend = chatInputText.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func chatContainerMode(for viewMode: String) -> String {
+        switch viewMode {
+        case "en": return "en"
+        case "vi": return "vi"
+        default: return "split"
+        }
+    }
+    
+    private func chatLangs(for viewMode: String) -> [String] {
+        viewMode == "split" ? ["en", "vi"] : [viewMode]
+    }
+    
+    private func extractTextFromWebView(_ webView: WKWebView) async -> String {
+        await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript("document.body ? document.body.innerText.trim() : ''") { result, _ in
+                let text = (result as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                continuation.resume(returning: text)
+            }
+        }
+    }
+    
+    private func plainText(fromHTML html: String) -> String {
+        guard let data = html.data(using: .utf8) else { return "" }
+        let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+            .documentType: NSAttributedString.DocumentType.html,
+            .characterEncoding: String.Encoding.utf8.rawValue
+        ]
+        guard let attributed = try? NSAttributedString(data: data, options: options, documentAttributes: nil) else {
+            return ""
+        }
+        return attributed.string.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    private func plainTextFromCachedPage(lang: String, page: Int) -> String? {
+        guard let url = BookCacheManager.shared.localPageURL(slug: book.slug, lang: lang, page: page),
+              let html = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let text = plainText(fromHTML: html)
+        return text.isEmpty ? nil : text
+    }
+    
+    private func fetchPagePlainText(lang: String, page: Int) async -> String? {
+        if let cached = plainTextFromCachedPage(lang: lang, page: page) {
+            return cached
+        }
+        
+        let padPage = String(format: "%04d", page)
+        let urlString = "\(api.serverUrl)/books/\(book.slug)/output/\(lang)/page_\(padPage).html?token=\(api.token)"
+        guard let url = URL(string: urlString) else { return nil }
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
+                  let html = String(data: data, encoding: .utf8) else { return nil }
+            let text = plainText(fromHTML: html)
+            return text.isEmpty ? nil : text
+        } catch {
+            return nil
+        }
+    }
+    
+    private func pageTextSection(lang: String, page: Int, containerMode: String) async -> String? {
+        let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
+        if let webView = webViews[key] {
+            let liveText = await extractTextFromWebView(webView)
+            if !liveText.isEmpty {
+                return "=== \(lang.uppercased()) PAGE \(page) ===\n\(liveText)"
+            }
+        }
+        
+        if let fallbackText = await fetchPagePlainText(lang: lang, page: page) {
+            return "=== \(lang.uppercased()) PAGE \(page) ===\n\(fallbackText)"
+        }
+        
+        return nil
+    }
+    
+    private func buildPageContext(for page: Int, viewMode: String) async -> String {
+        let containerMode = chatContainerMode(for: viewMode)
+        var sections: [String] = []
+        
+        for lang in chatLangs(for: viewMode) {
+            if let section = await pageTextSection(lang: lang, page: page, containerMode: containerMode) {
+                sections.append(section)
+            }
+        }
+        
+        return sections.joined(separator: "\n\n")
+    }
+    
+    private func sendChat(with presetText: String? = nil) {
+        let textToSend = (presetText ?? chatInputText).trimmingCharacters(in: .whitespacesAndNewlines)
         if textToSend.isEmpty || isChatPending { return }
         
         if aiApiKey.isEmpty {
@@ -2066,23 +2151,36 @@ struct ReaderChatPanelView: View {
         isChatPending = true
         saveChatHistory()
         
-        // Build prompt with page context
-        let systemPrompt = """
-        You are a helpful, expert AI Book Assistant. You are guiding the user who is reading the book "\(book.title)" by \(book.author ?? "Unknown").
-        The user is currently reading page \(page).
+        let contextPage = page
+        let contextViewMode = viewMode
         
-        Please answer the user's questions accurately in Vietnamese. Keep code blocks in their original language.
-        """
-        
-        // Convert histories
-        var apiMessages = [
-            ["role": "system", "content": systemPrompt]
-        ]
-        for msg in chatMessages.suffix(10) { // send last 10 messages for context
-            apiMessages.append(["role": msg.role, "content": msg.content])
-        }
-        
-        Task {
+        Task { @MainActor in
+            let activePageText = await buildPageContext(for: contextPage, viewMode: contextViewMode)
+            let pageContextBlock = activePageText.isEmpty
+                ? "Page text unavailable. Ask the user to wait for the page to finish loading, then try again."
+                : activePageText
+            
+            let systemPrompt = """
+            You are a helpful, expert AI Book Assistant. You are guiding the user who is reading the book "\(book.title)" by \(book.author ?? "Unknown").
+            The user is currently reading page \(contextPage).
+            
+            CURRENT PAGE CONTEXT:
+            \(pageContextBlock)
+            
+            Instructions:
+            1. Answer the user's questions accurately based on the CURRENT PAGE CONTEXT above.
+            2. If the user asks about something on this page, prioritize the CURRENT PAGE CONTEXT.
+            3. Keep your responses structured, clear, and scan-friendly.
+            4. Please answer in Vietnamese unless the user asks you to write or explain in English. Keep code blocks in their original programming language.
+            """
+            
+            var apiMessages = [
+                ["role": "system", "content": systemPrompt]
+            ]
+            for msg in chatMessages.suffix(10) {
+                apiMessages.append(["role": msg.role, "content": msg.content])
+            }
+            
             do {
                 let responseText = try await api.sendChat(
                     baseURL: aiBaseURL,
@@ -2090,17 +2188,13 @@ struct ReaderChatPanelView: View {
                     model: aiModel,
                     messages: apiMessages
                 )
-                await MainActor.run {
-                    self.chatMessages.append(ChatMessage(role: "assistant", content: responseText))
-                    self.isChatPending = false
-                    self.saveChatHistory()
-                }
+                self.chatMessages.append(ChatMessage(role: "assistant", content: responseText))
+                self.isChatPending = false
+                self.saveChatHistory()
             } catch {
-                await MainActor.run {
-                    self.chatMessages.append(ChatMessage(role: "assistant", content: "Lỗi kết nối AI: \(error.localizedDescription). Hãy kiểm tra lại Base URL và API Key trong cài đặt."))
-                    self.isChatPending = false
-                    self.saveChatHistory()
-                }
+                self.chatMessages.append(ChatMessage(role: "assistant", content: "Lỗi kết nối AI: \(error.localizedDescription). Hãy kiểm tra lại Base URL và API Key trong cài đặt."))
+                self.isChatPending = false
+                self.saveChatHistory()
             }
         }
     }

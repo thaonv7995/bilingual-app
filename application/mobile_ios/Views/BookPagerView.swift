@@ -138,6 +138,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
         var parent: BookPagerView
         var lastPage: Int
         var pendingPage: Int?
+        var pendingPreviousPage: Int?
         var cachedVCs: [Int: PageHostingController] = [:]
         var lastOverlayRevision: Int = -1
         var lastLeftPage: Int = -1
@@ -230,21 +231,34 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
             return nil
         }
         
+        private func normalizedCurrentPage(from pageIndex: Int) -> Int {
+            if parent.isDoubleSided {
+                return pageIndex % 2 == 1 ? pageIndex : max(1, pageIndex - 1)
+            }
+            return pageIndex
+        }
+        
         func pageViewController(_ pageViewController: UIPageViewController, willTransitionTo pendingViewControllers: [UIViewController]) {
             if let vc = pendingViewControllers.first as? PageHostingController {
                 pendingPage = vc.pageIndex
+                pendingPreviousPage = parent.currentPage
+                parent.currentPage = normalizedCurrentPage(from: vc.pageIndex)
             }
         }
         
         func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
             if completed, let p = pendingPage {
-                parent.currentPage = p
-                lastPage = p
+                let normalizedPage = normalizedCurrentPage(from: p)
+                parent.currentPage = normalizedPage
+                lastPage = normalizedPage
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                     self?.preloadNeighbors()
                 }
+            } else if !completed, let previousPage = pendingPreviousPage {
+                parent.currentPage = previousPage
             }
             pendingPage = nil
+            pendingPreviousPage = nil
         }
         
         func pageViewController(_ pageViewController: UIPageViewController, spineLocationFor orientation: UIInterfaceOrientation) -> UIPageViewController.SpineLocation {
