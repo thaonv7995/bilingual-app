@@ -2,6 +2,7 @@ import time
 import secrets
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.database import get_db, User, UserRefreshToken
@@ -11,10 +12,15 @@ from api.auth import (
     create_access_token,
     decode_access_token,
     get_current_user_or_apikey,
+    require_admin,
     REFRESH_TOKEN_EXPIRE_SECONDS
 )
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 @router.post("/register")
 def register(username: str, password: str, db: Session = Depends(get_db)):
@@ -154,3 +160,29 @@ def get_me(current_user: User = Depends(get_current_user_or_apikey)):
         "username": current_user.username,
         "is_admin": current_user.is_admin
     }
+
+@router.put("/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Change password for the currently authenticated admin user."""
+    # Re-fetch the user from DB to get the real record (require_admin may return virtual user for API keys)
+    db_user = db.query(User).filter(User.username == current_user.username).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found in database")
+
+    # Verify current password
+    if not verify_password(payload.current_password, db_user.password_hash):
+        raise HTTPException(status_code=400, detail="Mật khẩu hiện tại không đúng")
+
+    # Validate new password
+    if len(payload.new_password) < 4:
+        raise HTTPException(status_code=400, detail="Mật khẩu mới phải có ít nhất 4 ký tự")
+
+    # Update password
+    db_user.password_hash = get_password_hash(payload.new_password)
+    db.commit()
+
+    return {"ok": True, "message": "Đổi mật khẩu thành công"}

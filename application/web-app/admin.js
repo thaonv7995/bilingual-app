@@ -605,6 +605,56 @@ window.revokeKey = async function(id) {
   }
 };
 
+// --- Change Password Handler ---
+const changePasswordForm = document.getElementById("change-password-form");
+const passwordError = document.getElementById("password-error");
+
+if (changePasswordForm) {
+  changePasswordForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    passwordError.classList.add("hidden");
+
+    const currentPassword = document.getElementById("current-password").value;
+    const newPassword = document.getElementById("new-password-input").value;
+    const confirmPassword = document.getElementById("confirm-password").value;
+
+    // Client-side validation
+    if (newPassword.length < 4) {
+      passwordError.textContent = "Mật khẩu mới phải có ít nhất 4 ký tự.";
+      passwordError.classList.remove("hidden");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      passwordError.textContent = "Mật khẩu mới và xác nhận mật khẩu không khớp.";
+      passwordError.classList.remove("hidden");
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      passwordError.textContent = "Mật khẩu mới phải khác mật khẩu hiện tại.";
+      passwordError.classList.remove("hidden");
+      return;
+    }
+
+    try {
+      await apiCall("/api/auth/change-password", "PUT", {
+        current_password: currentPassword,
+        new_password: newPassword
+      });
+      showToast("Đổi mật khẩu thành công! Vui lòng đăng nhập lại.", "success");
+      changePasswordForm.reset();
+      // Force logout after password change
+      setTimeout(() => {
+        logout();
+      }, 1500);
+    } catch (err) {
+      passwordError.textContent = err.message || "Đổi mật khẩu thất bại.";
+      passwordError.classList.remove("hidden");
+    }
+  });
+}
+
 // --- Initial Session Check ---
 if (token) {
   console.log("Found token, verifying with /api/auth/me...");

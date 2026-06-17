@@ -831,6 +831,10 @@
           <svg viewBox="0 0 24 24"><path d="M12.65 11C11.83 7.56 8.77 5 5 5c-4.42 0-8 3.58-8 8s3.58 8 8 8c3.77 0 6.83-2.56 7.65-6H17v3h4v-3h2v-4H12.65zM5 17c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg>
           Quản Lý API Key
         </button>
+        <button class="nav-item" onclick="switchTab('password-tab', 'Đổi Mật Khẩu Admin')">
+          <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>
+          Đổi Mật Khẩu
+        </button>
       </nav>
     </aside>
 
@@ -985,6 +989,35 @@
                 </tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <!-- TAB 4: CHANGE PASSWORD -->
+        <section id="password-tab" class="tab-content">
+          <div class="card" style="max-width: 520px;">
+            <div class="card-header">
+              <h2>Đổi Mật Khẩu Quản Trị</h2>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.8125rem; margin-bottom: 1.5rem; line-height: 1.5;">Cập nhật mật khẩu đăng nhập cho tài khoản admin hiện tại. Sau khi đổi, bạn sẽ cần đăng nhập lại.</p>
+            <form id="change-password-form">
+              <div class="form-group">
+                <label for="current-password">Mật khẩu hiện tại</label>
+                <input type="password" id="current-password" required placeholder="Nhập mật khẩu hiện tại">
+              </div>
+              <div class="form-group">
+                <label for="new-password-input">Mật khẩu mới</label>
+                <input type="password" id="new-password-input" required placeholder="Nhập mật khẩu mới (tối thiểu 4 ký tự)" minlength="4">
+              </div>
+              <div class="form-group">
+                <label for="confirm-password">Xác nhận mật khẩu mới</label>
+                <input type="password" id="confirm-password" required placeholder="Nhập lại mật khẩu mới">
+              </div>
+              <div id="password-error" style="color: var(--danger); margin-bottom: 1rem; font-size: 0.8125rem;" class="hidden"></div>
+              <button type="submit" class="btn" id="btn-change-password">
+                <svg style="width:16px;height:16px;fill:currentColor" viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>
+                Cập Nhật Mật Khẩu
+              </button>
+            </form>
           </div>
         </section>
 
