@@ -36,11 +36,32 @@ async def chat_proxy(request: Request, current_user: User = Depends(get_current_
         "messages": data.get("messages", []),
         "stream": data.get("stream", False)
     }
-    
+
+    client = httpx.AsyncClient(timeout=120.0)
+    try:
+        upstream = await client.send(
+            client.build_request("POST", target_url, json=payload, headers=headers),
+            stream=True,
+        )
+    except httpx.RequestError as exc:
+        await client.aclose()
+        raise HTTPException(status_code=502, detail=f"Could not reach AI provider: {exc}") from exc
+
+    if upstream.status_code >= 400:
+        error_body = (await upstream.aread()).decode("utf-8", errors="replace")[:500]
+        await upstream.aclose()
+        await client.aclose()
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI provider returned {upstream.status_code}: {error_body}",
+        )
+
     async def event_generator():
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream("POST", target_url, json=payload, headers=headers) as r:
-                async for chunk in r.aiter_bytes():
-                    yield chunk
+        try:
+            async for chunk in upstream.aiter_bytes():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

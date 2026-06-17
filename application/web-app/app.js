@@ -99,6 +99,71 @@ function getInitialRoute() {
   return { book: null, page: 1, viewMode: null };
 }
 
+const ACCESS_TOKEN_KEY = 'bilingual.reader.token';
+const REFRESH_TOKEN_KEY = 'bilingual.reader.refreshToken';
+
+function normalizeApiUrl(url) {
+  if (/^https?:\/\//i.test(url)) return url;
+  return url.startsWith('/') ? url : `/${url}`;
+}
+
+function persistAuthTokens(data, setTokenFn) {
+  if (data.access_token) {
+    localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
+    if (setTokenFn) setTokenFn(data.access_token);
+  }
+  if (data.refresh_token) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+  }
+  if (data.username) {
+    localStorage.setItem('bilingual.reader.username', data.username);
+  }
+  if (data.is_admin !== undefined) {
+    localStorage.setItem('bilingual.reader.isAdmin', data.is_admin);
+    if (data.is_admin && data.access_token) {
+      localStorage.setItem('bilingual.admin.token', data.access_token);
+    } else {
+      localStorage.removeItem('bilingual.admin.token');
+    }
+  }
+}
+
+function clearAuthSession(setTokenFn) {
+  if (setTokenFn) setTokenFn('');
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem('bilingual.reader.isAdmin');
+  localStorage.removeItem('bilingual.reader.username');
+  localStorage.removeItem('bilingual.admin.token');
+}
+
+async function refreshAccessToken() {
+  const storedRefresh = localStorage.getItem(REFRESH_TOKEN_KEY) || '';
+  const refreshOptions = {
+    method: 'POST',
+    credentials: 'include',
+  };
+  if (storedRefresh) {
+    refreshOptions.headers = { 'Content-Type': 'application/json' };
+    refreshOptions.body = JSON.stringify({ refresh_token: storedRefresh });
+  }
+
+  const refreshRes = await fetch('/api/auth/refresh', refreshOptions);
+  if (!refreshRes.ok) return null;
+
+  const data = await refreshRes.json();
+  if (!data.access_token) return null;
+
+  localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
+  if (data.refresh_token) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+  }
+  if (localStorage.getItem('bilingual.reader.isAdmin') === 'true') {
+    localStorage.setItem('bilingual.admin.token', data.access_token);
+  }
+  return data.access_token;
+}
+
 function App() {
   const initialRoute = getInitialRoute();
 
@@ -113,15 +178,11 @@ function App() {
   const [loginError, setLoginError] = useState('');
 
   const handleLogout = () => {
-    setToken('');
     setIsAdmin(false);
     setUsername('User');
     setProfileDropdownOpen(false);
-    localStorage.removeItem('bilingual.reader.token');
-    localStorage.removeItem('bilingual.reader.isAdmin');
-    localStorage.removeItem('bilingual.reader.username');
-    localStorage.removeItem('bilingual.admin.token');
-    fetch('api/auth/logout', { method: 'POST' });
+    clearAuthSession(setToken);
+    fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
   };
 
   // --- Navigation & Book State ---
@@ -137,37 +198,29 @@ function App() {
   const [fullBookText, setFullBookText] = useState('');
 
   // Authorized API Fetch wrapper for automatic access token silent refresh
-  const apiFetch = async (url, options = {}) => {
-    let tok = localStorage.getItem('bilingual.reader.token') || '';
+  const apiFetch = async (url, options = {}, allowRefresh = true) => {
+    const requestUrl = normalizeApiUrl(url);
+    const tok = localStorage.getItem(ACCESS_TOKEN_KEY) || '';
     if (!options.headers) options.headers = {};
     if (tok) options.headers['Authorization'] = `Bearer ${tok}`;
-    
-    let res = await fetch(url, options);
-    if (res.status === 401 && tok) {
-      // Access token expired, attempt silent refresh
+    if (!options.credentials) options.credentials = 'include';
+
+    let res = await fetch(requestUrl, options);
+    const canRefresh = allowRefresh && res.status === 401 && (
+      tok || localStorage.getItem(REFRESH_TOKEN_KEY)
+    );
+    if (canRefresh) {
       try {
-        let refreshRes = await fetch('api/auth/refresh', { method: 'POST' });
-          if (refreshRes.ok) {
-            let data = await refreshRes.json();
-            localStorage.setItem('bilingual.reader.token', data.access_token);
-            if (localStorage.getItem('bilingual.reader.isAdmin') === 'true') {
-              localStorage.setItem('bilingual.admin.token', data.access_token);
-            }
-            setToken(data.access_token);
-            
-            // Retry request with new token
-            options.headers['Authorization'] = `Bearer ${data.access_token}`;
-            res = await fetch(url, options);
-          } else {
-            setToken('');
-            localStorage.removeItem('bilingual.reader.token');
-            localStorage.removeItem('bilingual.admin.token');
-          }
-        } catch (err) {
-          setToken('');
-          localStorage.removeItem('bilingual.reader.token');
-          localStorage.removeItem('bilingual.admin.token');
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          setToken(newToken);
+          options.headers['Authorization'] = `Bearer ${newToken}`;
+          return apiFetch(url, options, false);
         }
+        clearAuthSession(setToken);
+      } catch (err) {
+        clearAuthSession(setToken);
+      }
     }
     return res;
   };
@@ -200,11 +253,7 @@ function App() {
       })
       .catch(err => {
         console.warn('Failed fetching user info, logging out...', err);
-        setToken('');
-        localStorage.removeItem('bilingual.reader.token');
-        localStorage.removeItem('bilingual.reader.isAdmin');
-        localStorage.removeItem('bilingual.reader.username');
-        localStorage.removeItem('bilingual.admin.token');
+        clearAuthSession(setToken);
       });
 
     apiFetch('api/books')
@@ -228,8 +277,7 @@ function App() {
       })
       .catch(err => {
         console.warn('Failed fetching books, logging out...', err);
-        setToken('');
-        localStorage.removeItem('bilingual.reader.token');
+        clearAuthSession(setToken);
       });
   }, [token]);
 
@@ -1146,7 +1194,23 @@ Instructions:
       });
 
       if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        if (response.status === 401) {
+          clearAuthSession(setToken);
+          throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        }
+        let detail = '';
+        try {
+          detail = await response.text();
+        } catch (e) {}
+        const parsedDetail = (() => {
+          try {
+            const json = JSON.parse(detail);
+            return json.detail || json.error?.message || detail;
+          } catch (e) {
+            return detail;
+          }
+        })();
+        throw new Error(`Lỗi AI (${response.status}): ${parsedDetail || response.statusText}`);
       }
 
       const reader = response.body.getReader();
@@ -1418,18 +1482,15 @@ Instructions:
             e.preventDefault();
             setLoginError('');
             try {
-              const res = await fetch(`api/auth/login?username=${encodeURIComponent(loginUsername)}&password=${encodeURIComponent(loginPassword)}`, { method: 'POST' });
+              const res = await fetch(
+                `/api/auth/login?username=${encodeURIComponent(loginUsername)}&password=${encodeURIComponent(loginPassword)}`,
+                { method: 'POST', credentials: 'include' }
+              );
               if (!res.ok) throw new Error('Sai tài khoản hoặc mật khẩu');
               const data = await res.json();
-              localStorage.setItem('bilingual.reader.token', data.access_token);
-              localStorage.setItem('bilingual.reader.isAdmin', data.is_admin);
-              localStorage.setItem('bilingual.reader.username', data.username);
-              if (data.is_admin) {
-                localStorage.setItem('bilingual.admin.token', data.access_token);
-              }
+              persistAuthTokens(data, setToken);
               setIsAdmin(data.is_admin);
               setUsername(data.username);
-              setToken(data.access_token);
             } catch (err) {
               setLoginError(err.message || 'Lỗi đăng nhập');
             }
