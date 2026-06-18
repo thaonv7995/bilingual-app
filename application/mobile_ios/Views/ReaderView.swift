@@ -285,6 +285,10 @@ struct ReaderView: View {
                         jumpToPageDialogView()
                     }
                     ReaderVocaOverlayView(progressWord: vocaProgressWord, toast: vocaToast)
+                    
+                    if companionVM.phase != .idle && (companionVM.isMinimized || !isChatOpen) {
+                        FloatingVoiceWidgetView(companionVM: companionVM, isChatOpen: $isChatOpen)
+                    }
                 }
             )
     }
@@ -2731,6 +2735,29 @@ struct ReaderChatPanelView: View {
             Color(hex: "0b0f19").ignoresSafeArea()
 
             VStack(spacing: 0) {
+                HStack {
+                    Button(action: {
+                        withAnimation(.spring()) {
+                            companionVM.isMinimized = true
+                            isChatOpen = false
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "minus.screen.fill")
+                            Text("Thu nhỏ")
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(12)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+
                 Spacer()
 
                 // Connecting spinner
@@ -3275,3 +3302,186 @@ struct ReaderVocaOverlayView: View {
         }
     }
 }
+
+/// A compact, draggable floating widget that represents the AI voice companion when the main chat panel is closed or minimized.
+struct FloatingVoiceWidgetView: View {
+    @ObservedObject var companionVM: CompanionVoiceViewModel
+    @Binding var isChatOpen: Bool
+
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    var body: some View {
+        GeometryReader { geometry in
+            let size: CGFloat = 70
+            let viewWidth = geometry.size.width
+            let viewHeight = geometry.size.height
+
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    
+                    VStack(spacing: 8) {
+                        // Drag Indicator/Grip
+                        Capsule()
+                            .fill(Color.white.opacity(0.2))
+                            .frame(width: 24, height: 4)
+                            .padding(.top, 4)
+                        
+                        // Small Orb
+                        ZStack {
+                            Circle()
+                                .fill(Color(hex: "0b0f19"))
+                                .frame(width: size, height: size)
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
+                            
+                            CompanionOrbView(
+                                level: max(companionVM.inputLevel, companionVM.outputLevel),
+                                aiSpeaking: companionVM.micState == .aiSpeaking,
+                                userSpeaking: companionVM.userIsSpeaking
+                            )
+                            .frame(width: size - 8, height: size - 8)
+                        }
+                        
+                        // Status text
+                        if companionVM.micState == .aiSpeaking {
+                            Text("Agent nói...")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundColor(Color(hex: "818cf8"))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(hex: "818cf8").opacity(0.15))
+                                .cornerRadius(6)
+                        } else if companionVM.userIsSpeaking {
+                            Text("Đang nghe...")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundColor(Color(hex: "14b8a6"))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(hex: "14b8a6").opacity(0.15))
+                                .cornerRadius(6)
+                        } else {
+                            Text("Realtime Voice")
+                                .font(.system(size: 8, weight: .medium))
+                                .foregroundColor(.white.opacity(0.5))
+                        }
+
+                        // Quick Controls
+                        HStack(spacing: 8) {
+                            // Mic toggle
+                            Button(action: {
+                                companionVM.toggleMic()
+                            }) {
+                                ZStack {
+                                    Circle()
+                                        .fill(voiceMicColor.opacity(0.12))
+                                        .frame(width: 28, height: 28)
+                                    Image(systemName: voiceMicIcon)
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(voiceMicColor)
+                                }
+                            }
+                            .disabled(companionVM.phase != .live || companionVM.micState == .aiSpeaking)
+
+                            // Expand
+                            Button(action: {
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                    companionVM.isMinimized = false
+                                    isChatOpen = true
+                                }
+                            }) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.white.opacity(0.08))
+                                        .frame(width: 28, height: 28)
+                                    Image(systemName: "plus.screen.fill")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                            }
+
+                            // End call
+                            Button(action: {
+                                withAnimation(.spring()) {
+                                    companionVM.end()
+                                }
+                            }) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.red.opacity(0.15))
+                                        .frame(width: 28, height: 28)
+                                    Image(systemName: "phone.down.fill")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.red)
+                                }
+                            }
+                        }
+                        .padding(.top, 2)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color(hex: "1f2937").opacity(0.95))
+                            .shadow(color: Color.black.opacity(0.35), radius: 10, x: 0, y: 5)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+                }
+            }
+            .padding(.trailing, 20)
+            .padding(.bottom, 90)
+            .offset(offset)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        offset = CGSize(
+                            width: lastOffset.width + value.translation.width,
+                            height: lastOffset.height + value.translation.height
+                        )
+                    }
+                    .onEnded { _ in
+                        // Enforce bounding limits to prevent dragging widget off screen
+                        let maxW = viewWidth / 2 - 45
+                        let minW = -viewWidth / 2 + 45
+                        let maxH = viewHeight / 2 - 120
+                        let minH = -viewHeight / 2 + 120
+                        
+                        offset.width = min(max(offset.width, minW), maxW)
+                        offset.height = min(max(offset.height, minH), maxH)
+                        
+                        lastOffset = offset
+                    }
+            )
+        }
+    }
+
+    private var voiceMicColor: Color {
+        switch companionVM.micState {
+        case .open:
+            return Color(hex: "14b8a6")
+        case .aiSpeaking:
+            return Color(hex: "818cf8")
+        case .muted:
+            return .gray
+        }
+    }
+
+    private var voiceMicIcon: String {
+        switch companionVM.micState {
+        case .open:
+            return "mic.fill"
+        case .aiSpeaking:
+            return "speaker.wave.2.fill"
+        case .muted:
+            return "mic.slash.fill"
+        }
+    }
+}
+
