@@ -2120,8 +2120,15 @@ TOOLS:
           session: {
             type: 'realtime',
             output_modalities: ['audio'],
-            input_audio_transcription: {
-              model: 'whisper-1'
+            audio: {
+              input: {
+                transcription: {
+                  model: 'whisper-1'
+                }
+              },
+              output: {
+                voice: realtimeVoice
+              }
             },
             tools: webToolDefinitions.map(t => ({
               type: 'function',
