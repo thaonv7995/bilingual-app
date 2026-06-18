@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS = {
   apiKey: '',
   model: 'gpt-4o-mini',
   realtimeApiKey: '',
-  realtimeModel: 'gpt-realtime-mini',
+  realtimeModel: 'gpt-4o-mini-realtime-preview',
   realtimeVoice: 'alloy',
   ...defaultVocaSettings(),
 };
@@ -624,7 +624,7 @@ function App() {
   const [formApiKey, setFormApiKey] = useState(settings.apiKey);
   const [formModel, setFormModel] = useState(settings.model);
   const [formRealtimeApiKey, setFormRealtimeApiKey] = useState(settings.realtimeApiKey || '');
-  const [formRealtimeModel, setFormRealtimeModel] = useState(settings.realtimeModel || 'gpt-realtime-mini');
+  const [formRealtimeModel, setFormRealtimeModel] = useState(settings.realtimeModel || 'gpt-4o-mini-realtime-preview');
   const [formRealtimeVoice, setFormRealtimeVoice] = useState(settings.realtimeVoice || 'alloy');
   const [formLayoutMode, setFormLayoutMode] = useState(layoutMode);
   const [formVocaBridgeOrigin, setFormVocaBridgeOrigin] = useState(settings.vocaBridgeOrigin || '');
@@ -638,7 +638,7 @@ function App() {
     setFormApiKey(settings.apiKey);
     setFormModel(settings.model);
     setFormRealtimeApiKey(settings.realtimeApiKey || '');
-    setFormRealtimeModel(settings.realtimeModel || 'gpt-realtime-mini');
+    setFormRealtimeModel(settings.realtimeModel || 'gpt-4o-mini-realtime-preview');
     setFormRealtimeVoice(settings.realtimeVoice || 'alloy');
     setFormLayoutMode(layoutMode);
     setFormVocaBridgeOrigin(settings.vocaBridgeOrigin || '');
@@ -1986,7 +1986,7 @@ Instructions:
       localStreamRef.current = stream;
 
       // 2. Fetch ephemeral key from OpenAI Realtime sessions endpoint
-      const realtimeModel = settings.realtimeModel || 'gpt-realtime-mini';
+      const realtimeModel = settings.realtimeModel || 'gpt-4o-mini-realtime-preview';
       const realtimeVoice = settings.realtimeVoice || 'alloy';
       
       const activePageText = getIframePageText();
@@ -2011,26 +2011,29 @@ Instructions:
 5. If highlight_text returns a "multiple_occurrences" error, read the contexts and ask the user to confirm which one they want to highlight, or if they want to highlight all.
 `;
 
-      const sessionResponse = await fetch('https://api.openai.com/v1/realtime/sessions', {
+      const sessionResponse = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${activeApiKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: realtimeModel,
-          voice: realtimeVoice,
-          modalities: ['text', 'audio'],
-          instructions: systemPrompt,
-          input_audio_transcription: {
-            model: 'whisper-1'
-          },
-          tools: webToolDefinitions.map(t => ({
-            type: 'function',
-            name: t.function.name,
-            description: t.function.description,
-            parameters: t.function.parameters
-          }))
+          session: {
+            type: 'realtime',
+            model: realtimeModel,
+            voice: realtimeVoice,
+            modalities: ['text', 'audio'],
+            instructions: systemPrompt,
+            input_audio_transcription: {
+              model: 'whisper-1'
+            },
+            tools: webToolDefinitions.map(t => ({
+              type: 'function',
+              name: t.function.name,
+              description: t.function.description,
+              parameters: t.function.parameters
+            }))
+          }
         })
       });
 
@@ -2560,7 +2563,7 @@ Instructions:
 
                 <div class="form-group">
                   <label class="form-label">Realtime Model Name</label>
-                  <input class="form-input" type="text" placeholder="gpt-realtime-mini" value=${formRealtimeModel} onInput=${(e) => setFormRealtimeModel(e.target.value)} />
+                  <input class="form-input" type="text" placeholder="gpt-4o-mini-realtime-preview" value=${formRealtimeModel} onInput=${(e) => setFormRealtimeModel(e.target.value)} />
                 </div>
 
                 <div class="form-group">
