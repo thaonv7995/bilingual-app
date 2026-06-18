@@ -14,6 +14,20 @@ struct AISettingsView: View {
     @State private var vocaBridgeOrigin: String = VocaService.defaultBridgeOrigin
     @State private var vocaBridgeToken: String = VocaService.defaultBridgeToken
     
+    // Companion Voice Settings
+    @State private var realtimeApiKey: String = ""
+    @State private var realtimeModel: String = "gpt-realtime-mini"
+    @State private var realtimeVoice: String = "marin"
+    @State private var companionAutoUpdateContext: Bool = true
+    @State private var companionLanguage: String = "vi"
+    @State private var companionAgentName: String = "Jarvis"
+    
+    private let voiceOptions = ["marin", "cedar", "alloy", "echo", "shimmer", "verse", "coral", "sage"]
+    private let languageOptions: [(id: String, label: String, desc: String)] = [
+        ("vi", "Tiếng Việt", "AI nói tiếng Việt"),
+        ("en", "English", "AI speaks English"),
+        ("bilingual", "Song ngữ", "AI tự chọn theo user"),
+    ]
     var body: some View {
         NavigationView {
             ZStack {
@@ -238,6 +252,182 @@ struct AISettingsView: View {
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
                         
+                        // Section: Companion Voice
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "mic.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(hex: "14b8a6"))
+                                Text("AI Companion Voice")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.9))
+                            }
+                            
+                            Text("Cấu hình cho chế độ hội thoại giọng nói với AI Companion khi đọc sách.")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color(hex: "94a3b8"))
+                                .lineSpacing(3)
+                            
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Realtime API Key")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.gray)
+                                HStack {
+                                    SecureField("API Key", text: $realtimeApiKey, prompt: Text("Nhập Realtime API Key...").foregroundColor(.gray.opacity(0.5)))
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white)
+                                        .autocorrectionDisabled()
+                                        .textInputAutocapitalization(.none)
+                                    Button(action: {
+                                        if let s = UIPasteboard.general.string {
+                                            realtimeApiKey = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        }
+                                    }) {
+                                        Image(systemName: "doc.on.clipboard")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(Color(hex: "14b8a6"))
+                                            .frame(width: 32, height: 32)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                                .padding(12)
+                                .background(Color.white.opacity(0.05))
+                                .cornerRadius(10)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Realtime Model")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.gray)
+                                HStack {
+                                    TextField("Model Name", text: $realtimeModel, prompt: Text("gpt-4o-mini-realtime-preview").foregroundColor(.gray.opacity(0.5)))
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white)
+                                        .autocorrectionDisabled()
+                                        .textInputAutocapitalization(.none)
+                                    Button(action: {
+                                        if let s = UIPasteboard.general.string {
+                                            realtimeModel = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        }
+                                    }) {
+                                        Image(systemName: "doc.on.clipboard")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(Color(hex: "14b8a6"))
+                                            .frame(width: 32, height: 32)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                                .padding(12)
+                                .background(Color.white.opacity(0.05))
+                                .cornerRadius(10)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Giọng AI")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.gray)
+                                
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 70), spacing: 6)], spacing: 6) {
+                                    ForEach(voiceOptions, id: \.self) { voice in
+                                        let isSelected = realtimeVoice == voice
+                                        Button(action: { realtimeVoice = voice }) {
+                                            Text(voice.capitalized)
+                                                .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                                                .foregroundColor(isSelected ? .white : .gray.opacity(0.8))
+                                                .frame(maxWidth: .infinity)
+                                                .padding(.vertical, 8)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .fill(isSelected ? Color(hex: "14b8a6").opacity(0.25) : Color.white.opacity(0.04))
+                                                )
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .stroke(isSelected ? Color(hex: "14b8a6").opacity(0.6) : Color.white.opacity(0.08), lineWidth: 1)
+                                                )
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Agent Name
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Tên Agent")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.gray)
+                                Text("User có thể gọi tên này để ra lệnh cho AI")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color(hex: "94a3b8"))
+                                TextField("Jarvis", text: $companionAgentName, prompt: Text("Ví dụ: Jarvis, Luna, Sage...").foregroundColor(.gray.opacity(0.5)))
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.white)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.words)
+                                    .padding(12)
+                                    .background(Color.white.opacity(0.05))
+                                    .cornerRadius(10)
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            }
+                            
+                            // Language
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Ngôn ngữ hội thoại")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.gray)
+                                
+                                HStack(spacing: 4) {
+                                    ForEach(languageOptions, id: \.id) { lang in
+                                        let isSelected = companionLanguage == lang.id
+                                        Button(action: { companionLanguage = lang.id }) {
+                                            VStack(spacing: 2) {
+                                                Text(lang.label)
+                                                    .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                                                    .foregroundColor(isSelected ? .white : .gray.opacity(0.8))
+                                                Text(lang.desc)
+                                                    .font(.system(size: 8))
+                                                    .foregroundColor(isSelected ? .white.opacity(0.7) : .gray.opacity(0.5))
+                                            }
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 8)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 10)
+                                                    .fill(isSelected ? Color(hex: "14b8a6").opacity(0.25) : Color.clear)
+                                            )
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 10)
+                                                    .stroke(isSelected ? Color(hex: "14b8a6").opacity(0.6) : Color.white.opacity(0.06), lineWidth: 1)
+                                            )
+                                        }
+                                    }
+                                }
+                                .padding(4)
+                                .background(Color.white.opacity(0.03))
+                                .cornerRadius(12)
+                            }
+                            
+                            Toggle(isOn: $companionAutoUpdateContext) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Tự động cập nhật context")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.9))
+                                    Text("Gửi nội dung trang mới cho AI khi lật trang")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            .tint(Color(hex: "14b8a6"))
+                        }
+                        .padding()
+                        .background(Color.white.opacity(0.04))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                        
                         // Section 3: Bilingual Layout Mode
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Bố cục song ngữ")
@@ -387,6 +577,12 @@ struct AISettingsView: View {
         self.bilingualLayoutMode = UserDefaults.standard.string(forKey: "bilingualLayoutMode") ?? "en-vi"
         self.vocaBridgeOrigin = UserDefaults.standard.string(forKey: "vocaBridgeOrigin") ?? VocaService.defaultBridgeOrigin
         self.vocaBridgeToken = UserDefaults.standard.string(forKey: "vocaBridgeToken") ?? VocaService.defaultBridgeToken
+        self.realtimeApiKey = UserDefaults.standard.string(forKey: "realtimeApiKey") ?? ""
+        self.realtimeModel = UserDefaults.standard.string(forKey: "realtimeModel") ?? "gpt-realtime-mini"
+        self.realtimeVoice = UserDefaults.standard.string(forKey: "realtimeVoice") ?? "marin"
+        self.companionAutoUpdateContext = UserDefaults.standard.object(forKey: "companionAutoUpdateContext") as? Bool ?? true
+        self.companionLanguage = UserDefaults.standard.string(forKey: "companionLanguage") ?? "vi"
+        self.companionAgentName = UserDefaults.standard.string(forKey: "companionAgentName") ?? "Jarvis"
     }
     
     private func saveSettings() {
@@ -397,5 +593,11 @@ struct AISettingsView: View {
         UserDefaults.standard.set(bilingualLayoutMode, forKey: "bilingualLayoutMode")
         UserDefaults.standard.set(vocaBridgeOrigin.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "vocaBridgeOrigin")
         UserDefaults.standard.set(vocaBridgeToken.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "vocaBridgeToken")
+        UserDefaults.standard.set(realtimeApiKey.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "realtimeApiKey")
+        UserDefaults.standard.set(realtimeModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "realtimeModel")
+        UserDefaults.standard.set(realtimeVoice, forKey: "realtimeVoice")
+        UserDefaults.standard.set(companionAutoUpdateContext, forKey: "companionAutoUpdateContext")
+        UserDefaults.standard.set(companionLanguage, forKey: "companionLanguage")
+        UserDefaults.standard.set(companionAgentName.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "companionAgentName")
     }
 }

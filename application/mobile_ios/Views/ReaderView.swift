@@ -53,6 +53,9 @@ struct ReaderView: View {
     @State private var isChatOpen = false
     @AppStorage("bilingualLayoutMode") private var bilingualLayoutMode: String = "en-vi"
     
+    // AI Companion Voice Mode
+    @StateObject private var companionVM = CompanionVoiceViewModel()
+    
     // Apple Pencil Drawing State
     @State private var isPencilModeActive = false
     
@@ -119,6 +122,11 @@ struct ReaderView: View {
                                             self.page = newPage
                                             self.saveProgress()
                                             self.clearSelectionState()
+                                            // Update AI companion with new page context
+                                            if self.companionVM.phase == .live,
+                                               UserDefaults.standard.object(forKey: "companionAutoUpdateContext") as? Bool ?? true {
+                                                self.updateCompanionAfterPageChange(newPage: newPage)
+                                            }
                                         }
                                     }
                                 )
@@ -231,6 +239,7 @@ struct ReaderView: View {
                             viewMode: viewMode,
                             api: api,
                             isLargeScreen: true,
+                            companionVM: companionVM,
                             pageContextBuilder: { page, mode in
                                 await buildPageContext(for: page, viewMode: mode)
                             },
@@ -252,6 +261,7 @@ struct ReaderView: View {
                         viewMode: viewMode,
                         api: api,
                         isLargeScreen: false,
+                        companionVM: companionVM,
                         pageContextBuilder: { page, mode in
                             await buildPageContext(for: page, viewMode: mode)
                         },
@@ -264,6 +274,7 @@ struct ReaderView: View {
             .onAppear {
                 loadProgress()
                 fetchHighlights()
+                setupCompanionVM()
             }
             .onChange(of: viewMode) { _ in
                 saveProgress()
@@ -836,6 +847,250 @@ struct ReaderView: View {
         // Implement if needed, or pass it to ChatPanelView
     }
 
+    // MARK: - Companion Voice Mode Setup
+
+    private func setupCompanionVM() {
+        companionVM.bookTitle = book.title
+        companionVM.bookAuthor = book.author ?? ""
+        companionVM.bookSlug = book.slug
+        companionVM.currentPage = page
+        companionVM.totalPages = book.pageCount
+        companionVM.currentViewMode = viewMode
+
+        // Provide page text content to the voice session
+        companionVM.pageContextProvider = { [self] page, viewMode in
+            return await self.buildPageContext(for: page, viewMode: viewMode)
+        }
+
+        // Wire tool handler callbacks to existing reader functionality
+        companionVM.toolHandler.onGoToPage = { [self] targetPage in
+            let clamped = max(1, min(book.pageCount, targetPage))
+            self.page = clamped
+            self.updateCompanionAfterPageChange(newPage: clamped)
+        }
+        companionVM.toolHandler.onNextPage = { [self] in
+            if self.page < book.pageCount {
+                self.page += 1
+                self.updateCompanionAfterPageChange(newPage: self.page)
+            }
+        }
+        companionVM.toolHandler.onPreviousPage = { [self] in
+            if self.page > 1 {
+                self.page -= 1
+                self.updateCompanionAfterPageChange(newPage: self.page)
+            }
+        }
+        companionVM.toolHandler.getCurrentContext = { [self] in
+            return [
+                "page": self.page,
+                "totalPages": book.pageCount,
+                "viewMode": self.viewMode,
+                "bookTitle": book.title,
+                "bookAuthor": book.author ?? "Unknown"
+            ]
+        }
+        companionVM.toolHandler.getPageContent = { [self] targetPage, lang in
+            let p = targetPage ?? self.page
+            let mode = lang ?? self.viewMode
+            return await self.buildPageContext(for: p, viewMode: mode)
+        }
+        companionVM.toolHandler.onHighlightText = { [self] text, colorHex in
+            // Find text in current page highlights or create new highlight
+            // For now, search through loaded page content via WebView
+            return await self.highlightTextViaCompanion(text: text, colorHex: colorHex)
+        }
+        companionVM.toolHandler.onRemoveHighlight = { [self] text in
+            return await self.removeHighlightViaCompanion(text: text)
+        }
+        companionVM.toolHandler.onLookupWord = { [self] word in
+            return await self.lookupWordViaCompanion(word: word)
+        }
+        companionVM.toolHandler.onAddWordToVoca = { [self] word in
+            return await self.addWordToVocaViaCompanion(word: word)
+        }
+    }
+
+    /// Sync companion VM state and inject new page context after any page change.
+    private func updateCompanionAfterPageChange(newPage: Int) {
+        companionVM.currentPage = newPage
+        guard companionVM.phase == .live else { return }
+        Task {
+            // Small delay to let the WebView start loading the new page
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+            let context = await self.buildPageContext(for: newPage, viewMode: self.viewMode)
+            self.companionVM.updatePageContext(context, page: newPage)
+        }
+    }
+
+    // MARK: - Companion Tool Implementations
+
+    private func highlightTextViaCompanion(text: String, colorHex: String) async -> Bool {
+        let containerMode = viewMode
+        let langs: [String] = viewMode == "split" ? ["en", "vi"] : [viewMode]
+        let escapedText = text.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+
+        for lang in langs {
+            let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
+            guard let webView = webViews[key] else { continue }
+
+            // Use JS to find text node and wrap it with a highlight <mark> tag.
+            // This matches the existing wrapTextRange infrastructure from BilingualWebView.
+            let highlightId = UUID().uuidString.lowercased()
+            let js = """
+            (function() {
+                var searchText = '\(escapedText)';
+                var body = document.body;
+                if (!body) return JSON.stringify({success: false, reason: 'no body'});
+
+                // Walk all text nodes to find matching text
+                var walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+                var node;
+                while (node = walker.nextNode()) {
+                    var content = node.textContent;
+                    var idx = content.toLowerCase().indexOf(searchText.toLowerCase());
+                    if (idx >= 0) {
+                        // Found! Create a <mark> wrapper around the matched range
+                        var range = document.createRange();
+                        range.setStart(node, idx);
+                        range.setEnd(node, idx + searchText.length);
+
+                        var mark = document.createElement('mark');
+                        mark.className = 'reader-highlight';
+                        mark.dataset.highlightId = '\(highlightId)';
+                        mark.style.backgroundColor = '\(colorHex)';
+                        mark.style.borderRadius = '3px';
+                        mark.style.padding = '1px 0';
+
+                        try {
+                            range.surroundContents(mark);
+                        } catch(e) {
+                            // surroundContents fails if range crosses element boundaries
+                            // Fallback: extract and wrap
+                            var fragment = range.extractContents();
+                            mark.appendChild(fragment);
+                            range.insertNode(mark);
+                        }
+
+                        // Compute paragraph index for persistence
+                        var paragraphs = body.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, li, td, th');
+                        var pIndex = 0;
+                        for (var i = 0; i < paragraphs.length; i++) {
+                            if (paragraphs[i].contains(mark)) { pIndex = i; break; }
+                        }
+                        return JSON.stringify({success: true, paragraphIndex: pIndex, startOffset: idx, endOffset: idx + searchText.length, lang: '\(lang)'});
+                    }
+                }
+                return JSON.stringify({success: false, reason: 'text not found'});
+            })();
+            """
+
+            let result: String? = await withCheckedContinuation { continuation in
+                webView.evaluateJavaScript(js) { result, _ in
+                    continuation.resume(returning: result as? String)
+                }
+            }
+
+            guard let jsonString = result,
+                  let data = jsonString.data(using: .utf8),
+                  let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  info["success"] as? Bool == true,
+                  let paragraphIndex = info["paragraphIndex"] as? Int,
+                  let startOffset = info["startOffset"] as? Int,
+                  let endOffset = info["endOffset"] as? Int
+            else { continue }
+
+            // Also persist to API so highlight survives page reloads
+            let highlight = Highlight(
+                id: highlightId,
+                page: page,
+                lang: lang,
+                color: colorHex,
+                text: text,
+                startOffset: startOffset,
+                endOffset: endOffset,
+                paragraphIndex: paragraphIndex,
+                note: nil,
+                createdAt: Int64(Date().timeIntervalSince1970 * 1000)
+            )
+
+            Task {
+                try? await api.saveHighlight(slug: book.slug, highlight: highlight)
+            }
+            return true
+        }
+        return false
+    }
+
+    private func removeHighlightViaCompanion(text: String) async -> Bool {
+        guard let existing = api.highlights.first(where: {
+            $0.text.lowercased() == text.lowercased() && $0.page == page
+        }) else { return false }
+
+        // Remove <mark> element from DOM visually
+        let containerMode = viewMode
+        let key = webViewKey(lang: existing.lang, page: page, containerMode: containerMode)
+        if let webView = webViews[key] {
+            let escapedId = existing.id.replacingOccurrences(of: "'", with: "\\'")
+            let js = """
+            (function() {
+                var mark = document.querySelector('mark.reader-highlight[data-highlight-id="\\(escapedId)"]');
+                if (mark) {
+                    var parent = mark.parentNode;
+                    while (mark.firstChild) { parent.insertBefore(mark.firstChild, mark); }
+                    parent.removeChild(mark);
+                    parent.normalize();
+                    return true;
+                }
+                return false;
+            })();
+            """
+            let _: Any? = await withCheckedContinuation { continuation in
+                webView.evaluateJavaScript(js) { result, _ in
+                    continuation.resume(returning: result)
+                }
+            }
+        }
+
+        // Delete from API
+        do {
+            try await api.deleteHighlight(slug: book.slug, highlightId: existing.id)
+            return true
+        } catch {
+            print("[Companion] Failed to delete highlight: \(error)")
+            return false
+        }
+    }
+
+    private func lookupWordViaCompanion(word: String) async -> String? {
+        let query = VocaService.cleanWord(word)
+        guard !query.isEmpty else { return nil }
+        do {
+            let result = try await VocaService.lookupWord(query)
+            guard result.found, let card = result.resolvedCards.first else { return nil }
+            // Build a concise definition string for the AI to read back
+            var parts: [String] = [card.word]
+            if let ipa = card.ipa, !ipa.isEmpty { parts.append(ipa) }
+            parts.append(card.meaningVi)
+            if let level = card.level, !level.isEmpty { parts.append("(\(level))") }
+            return parts.joined(separator: " — ")
+        } catch {
+            return nil
+        }
+    }
+
+    private func addWordToVocaViaCompanion(word: String) async -> Bool {
+        let query = VocaService.cleanWord(word)
+        guard !query.isEmpty else { return false }
+        do {
+            try await VocaService.addWordToVoca(query)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     // --- Persistence helper logic ---
     private func saveProgress() {
         let now = Int64(Date().timeIntervalSince1970)
@@ -1072,10 +1327,11 @@ struct ReaderView: View {
     }
 
     private func buildPageContext(for page: Int, viewMode: String) async -> String {
-        let containerMode = chatContainerMode(for: viewMode)
+        let containerMode = viewMode
+        let langs: [String] = viewMode == "split" ? ["en", "vi"] : [viewMode]
         var sections: [String] = []
 
-        for lang in chatLangs(for: viewMode) {
+        for lang in langs {
             if let section = await pageTextSection(lang: lang, page: page, containerMode: containerMode) {
                 sections.append(section)
             }
@@ -1457,6 +1713,7 @@ struct ReaderChatPanelView: View {
     let viewMode: String
     @ObservedObject var api: APIService
     var isLargeScreen: Bool = true
+    @ObservedObject var companionVM: CompanionVoiceViewModel
     var pageContextBuilder: (Int, String) async -> String = { _, _ in "" }
     var onAskAIShortcut: ((String) -> Void)?
     
@@ -1566,6 +1823,26 @@ struct ReaderChatPanelView: View {
                 
                 Spacer()
                 
+                // Voice Mode Toggle
+                Button(action: {
+                    toggleVoiceMode()
+                }) {
+                    ZStack {
+                        Image(systemName: companionVM.phase != .idle ? "waveform.circle.fill" : "mic.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(companionVM.phase != .idle ? Color(hex: "14b8a6") : .white.opacity(0.8))
+                            .frame(width: 32, height: 32)
+                            .background(companionVM.phase != .idle ? Color(hex: "14b8a6").opacity(0.2) : Color.white.opacity(0.08))
+                            .clipShape(Circle())
+                        
+                        if companionVM.phase != .idle {
+                            Circle()
+                                .stroke(Color(hex: "14b8a6").opacity(0.5), lineWidth: 1.5)
+                                .frame(width: 36, height: 36)
+                        }
+                    }
+                }
+                
                 // Settings Toggle
                 Button(action: {
                     withAnimation(.spring()) {
@@ -1608,6 +1885,10 @@ struct ReaderChatPanelView: View {
             if isAISettingsOpen {
                 aiSettingsForm()
                     .transition(.move(edge: .trailing))
+            } else if companionVM.phase != .idle {
+                // Voice Mode UI
+                voiceModeContent()
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
             } else {
                 // Messages List
                 ScrollViewReader { proxy in
@@ -2205,6 +2486,260 @@ struct ReaderChatPanelView: View {
                 self.chatMessages.append(ChatMessage(role: "assistant", content: "Lỗi kết nối AI: \(error.localizedDescription). Hãy kiểm tra lại Base URL và API Key trong cài đặt."))
                 self.isChatPending = false
                 self.saveChatHistory()
+            }
+        }
+    }
+
+    // MARK: - Voice Mode
+
+    private func toggleVoiceMode() {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            if companionVM.phase != .idle {
+                companionVM.end()
+            } else {
+                isAISettingsOpen = false
+                Task {
+                    await companionVM.start()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func voiceModeContent() -> some View {
+        ZStack {
+            Color(hex: "0b0f19").ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                // Connecting spinner
+                if companionVM.phase == .connecting {
+                    ProgressView()
+                        .tint(Color(hex: "14b8a6"))
+                        .scaleEffect(1.2)
+                        .padding(.bottom, 24)
+                }
+
+                // Error
+                if let error = companionVM.errorMessage {
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.title2)
+                            .foregroundColor(.orange)
+                        Text(error)
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(0.7))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                        Button("Thử lại") {
+                            companionVM.errorMessage = nil
+                            Task { await companionVM.start() }
+                        }
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        .background(Color(hex: "14b8a6"))
+                        .cornerRadius(8)
+                    }
+                    .padding(.bottom, 24)
+                }
+
+                // Audio Orb — the main visual
+                if companionVM.phase == .live {
+                    CompanionOrbView(
+                        level: max(companionVM.inputLevel, companionVM.outputLevel),
+                        aiSpeaking: companionVM.micState == .aiSpeaking,
+                        userSpeaking: companionVM.userIsSpeaking
+                    )
+                    .frame(width: 220, height: 220)
+                }
+
+                // Tool feedback (transient)
+                if let feedback = companionVM.toolFeedback {
+                    Text(feedback)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Color(hex: "14b8a6"))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(Color(hex: "14b8a6").opacity(0.08))
+                        .cornerRadius(16)
+                        .padding(.top, 16)
+                        .transition(.opacity)
+                }
+
+                Spacer()
+
+                // Bottom controls
+                ZStack {
+                    // Center: End call button
+                    Button(action: {
+                        withAnimation(.spring()) {
+                            companionVM.end()
+                        }
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.red.opacity(0.15))
+                                .frame(width: 56, height: 56)
+                            Circle()
+                                .strokeBorder(Color.red.opacity(0.4), lineWidth: 1.5)
+                                .frame(width: 56, height: 56)
+                            Image(systemName: "phone.down.fill")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundColor(.red)
+                        }
+                    }
+
+                    // Right: Small mic indicator
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            companionVM.toggleMic()
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(voiceMicColor.opacity(0.12))
+                                    .frame(width: 36, height: 36)
+                                Image(systemName: voiceMicIcon)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(voiceMicColor)
+                            }
+                        }
+                        .disabled(companionVM.phase != .live || companionVM.micState == .aiSpeaking)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 20)
+            }
+        }
+    }
+
+    private var voiceMicColor: Color {
+        switch companionVM.micState {
+        case .open:
+            return Color(hex: "14b8a6")
+        case .aiSpeaking:
+            return Color(hex: "818cf8")
+        case .muted:
+            return .gray
+        }
+    }
+
+    private var voiceMicIcon: String {
+        switch companionVM.micState {
+        case .open:
+            return "mic.fill"
+        case .aiSpeaking:
+            return "speaker.wave.2.fill"
+        case .muted:
+            return "mic.slash.fill"
+        }
+    }
+}
+
+/// Vivid multi-layered audio visualizer orb.
+struct CompanionOrbView: View {
+    let level: Float
+    let aiSpeaking: Bool
+    let userSpeaking: Bool
+
+    @State private var breathe: CGFloat = 1.0
+    @State private var rotation: Double = 0
+    @State private var ringPhase: CGFloat = 0
+
+    private var teal: Color { Color(hex: "14b8a6") }
+    private var indigo: Color { Color(hex: "818cf8") }
+    private var accent: Color { aiSpeaking ? indigo : teal }
+    private var amp: CGFloat { CGFloat(min(level * 1.5, 1.0)) }
+
+    var body: some View {
+        ZStack {
+            // Layer 1: Outer ambient glow
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [accent.opacity(0.08 + Double(amp) * 0.15), .clear],
+                        center: .center,
+                        startRadius: 20,
+                        endRadius: 130
+                    )
+                )
+                .frame(width: 260, height: 260)
+                .scaleEffect(breathe + amp * 0.08)
+
+            // Layer 2: Rotating ring (dashed)
+            Circle()
+                .stroke(
+                    accent.opacity(0.15 + Double(amp) * 0.2),
+                    style: StrokeStyle(lineWidth: 1, dash: [4, 8], dashPhase: ringPhase)
+                )
+                .frame(width: 160, height: 160)
+                .rotationEffect(.degrees(rotation))
+                .scaleEffect(1.0 + amp * 0.06)
+
+            // Layer 3: Pulsing outer ring
+            Circle()
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [accent.opacity(0.3 + Double(amp) * 0.3), accent.opacity(0.05)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 2
+                )
+                .frame(width: 130, height: 130)
+                .scaleEffect(1.0 + amp * 0.12)
+
+            // Layer 4: Inner glow ring
+            Circle()
+                .strokeBorder(accent.opacity(0.2 + Double(amp) * 0.4), lineWidth: 1.5)
+                .frame(width: 100, height: 100)
+                .scaleEffect(1.0 + amp * 0.08)
+
+            // Layer 5: Core orb with gradient
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            accent.opacity(0.5 + Double(amp) * 0.3),
+                            accent.opacity(0.15),
+                            accent.opacity(0.05),
+                        ],
+                        center: .center,
+                        startRadius: 5,
+                        endRadius: 45
+                    )
+                )
+                .frame(width: 80, height: 80)
+                .scaleEffect(1.0 + amp * 0.15)
+                .shadow(color: accent.opacity(Double(amp) * 0.5), radius: 20)
+
+            // Layer 6: Glass highlight
+            Ellipse()
+                .fill(
+                    LinearGradient(
+                        colors: [.white.opacity(0.15), .clear],
+                        startPoint: .top,
+                        endPoint: .center
+                    )
+                )
+                .frame(width: 50, height: 30)
+                .offset(y: -15)
+                .scaleEffect(1.0 + amp * 0.1)
+        }
+        .animation(.easeOut(duration: 0.12), value: level)
+        .animation(.easeInOut(duration: 0.4), value: aiSpeaking)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                breathe = 1.03
+            }
+            withAnimation(.linear(duration: 12).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
+            withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) {
+                ringPhase = 24
             }
         }
     }
