@@ -175,6 +175,16 @@ const colorMap = {
   green: '#86efac'
 };
 
+const translateColor = (color) => {
+  const map = {
+    yellow: 'vàng',
+    blue: 'xanh dương',
+    pink: 'hồng',
+    green: 'xanh lá'
+  };
+  return map[color] || color;
+};
+
 const webToolDefinitions = [
   {
     type: 'function',
@@ -664,6 +674,8 @@ function App() {
   // --- WebRTC Realtime Voice State & Refs ---
   const [realtimeVoiceActive, setRealtimeVoiceActive] = useState(false);
   const [realtimeState, setRealtimeState] = useState('idle'); // 'idle' | 'connecting' | 'live' | 'error'
+  const [realtimeSpeakingState, setRealtimeSpeakingState] = useState('idle'); // 'idle' | 'listening' | 'user-speaking' | 'ai-speaking'
+  const [realtimeToolCall, setRealtimeToolCall] = useState(null); // { name: string, status: 'executing' | 'success' | 'error', text: string, color?: string, error?: string }
   const [realtimeCaption, setRealtimeCaption] = useState('');
   const [realtimeUserTranscript, setRealtimeUserTranscript] = useState('');
   const [realtimeError, setRealtimeError] = useState('');
@@ -1975,6 +1987,7 @@ Instructions:
       return;
     }
     setRealtimeState('connecting');
+    setRealtimeSpeakingState('connecting');
     setRealtimeVoiceActive(true);
     setRealtimeError('');
     setRealtimeCaption('');
@@ -2068,6 +2081,7 @@ Instructions:
 
       dc.addEventListener('open', () => {
         setRealtimeState('live');
+        setRealtimeSpeakingState('listening');
         
         // Configure voice, modalities, tools, and transcription on data channel connection
         const updateEvent = {
@@ -2096,14 +2110,21 @@ Instructions:
         try {
           const oaiEvent = JSON.parse(e.data);
           
+          if (oaiEvent.type === 'response.created') {
+            setRealtimeSpeakingState('ai-speaking');
+            setRealtimeCaption('');
+          }
+
           // AI speaking caption updates
           if (oaiEvent.type === 'response.audio_transcript.delta') {
+            setRealtimeSpeakingState('ai-speaking');
             setRealtimeCaption(prev => prev + oaiEvent.delta);
           }
           if (oaiEvent.type === 'response.audio_transcript.done') {
             setRealtimeCaption(oaiEvent.transcript);
             const newMsg = { role: 'assistant', content: oaiEvent.transcript };
             updateMessagesAndSave(prev => [...prev, newMsg]);
+            setRealtimeSpeakingState('listening');
           }
 
           // User speech transcript updates
@@ -2112,11 +2133,13 @@ Instructions:
             setRealtimeUserTranscript(transcript);
             const newMsg = { role: 'user', content: transcript };
             updateMessagesAndSave(prev => [...prev, newMsg]);
+            setRealtimeSpeakingState('listening');
           }
 
           // User speech started (AI interrupted)
           if (oaiEvent.type === 'input_audio_buffer.speech_started') {
             setRealtimeCaption('...');
+            setRealtimeSpeakingState('user-speaking');
             if (audioElRef.current) {
               audioElRef.current.pause();
               audioElRef.current.currentTime = 0;
@@ -2126,18 +2149,41 @@ Instructions:
 
           // Handle tool/function calls
           if (oaiEvent.type === 'response.done') {
+            setRealtimeSpeakingState('listening');
             const output = oaiEvent.response?.output;
             if (output) {
               for (const item of output) {
                 if (item.type === 'function_call') {
-                  const result = await executeWebTool(item.name, JSON.parse(item.arguments));
+                  const args = JSON.parse(item.arguments);
+                  
+                  // Update UI with tool call status
+                  setRealtimeToolCall({
+                    name: item.name,
+                    status: 'executing',
+                    text: args.text || args.word || args.page || '',
+                    color: args.color
+                  });
+
+                  const result = await executeWebTool(item.name, args);
+                  
+                  setRealtimeToolCall({
+                    name: item.name,
+                    status: result.success ? 'success' : 'error',
+                    text: args.text || args.word || args.page || '',
+                    color: args.color,
+                    error: result.error
+                  });
+
+                  setTimeout(() => {
+                    setRealtimeToolCall(null);
+                  }, 4000);
                   
                   // Send tool result back to OpenAI
                   const responseEvent = {
                     type: 'conversation.item.create',
                     item: {
                       type: 'function_call_output',
-                      call_id: item.id,
+                      call_id: item.call_id,
                       output: JSON.stringify(result)
                     }
                   };
@@ -2204,6 +2250,8 @@ Instructions:
 
     setRealtimeVoiceActive(false);
     setRealtimeState('idle');
+    setRealtimeSpeakingState('idle');
+    setRealtimeToolCall(null);
   };
 
   useEffect(() => {
@@ -2910,20 +2958,26 @@ Instructions:
                 </div>
 
                 <div class="voice-visualizer">
-                  <div class="voice-orb">
-                    <div class=${`voice-pulse-ring ring-1 ${realtimeState}`}></div>
-                    <div class=${`voice-pulse-ring ring-2 ${realtimeState}`}></div>
-                    <div class=${`voice-pulse-ring ring-3 ${realtimeState}`}></div>
-                    <div class=${`voice-icon-inner ${realtimeState}`}>
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                        <line x1="12" y1="19" x2="12" y2="23"></line>
-                        <line x1="8" y1="23" x2="16" y2="23"></line>
-                      </svg>
+                  <div class=${`voice-orb ${realtimeSpeakingState}`}>
+                    <div class=${`voice-pulse-ring ring-1 ${realtimeSpeakingState}`}></div>
+                    <div class=${`voice-pulse-ring ring-2 ${realtimeSpeakingState}`}></div>
+                    <div class=${`voice-pulse-ring ring-3 ${realtimeSpeakingState}`}></div>
+                    <div class=${`voice-icon-inner ${realtimeSpeakingState}`}>
+                      ${realtimeSpeakingState === 'ai-speaking'
+                        ? html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                          </svg>`
+                        : html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                            <line x1="12" y1="19" x2="12" y2="23"></line>
+                            <line x1="8" y1="23" x2="16" y2="23"></line>
+                          </svg>`
+                      }
                     </div>
                   </div>
-                  <div class=${`voice-wave-bars ${realtimeState === 'live' ? 'active' : ''}`}>
+                  <div class=${`voice-wave-bars ${realtimeSpeakingState}`}>
                     <span class="bar"></span>
                     <span class="bar"></span>
                     <span class="bar"></span>
@@ -2931,6 +2985,37 @@ Instructions:
                     <span class="bar"></span>
                   </div>
                 </div>
+
+                ${realtimeToolCall && html`
+                  <div class=${`voice-tool-feedback ${realtimeToolCall.status}`}>
+                    <span class="tool-feedback-icon">
+                      ${realtimeToolCall.status === 'executing' 
+                        ? html`<span class="tool-spinner"></span>` 
+                        : realtimeToolCall.status === 'success' 
+                          ? '✅' 
+                          : '❌'
+                      }
+                    </span>
+                    <span class="tool-feedback-text">
+                      ${realtimeToolCall.name === 'highlight_text' 
+                        ? `Đã highlight "${realtimeToolCall.text}" màu ${translateColor(realtimeToolCall.color || 'yellow')}`
+                        : realtimeToolCall.name === 'remove_highlight'
+                          ? `Đã xóa highlight "${realtimeToolCall.text}"`
+                          : realtimeToolCall.name === 'lookup_word'
+                            ? `Đang tra từ "${realtimeToolCall.text}"...`
+                            : realtimeToolCall.name === 'add_word_to_voca'
+                              ? `Đã thêm "${realtimeToolCall.text}" vào Voca`
+                              : realtimeToolCall.name === 'go_to_page'
+                                ? `Chuyển sang trang ${realtimeToolCall.text}`
+                                : realtimeToolCall.name === 'next_page'
+                                  ? `Trang tiếp theo`
+                                  : realtimeToolCall.name === 'previous_page'
+                                    ? `Trang trước`
+                                    : `Thực thi ${realtimeToolCall.name}`
+                      }
+                    </span>
+                  </div>
+                `}
 
                 <div class="voice-captions">
                   ${realtimeUserTranscript && html`
