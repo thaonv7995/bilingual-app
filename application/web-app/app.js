@@ -2019,19 +2019,9 @@ Instructions:
         body: JSON.stringify({
           apiKey: activeApiKey,
           session: {
+            type: 'realtime',
             model: realtimeModel,
-            voice: realtimeVoice,
-            modalities: ['text', 'audio'],
-            instructions: systemPrompt,
-            input_audio_transcription: {
-              model: 'whisper-1'
-            },
-            tools: webToolDefinitions.map(t => ({
-              type: 'function',
-              name: t.function.name,
-              description: t.function.description,
-              parameters: t.function.parameters
-            }))
+            instructions: systemPrompt
           }
         })
       });
@@ -2078,6 +2068,25 @@ Instructions:
 
       dc.addEventListener('open', () => {
         setRealtimeState('live');
+        
+        // Configure voice, modalities, tools, and transcription on data channel connection
+        const updateEvent = {
+          type: 'session.update',
+          session: {
+            modalities: ['text', 'audio'],
+            voice: realtimeVoice,
+            input_audio_transcription: {
+              model: 'whisper-1'
+            },
+            tools: webToolDefinitions.map(t => ({
+              type: 'function',
+              name: t.function.name,
+              description: t.function.description,
+              parameters: t.function.parameters
+            }))
+          }
+        };
+        dc.send(JSON.stringify(updateEvent));
       });
 
       dc.addEventListener('message', async (e) => {
