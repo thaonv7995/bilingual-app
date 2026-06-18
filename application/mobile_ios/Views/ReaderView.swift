@@ -3306,6 +3306,88 @@ struct ReaderVocaOverlayView: View {
     }
 }
 
+/// A compact, high-performance visualizer orb designed for the floating voice widget, showing Siri-like animated waveform bars.
+struct CompactCompanionOrbView: View {
+    let level: Float
+    let aiSpeaking: Bool
+    let userSpeaking: Bool
+    var diameter: CGFloat = 42
+
+    private var teal: Color { Color(hex: "14b8a6") }
+    private var indigo: Color { Color(hex: "818cf8") }
+    private var gray: Color { Color(hex: "94a3b8") }
+    
+    private var accentColor: Color {
+        if aiSpeaking {
+            return indigo
+        } else if userSpeaking {
+            return teal
+        } else {
+            return gray.opacity(0.6)
+        }
+    }
+
+    private var gradientColors: [Color] {
+        if aiSpeaking {
+            return [indigo, Color(hex: "4f46e5")]
+        } else if userSpeaking {
+            return [teal, Color(hex: "0d9488")]
+        } else {
+            return [Color(hex: "475569"), Color(hex: "334155")]
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            // Outer pulsing glow (only when active/speaking)
+            if aiSpeaking || userSpeaking {
+                Circle()
+                    .fill(accentColor.opacity(0.15))
+                    .frame(width: diameter + 10, height: diameter + 10)
+                    .scaleEffect(1.0 + CGFloat(level) * 0.15)
+                    .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.6), value: level)
+            }
+            
+            // Core circle with premium gradient
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: gradientColors,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: diameter, height: diameter)
+                .shadow(color: accentColor.opacity(0.3), radius: 4, x: 0, y: 2)
+            
+            // Glass shine overlay
+            Circle()
+                .strokeBorder(Color.white.opacity(0.15), lineWidth: 1)
+                .frame(width: diameter, height: diameter)
+            
+            // Audio wave bars in center
+            HStack(spacing: 2) {
+                ForEach(0..<5) { index in
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(Color.white)
+                        .frame(width: 2, height: getBarHeight(for: index))
+                        .animation(.interactiveSpring(response: 0.25, dampingFraction: 0.5), value: level)
+                }
+            }
+        }
+    }
+    
+    private func getBarHeight(for index: Int) -> CGFloat {
+        // Base resting heights for the 5 bars: 3, 5, 8, 5, 3
+        let baseHeights: [CGFloat] = [4, 7, 12, 7, 4]
+        // Multiplier for audio level
+        let maxAdd: [CGFloat] = [8, 14, 18, 14, 8]
+        
+        let multiplier = CGFloat(min(level * 1.5, 1.0))
+        return baseHeights[index] + maxAdd[index] * multiplier
+    }
+}
+
 /// A compact, draggable floating widget that represents the AI voice companion when the main chat panel is closed or minimized.
 struct FloatingVoiceWidgetView: View {
     @ObservedObject var companionVM: CompanionVoiceViewModel
@@ -3342,7 +3424,7 @@ struct FloatingVoiceWidgetView: View {
                                         .stroke(Color.white.opacity(0.1), lineWidth: 1)
                                 )
                             
-                            CompanionOrbView(
+                            CompactCompanionOrbView(
                                 level: max(companionVM.inputLevel, companionVM.outputLevel),
                                 aiSpeaking: companionVM.micState == .aiSpeaking,
                                 userSpeaking: companionVM.userIsSpeaking,
