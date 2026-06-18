@@ -2097,9 +2097,11 @@ Instructions:
               name: t.function.name,
               description: t.function.description,
               parameters: t.function.parameters
-            }))
+            })),
+            tool_choice: 'auto'
           }
         };
+        console.log("[Realtime Voice] Sending session.update event:", updateEvent);
         dc.send(JSON.stringify(updateEvent));
 
         // Trigger the initial greeting message
@@ -2109,6 +2111,16 @@ Instructions:
       dc.addEventListener('message', async (e) => {
         try {
           const oaiEvent = JSON.parse(e.data);
+          
+          // Log non-audio events for easier troubleshooting
+          if (oaiEvent.type !== 'part.delta' && oaiEvent.type !== 'audio' && !oaiEvent.type.includes('audio')) {
+            console.log("[OpenAI Event]:", oaiEvent.type, oaiEvent);
+          }
+
+          if (oaiEvent.type === 'error') {
+            console.error("[OpenAI Error Event]:", oaiEvent.error);
+            setRealtimeError(oaiEvent.error?.message || 'Lỗi kết nối Realtime');
+          }
           
           if (oaiEvent.type === 'response.created') {
             setRealtimeSpeakingState('ai-speaking');
@@ -2155,6 +2167,7 @@ Instructions:
               for (const item of output) {
                 if (item.type === 'function_call') {
                   const args = JSON.parse(item.arguments);
+                  console.log("[Realtime Tool Call] Received call request:", item.name, args);
                   
                   // Update UI with tool call status
                   setRealtimeToolCall({
@@ -2165,6 +2178,7 @@ Instructions:
                   });
 
                   const result = await executeWebTool(item.name, args);
+                  console.log("[Realtime Tool Call] Execution result:", result);
                   
                   setRealtimeToolCall({
                     name: item.name,
@@ -2187,6 +2201,7 @@ Instructions:
                       output: JSON.stringify(result)
                     }
                   };
+                  console.log("[Realtime Tool Call] Sending output back to OpenAI:", responseEvent);
                   dc.send(JSON.stringify(responseEvent));
                   
                   // Ask AI to generate verbal response
@@ -2197,7 +2212,7 @@ Instructions:
             }
           }
         } catch (err) {
-          console.warn('Error parsing OpenAI event:', err);
+          console.error('[Realtime Voice Message Handler Error]:', err);
         }
       });
 
