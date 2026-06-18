@@ -8,6 +8,7 @@ import {
   defaultVocaSettings,
   cleanWord,
   lookupWord,
+  addWordToVoca,
   showVocaLookupResults,
   showVocaNotFoundPanel,
   removeVocaLookupPanel,
@@ -24,6 +25,9 @@ const DEFAULT_SETTINGS = {
   baseURL: 'https://api.openai.com/v1',
   apiKey: '',
   model: 'gpt-4o-mini',
+  realtimeApiKey: '',
+  realtimeModel: 'gpt-realtime-mini',
+  realtimeVoice: 'alloy',
   ...defaultVocaSettings(),
 };
 
@@ -163,6 +167,197 @@ async function refreshAccessToken() {
   }
   return data.access_token;
 }
+
+const colorMap = {
+  yellow: '#fde68a',
+  blue: '#93c5fd',
+  pink: '#f9a8d4',
+  green: '#86efac'
+};
+
+const webToolDefinitions = [
+  {
+    type: 'function',
+    function: {
+      name: 'highlight_text',
+      description: 'Highlight a word or phrase on the current page with a color. Use when the user asks to mark, highlight, or annotate text.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: {
+            type: 'string',
+            description: 'The exact word or phrase to highlight on the page'
+          },
+          color: {
+            type: 'string',
+            enum: ['yellow', 'blue', 'pink', 'green'],
+            description: 'The highlight color. The AI Agent must choose an appropriate color for highlighting.'
+          },
+          occurrenceIndex: {
+            type: 'integer',
+            description: 'If there are multiple occurrences of the text, specify the 0-based index of the occurrence to highlight.'
+          },
+          highlightAll: {
+            type: 'boolean',
+            description: 'If true, highlights all occurrences of the text on the page.'
+          }
+        },
+        required: ['text']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'remove_highlight',
+      description: 'Remove a highlight from the current page.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: {
+            type: 'string',
+            description: 'The highlighted text to remove'
+          }
+        },
+        required: ['text']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'lookup_word',
+      description: 'Look up an English word in the Voca dictionary and show its definition panel to the user.',
+      parameters: {
+        type: 'object',
+        properties: {
+          word: {
+            type: 'string',
+            description: 'The English word to look up'
+          }
+        },
+        required: ['word']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_word_to_voca',
+      description: 'Add a new English word to the user\'s Voca vocabulary collection for later review.',
+      parameters: {
+        type: 'object',
+        properties: {
+          word: {
+            type: 'string',
+            description: 'The English word to add'
+          }
+        },
+        required: ['word']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'go_to_page',
+      description: 'Navigate to a specific page number in the book.',
+      parameters: {
+        type: 'object',
+        properties: {
+          page: {
+            type: 'integer',
+            description: 'The page number to navigate to'
+          }
+        },
+        required: ['page']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'next_page',
+      description: 'Go to the next page.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'previous_page',
+      description: 'Go to the previous page.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_page_content',
+      description: 'Get the text content of a page. If page is not specified, returns the current page. If lang is not specified, returns both English and Vietnamese.',
+      parameters: {
+        type: 'object',
+        properties: {
+          page: {
+            type: 'integer',
+            description: 'Page number (optional, defaults to current page)'
+          },
+          lang: {
+            type: 'string',
+            enum: ['en', 'vi'],
+            description: 'Language (optional, defaults to both)'
+          }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_current_context',
+      description: 'Get information about what the user is currently reading: page number, view mode, book title.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'switch_view_mode',
+      description: 'Switch the reading view mode. \'en\' shows English only, \'vi\' shows Vietnamese only, \'split\' shows bilingual side-by-side. Use when the user asks to change language display.',
+      parameters: {
+        type: 'object',
+        properties: {
+          mode: {
+            type: 'string',
+            enum: ['en', 'vi', 'split'],
+            description: 'The view mode: \'en\' (English only), \'vi\' (Vietnamese only), \'split\' (bilingual)'
+          }
+        },
+        required: ['mode']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_highlights',
+      description: 'List all highlights the user has made on the current page.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  }
+];
 
 function App() {
   const initialRoute = getInitialRoute();
@@ -428,6 +623,9 @@ function App() {
   const [formBaseURL, setFormBaseURL] = useState(settings.baseURL);
   const [formApiKey, setFormApiKey] = useState(settings.apiKey);
   const [formModel, setFormModel] = useState(settings.model);
+  const [formRealtimeApiKey, setFormRealtimeApiKey] = useState(settings.realtimeApiKey || '');
+  const [formRealtimeModel, setFormRealtimeModel] = useState(settings.realtimeModel || 'gpt-realtime-mini');
+  const [formRealtimeVoice, setFormRealtimeVoice] = useState(settings.realtimeVoice || 'alloy');
   const [formLayoutMode, setFormLayoutMode] = useState(layoutMode);
   const [formVocaBridgeOrigin, setFormVocaBridgeOrigin] = useState(settings.vocaBridgeOrigin || '');
   const [formVocaBridgeToken, setFormVocaBridgeToken] = useState(settings.vocaBridgeToken || '');
@@ -439,6 +637,9 @@ function App() {
     setFormBaseURL(settings.baseURL);
     setFormApiKey(settings.apiKey);
     setFormModel(settings.model);
+    setFormRealtimeApiKey(settings.realtimeApiKey || '');
+    setFormRealtimeModel(settings.realtimeModel || 'gpt-realtime-mini');
+    setFormRealtimeVoice(settings.realtimeVoice || 'alloy');
     setFormLayoutMode(layoutMode);
     setFormVocaBridgeOrigin(settings.vocaBridgeOrigin || '');
     setFormVocaBridgeToken(settings.vocaBridgeToken || '');
@@ -451,10 +652,26 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatPending, setChatPending] = useState(false);
+  const [isRecordingMic, setIsRecordingMic] = useState(false);
+  const [suggestedPrompts, setSuggestedPrompts] = useState([]);
+  const [suggestionsPage, setSuggestionsPage] = useState(-1);
 
   const messagesEndRef = useRef(null);
   const [popupConfig, setPopupConfig] = useState(null); // { type: 'alert' | 'confirm', title: string, message: string, onConfirm: () => void, onCancel?: () => void }
   const abortControllerRef = useRef(null);
+  const recognitionRef = useRef(null);
+
+  // --- WebRTC Realtime Voice State & Refs ---
+  const [realtimeVoiceActive, setRealtimeVoiceActive] = useState(false);
+  const [realtimeState, setRealtimeState] = useState('idle'); // 'idle' | 'connecting' | 'live' | 'error'
+  const [realtimeCaption, setRealtimeCaption] = useState('');
+  const [realtimeUserTranscript, setRealtimeUserTranscript] = useState('');
+  const [realtimeError, setRealtimeError] = useState('');
+
+  const pcRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const dataChannelRef = useRef(null);
+  const audioElRef = useRef(null);
 
   // --- Chat Resizing State & Event Handlers ---
   const [chatWidth, setChatWidth] = useState(() => {
@@ -1022,6 +1239,76 @@ function App() {
     }
   }, [activeBook, page]);
 
+  // Generate dynamic suggestion prompts on page load/change
+  useEffect(() => {
+    if (!activeBook || !settings.apiKey) return;
+    if (suggestionsPage === page) return;
+
+    const generateSuggestions = async () => {
+      const activePageText = getIframePageText();
+      if (!activePageText) return;
+
+      const systemPrompt = `You generate 3 contextual question suggestions for a reader. The reader is reading page ${page} of "${activeBook.title}".
+
+PAGE CONTENT:
+${activePageText.slice(0, 2000)}
+
+Return ONLY a JSON array of exactly 3 objects, each with:
+- "icon": a single emoji that fits the question theme
+- "title": short title in Vietnamese (max 20 chars)
+- "prompt": the full question in Vietnamese (1-2 sentences)
+
+The questions should be specific to THIS page content, not generic. Focus on:
+- Key concepts, terminology, or ideas mentioned on this page
+- Interesting connections or deeper analysis
+- Practical applications or real-world relevance
+
+Example format: [{"icon":"🧠","title":"Khái niệm X","prompt":"Giải thích khái niệm X được đề cập trong trang này..."}]
+Return ONLY the JSON array, no other text.`;
+
+      try {
+        const response = await apiFetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            baseURL: settings.baseURL,
+            apiKey: settings.apiKey,
+            model: settings.model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: 'Generate 3 suggestion prompts for this page.' }
+            ],
+            stream: false
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.choices?.[0]?.message?.content || '';
+          const cleaned = text.trim()
+            .replace(/^```json/i, '')
+            .replace(/```$/, '')
+            .trim();
+          
+          try {
+            const arr = JSON.parse(cleaned);
+            if (Array.isArray(arr)) {
+              setSuggestedPrompts(arr.slice(0, 3));
+              setSuggestionsPage(page);
+            }
+          } catch (e) {
+            console.warn('[Companion] Failed to parse suggested prompts JSON:', e);
+          }
+        }
+      } catch (err) {
+        console.warn('[Companion] Failed to fetch dynamic suggestions:', err);
+      }
+    };
+
+    const timer = setTimeout(generateSuggestions, 600);
+    return () => clearTimeout(timer);
+  }, [activeBook, page, settings.apiKey, suggestionsPage]);
+
   // Load full book text asynchronously for AI context
   useEffect(() => {
     if (!activeBook) {
@@ -1076,6 +1363,9 @@ function App() {
       baseURL: formBaseURL,
       apiKey: formApiKey,
       model: formModel,
+      realtimeApiKey: formRealtimeApiKey.trim(),
+      realtimeModel: formRealtimeModel.trim(),
+      realtimeVoice: formRealtimeVoice.trim(),
       vocaBridgeOrigin: formVocaBridgeOrigin.trim(),
       vocaBridgeToken: formVocaBridgeToken.trim(),
       ttsEndpoint: formTtsEndpoint.trim(),
@@ -1116,39 +1406,326 @@ function App() {
     return pageText.trim();
   };
 
-  // AI Chat submission handler
-  const sendChatMessage = async (userInputText = null) => {
-    const textToSend = userInputText || chatInput;
-    if (!textToSend.trim() || chatPending) return;
+  const findOccurrencesInDoc = (doc, searchText) => {
+    if (!doc) return [];
+    const paragraphs = getParagraphs(doc);
+    const occurrences = [];
 
-    if (!settings.apiKey) {
-      setPopupConfig({
-        type: 'alert',
-        title: 'Thiếu API Key',
-        message: 'Vui lòng vào Settings cài đặt API Key để chat với trợ lý AI!',
-        onConfirm: () => {
-          openSettings();
-        }
-      });
-      return;
+    // Pass 1: exact match
+    for (let i = 0; i < paragraphs.length; i++) {
+      const pText = paragraphs[i].textContent;
+      let idx = pText.indexOf(searchText);
+      while (idx >= 0) {
+        occurrences.push({
+          paragraphIndex: i,
+          startOffset: idx,
+          endOffset: idx + searchText.length,
+          context: pText.trim()
+        });
+        idx = pText.indexOf(searchText, idx + 1);
+      }
     }
 
-    // 1. Add user message
-    const newUserMsg = { role: 'user', content: textToSend };
-    updateMessagesAndSave(prev => [...prev, newUserMsg]);
-    setChatInput('');
+    // Pass 2: case-insensitive fallback
+    if (occurrences.length === 0) {
+      const lowerSearch = searchText.toLowerCase();
+      for (let i = 0; i < paragraphs.length; i++) {
+        const pText = paragraphs[i].textContent;
+        const lowerPText = pText.toLowerCase();
+        let idx = lowerPText.indexOf(lowerSearch);
+        while (idx >= 0) {
+          occurrences.push({
+            paragraphIndex: i,
+            startOffset: idx,
+            endOffset: idx + searchText.length,
+            context: pText.trim()
+          });
+          idx = lowerPText.indexOf(lowerSearch, idx + 1);
+        }
+      }
+    }
+    return occurrences;
+  };
+
+  const executeWebTool = async (name, args) => {
+    switch (name) {
+      case 'highlight_text': {
+        const text = args.text;
+        const colorName = args.color || 'yellow';
+        const colorHex = colorMap[colorName] || '#fde68a';
+        const occurrenceIndex = args.occurrenceIndex !== undefined ? args.occurrenceIndex : null;
+        const highlightAll = args.highlightAll || false;
+
+        const langs = viewMode === 'split' ? ['en', 'vi'] : [viewMode];
+        let allOccurrences = [];
+
+        for (const lang of langs) {
+          const selector = lang === 'en' ? '.en-pane-iframe' : '.vi-pane-iframe';
+          const iframe = document.querySelector(selector);
+          if (!iframe?.contentDocument) continue;
+          const doc = iframe.contentDocument;
+
+          const occurrences = findOccurrencesInDoc(doc, text);
+          if (occurrences.length > 0) {
+            occurrences.forEach(o => { o.lang = lang; });
+            allOccurrences.push(...occurrences);
+          }
+        }
+
+        if (allOccurrences.length === 0) {
+          return { success: false, error: 'text_not_found', message: `Text '${text}' not found on this page.` };
+        }
+
+        if (allOccurrences.length > 1 && occurrenceIndex === null && !highlightAll) {
+          return {
+            success: false,
+            error: 'multiple_occurrences',
+            message: `Found ${allOccurrences.length} occurrences of '${text}' on the current page.`,
+            occurrences: allOccurrences
+          };
+        }
+
+        // Determine targets
+        let targets = [];
+        if (highlightAll) {
+          targets = allOccurrences;
+        } else if (occurrenceIndex !== null) {
+          if (occurrenceIndex < 0 || occurrenceIndex >= allOccurrences.length) {
+            return { success: false, error: 'invalid_occurrence_index' };
+          }
+          targets = [allOccurrences[occurrenceIndex]];
+        } else {
+          targets = [allOccurrences[0]];
+        }
+
+        const createdHighlights = [];
+        for (const occ of targets) {
+          const selector = occ.lang === 'en' ? '.en-pane-iframe' : '.vi-pane-iframe';
+          const iframe = document.querySelector(selector);
+          if (!iframe?.contentDocument) continue;
+          const doc = iframe.contentDocument;
+          const paragraphs = getParagraphs(doc);
+          const paragraph = paragraphs[occ.paragraphIndex];
+          
+          const highlightId = generateHighlightId();
+          const highlightData = {
+            id: highlightId,
+            color: colorHex,
+            note: ''
+          };
+
+          const ok = wrapTextRange(doc, paragraph, occ.startOffset, occ.endOffset, highlightData);
+          if (ok) {
+            const highlight = {
+              id: highlightId,
+              page,
+              lang: occ.lang,
+              color: colorHex,
+              text: text,
+              startOffset: occ.startOffset,
+              endOffset: occ.endOffset,
+              paragraphIndex: occ.paragraphIndex,
+              note: '',
+              createdAt: Date.now()
+            };
+            
+            // Save local state
+            setBookHighlights(prev => [...prev, highlight]);
+            
+            // Save local storage
+            const currentList = loadHighlights(activeBook.slug);
+            saveHighlights(activeBook.slug, [...currentList, highlight]);
+
+            // Sync to Server
+            apiFetch(`api/books/${activeBook.slug}/highlights`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(highlight)
+            }).catch(err => console.warn(err));
+
+            createdHighlights.push(highlight);
+          }
+        }
+
+        if (createdHighlights.length > 0) {
+          return { success: true, message: `Successfully highlighted ${createdHighlights.length} occurrences.` };
+        }
+
+        return { success: false, error: 'wrap_failed' };
+      }
+      
+      case 'remove_highlight': {
+        const text = args.text;
+        const existing = bookHighlights.find(h => h.text.toLowerCase() === text.toLowerCase() && h.page === page);
+        if (existing) {
+          deleteHighlight(existing.id);
+          return { success: true };
+        }
+        return { success: false, error: 'highlight_not_found' };
+      }
+
+      case 'lookup_word': {
+        const word = args.word;
+        try {
+          const result = await lookupWord(word);
+          if (result.found) {
+            const enIframe = document.querySelector('.en-pane-iframe');
+            if (enIframe?.contentDocument) {
+              const doc = enIframe.contentDocument;
+              const rect = { left: 150, top: 150, width: 0, height: 0 };
+              showVocaLookupResults(doc, rect, word, result);
+            }
+            return { success: true, definition: result.cards || result.card };
+          } else {
+            return { success: false, error: 'word_not_found_in_dictionary' };
+          }
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+      }
+
+      case 'add_word_to_voca': {
+        const word = args.word;
+        try {
+          await addWordToVoca(word);
+          return { success: true };
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+      }
+
+      case 'go_to_page': {
+        const targetPage = args.page;
+        if (targetPage >= 1 && targetPage <= activeBook.pageCount) {
+          setPage(targetPage);
+          return { success: true };
+        }
+        return { success: false, error: 'page_out_of_bounds' };
+      }
+
+      case 'next_page': {
+        if (page < activeBook.pageCount) {
+          setPage(p => p + 1);
+          return { success: true };
+        }
+        return { success: false, error: 'already_at_last_page' };
+      }
+
+      case 'previous_page': {
+        if (page > 1) {
+          setPage(p => p - 1);
+          return { success: true };
+        }
+        return { success: false, error: 'already_at_first_page' };
+      }
+
+      case 'get_page_content': {
+        const targetPage = args.page || page;
+        const lang = args.lang;
+        let content = '';
+        
+        if (!lang || lang === 'en') {
+          const enIframe = document.querySelector('.en-pane-iframe');
+          if (enIframe?.contentDocument) {
+            content += `[English Page ${targetPage}]:\n${enIframe.contentDocument.body.innerText}\n`;
+          }
+        }
+        if (!lang || lang === 'vi') {
+          const viIframe = document.querySelector('.vi-pane-iframe');
+          if (viIframe?.contentDocument) {
+            content += `[Vietnamese Page ${targetPage}]:\n${viIframe.contentDocument.body.innerText}\n`;
+          }
+        }
+        return { success: true, content: content.trim() };
+      }
+
+      case 'get_current_context': {
+        return {
+          success: true,
+          page,
+          totalPages: activeBook.pageCount,
+          viewMode,
+          bookTitle: activeBook.title,
+          bookAuthor: activeBook.author || 'Unknown'
+        };
+      }
+
+      case 'switch_view_mode': {
+        const mode = args.mode;
+        if (['en', 'vi', 'split'].includes(mode)) {
+          setViewMode(mode);
+          return { success: true };
+        }
+        return { success: false, error: 'invalid_mode' };
+      }
+
+      case 'list_highlights': {
+        const pageHighlights = bookHighlights.filter(h => h.page === page);
+        return {
+          success: true,
+          highlights: pageHighlights.map(h => ({
+            text: h.text,
+            color: h.color,
+            lang: h.lang,
+            note: h.note
+          }))
+        };
+      }
+
+      default:
+        return { success: false, error: `Unknown tool: ${name}` };
+    }
+  };
+
+  const handleExecutedTools = async (toolCalls, history, assistantReply) => {
+    const assistantMsg = {
+      role: 'assistant',
+      content: assistantReply || '',
+      tool_calls: toolCalls.map(tc => ({
+        id: tc.id,
+        type: 'function',
+        function: {
+          name: tc.name,
+          arguments: tc.arguments
+        }
+      }))
+    };
+
+    const nextHistory = [...history, assistantMsg];
+    updateMessagesAndSave(nextHistory);
+
+    for (const tc of toolCalls) {
+      let output = { success: false, error: 'Unknown error' };
+      try {
+        const args = JSON.parse(tc.arguments || '{}');
+        output = await executeWebTool(tc.name, args);
+      } catch (err) {
+        output = { success: false, error: err.message };
+      }
+
+      const toolMsg = {
+        role: 'tool',
+        tool_call_id: tc.id,
+        name: tc.name,
+        content: JSON.stringify(output)
+      };
+      nextHistory.push(toolMsg);
+    }
+
+    updateMessagesAndSave(nextHistory);
+    await sendChatCompletionsWithHistory(nextHistory);
+  };
+
+  const sendChatCompletionsWithHistory = async (history) => {
     setChatPending(true);
+    updateMessagesAndSave([...history, { role: 'assistant', content: '', pending: true }]);
 
-    // 2. Add empty pending bubble
-    updateMessagesAndSave(prev => [...prev, { role: 'assistant', content: '', pending: true }]);
-
-    // 3. Assemble prompt with extracted contexts
     const activePageText = getIframePageText();
     const cleanFullTextContext = fullBookText && fullBookText !== 'Loading book context...' && fullBookText !== 'Unable to load full book context.'
-      ? fullBookText.slice(0, 150000) // Keep context under ~150k characters to prevent overflow
+      ? fullBookText.slice(0, 150000)
       : 'No global book context loaded.';
 
-    const systemPrompt = `You are a helpful, expert AI Book Assistant. You are guiding the user who is reading the book "${activeBook.title}" by ${activeBook.author}.
+    const systemPrompt = `You are a helpful, expert AI Reading Companion Agent (named "Companion Reader Agent"). You are guiding the user who is reading the book "${activeBook.title}" by ${activeBook.author}.
 The user is currently reading page ${page}.
 
 CURRENT PAGE CONTEXT:
@@ -1163,16 +1740,21 @@ Instructions:
 3. If they ask about overall book concepts, utilize the FULL BOOK BACKGROUND.
 4. Keep your responses structured, clear, and scan-friendly (use short markdown paragraphs, lists, or bold highlights).
 5. Please answer in Vietnamese (the user's language) unless they ask you to write or explain in English. Keep code snippets in their original programming language.
+6. Use the available tools when the user asks to highlight, look up words, navigate pages, list highlights, or change view mode.
+7. Under TOOLS section:
+   * Color names for highlight_text: "yellow", "blue", "pink", "green". Choose a color based on variety or context. Do not ask the user for a color unless they specify it.
+   * If highlight_text returns a "multiple_occurrences" error, read the list of occurrences and ask the user to confirm:
+     1) Which specific occurrence they want to highlight (describe them by paragraph context or reading order), OR
+     2) If they want to highlight all occurrences on the page.
+   * Once the user confirms, call highlight_text again passing either 'occurrenceIndex' or 'highlightAll'.
 `;
 
-    // Initialize AbortController
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
 
-    // 4. Dispatch completions fetch via local proxy /api/chat to bypass CORS
     try {
       const response = await apiFetch('/api/chat', {
         method: 'POST',
@@ -1186,9 +1768,15 @@ Instructions:
           model: settings.model,
           messages: [
             { role: 'system', content: systemPrompt },
-            ...messages.filter(m => !m.pending).map(m => ({ role: m.role, content: m.content })),
-            newUserMsg
+            ...history.map(m => {
+              const cleanM = { role: m.role, content: m.content || '' };
+              if (m.tool_calls) cleanM.tool_calls = m.tool_calls;
+              if (m.tool_call_id) cleanM.tool_call_id = m.tool_call_id;
+              if (m.name) cleanM.name = m.name;
+              return cleanM;
+            })
           ],
+          tools: webToolDefinitions,
           stream: true
         })
       });
@@ -1216,6 +1804,7 @@ Instructions:
       const reader = response.body.getReader();
       const decoder = new TextDecoder('utf-8');
       let assistantReply = '';
+      let currentToolCalls = [];
       let doneStreaming = false;
       let buffer = '';
 
@@ -1230,30 +1819,33 @@ Instructions:
         if (cleanLine.startsWith('data: ')) {
           try {
             const data = JSON.parse(cleanLine.slice(6));
-            const deltaContent = data.choices?.[0]?.delta?.content || '';
-            assistantReply += deltaContent;
+            const delta = data.choices?.[0]?.delta;
+            if (!delta) return;
 
-            // Update the assistant bubble content in real-time
-            updateMessagesAndSave(prev => {
-              const copy = [...prev];
-              let targetIdx = -1;
-              for (let i = copy.length - 1; i >= 0; i--) {
-                if (copy[i].role === 'assistant') {
-                  targetIdx = i;
-                  break;
+            if (delta.content) {
+              assistantReply += delta.content;
+              updateMessagesAndSave([...history, {
+                role: 'assistant',
+                content: assistantReply,
+                pending: false
+              }]);
+            }
+
+            if (delta.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index;
+                if (!currentToolCalls[idx]) {
+                  currentToolCalls[idx] = { id: '', name: '', arguments: '' };
+                }
+                if (tc.id) currentToolCalls[idx].id = tc.id;
+                if (tc.function) {
+                  if (tc.function.name) currentToolCalls[idx].name += tc.function.name;
+                  if (tc.function.arguments) currentToolCalls[idx].arguments += tc.function.arguments;
                 }
               }
-              if (targetIdx !== -1) {
-                copy[targetIdx] = {
-                  role: 'assistant',
-                  content: assistantReply,
-                  pending: false
-                };
-              }
-              return copy;
-            });
+            }
           } catch (e) {
-            // Ignore partial JSON parsing errors
+            // Ignore parse errors
           }
         }
       };
@@ -1269,7 +1861,7 @@ Instructions:
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        buffer = lines.pop(); // Keep the last incomplete line in buffer
+        buffer = lines.pop();
 
         for (const line of lines) {
           processLine(line);
@@ -1280,53 +1872,322 @@ Instructions:
           break;
         }
       }
+
+      const finalAssistantMsg = { role: 'assistant', content: assistantReply };
+
+      if (currentToolCalls.length > 0) {
+        updateMessagesAndSave([...history, finalAssistantMsg]);
+        await handleExecutedTools(currentToolCalls, history, assistantReply);
+      } else {
+        updateMessagesAndSave([...history, finalAssistantMsg]);
+        setChatPending(false);
+      }
     } catch (err) {
       if (err.name === 'AbortError') {
         console.log('AI chat generation aborted by user.');
-        updateMessagesAndSave(prev => {
-          const copy = [...prev];
-          let targetIdx = -1;
-          for (let i = copy.length - 1; i >= 0; i--) {
-            if (copy[i].role === 'assistant') {
-              targetIdx = i;
-              break;
-            }
-          }
-          if (targetIdx !== -1) {
-            copy[targetIdx] = {
-              ...copy[targetIdx],
-              content: copy[targetIdx].content ? copy[targetIdx].content : 'Yêu cầu đã bị hủy.',
-              pending: false
-            };
-          }
-          return copy;
-        });
+        updateMessagesAndSave([...history, {
+          role: 'assistant',
+          content: 'Yêu cầu đã bị hủy.',
+          pending: false
+        }]);
       } else {
         console.error('AI chat assistant error:', err);
-        updateMessagesAndSave(prev => {
-          const copy = [...prev];
-          let targetIdx = -1;
-          for (let i = copy.length - 1; i >= 0; i--) {
-            if (copy[i].role === 'assistant') {
-              targetIdx = i;
-              break;
-            }
-          }
-          if (targetIdx !== -1) {
-            copy[targetIdx] = {
-              role: 'assistant',
-              content: `Xin lỗi, đã xảy ra lỗi khi kết nối với AI Model: ${err.message}. Vui lòng kiểm tra lại cấu hình API Key hoặc kết nối mạng trong phần Settings!`,
-              pending: false
-            };
-          }
-          return copy;
-        });
+        updateMessagesAndSave([...history, {
+          role: 'assistant',
+          content: `Xin lỗi, đã xảy ra lỗi khi kết nối với AI Model: ${err.message}. Vui lòng kiểm tra lại cấu hình API Key hoặc kết nối mạng trong phần Settings!`,
+          pending: false
+        }]);
       }
-    } finally {
-      abortControllerRef.current = null;
       setChatPending(false);
     }
   };
+
+  // AI Chat submission handler
+  const sendChatMessage = async (userInputText = null) => {
+    const textToSend = userInputText || chatInput;
+    if (!textToSend.trim() || chatPending) return;
+
+    if (!settings.apiKey) {
+      setPopupConfig({
+        type: 'alert',
+        title: 'Thiếu API Key',
+        message: 'Vui lòng vào Settings cài đặt API Key để chat với Companion Reader Agent!',
+        onConfirm: () => {
+          openSettings();
+        }
+      });
+      return;
+    }
+
+    const newUserMsg = { role: 'user', content: textToSend };
+    const nextHistory = [...messages, newUserMsg];
+    updateMessagesAndSave(nextHistory);
+    setChatInput('');
+
+    await sendChatCompletionsWithHistory(nextHistory);
+  };
+
+  const toggleSpeechRecognition = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showVocaError('Trình duyệt của bạn không hỗ trợ nhận diện giọng nói (Speech Recognition).');
+      return;
+    }
+
+    if (isRecordingMic) {
+      recognitionRef.current?.stop();
+      setIsRecordingMic(false);
+    } else {
+      const rec = new SpeechRecognition();
+      rec.lang = 'vi-VN';
+      rec.continuous = false;
+      rec.interimResults = false;
+      
+      rec.onstart = () => {
+        setIsRecordingMic(true);
+      };
+      
+      rec.onresult = (e) => {
+        const transcript = e.results[0][0].transcript;
+        if (transcript) {
+          setChatInput(prev => (prev ? prev + ' ' : '') + transcript);
+        }
+      };
+      
+      rec.onerror = (e) => {
+        console.warn('Speech recognition error:', e);
+        setIsRecordingMic(false);
+      };
+      
+      rec.onend = () => {
+        setIsRecordingMic(false);
+      };
+
+      recognitionRef.current = rec;
+      rec.start();
+    }
+  };
+
+  const startRealtimeVoice = async () => {
+    const activeApiKey = settings.realtimeApiKey || settings.apiKey;
+    if (!activeApiKey) {
+      showVocaError('Vui lòng cài đặt API Key trong Settings trước.');
+      return;
+    }
+    setRealtimeState('connecting');
+    setRealtimeVoiceActive(true);
+    setRealtimeError('');
+    setRealtimeCaption('');
+    setRealtimeUserTranscript('');
+
+    try {
+      // 1. Get microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = stream;
+
+      // 2. Fetch ephemeral key from OpenAI Realtime sessions endpoint
+      const realtimeModel = settings.realtimeModel || 'gpt-realtime-mini';
+      const realtimeVoice = settings.realtimeVoice || 'alloy';
+      
+      const activePageText = getIframePageText();
+      const cleanFullTextContext = fullBookText && fullBookText !== 'Loading book context...' && fullBookText !== 'Unable to load full book context.'
+        ? fullBookText.slice(0, 10000)
+        : 'No global book context loaded.';
+
+      const systemPrompt = `Your name is Companion Reader Agent. You are an AI reading companion for the bilingual book "${activeBook.title}" by ${activeBook.author || 'Unknown'}.
+The user is currently reading page ${page}.
+
+CURRENT PAGE CONTEXT:
+${activePageText}
+
+FULL BOOK BACKGROUND (clean text sample):
+${cleanFullTextContext}
+
+Instructions:
+1. Speak in Vietnamese by default. Only switch to English if the user asks you to.
+2. Keep your spoken responses concise and conversational (1-2 sentences max) as this is a real-time voice chat.
+3. Use the available tools when the user asks to highlight, look up words, navigate pages, list highlights, or change view mode.
+4. Choose highlight colors (yellow, blue, pink, green) yourself. Do not ask the user for a color.
+5. If highlight_text returns a "multiple_occurrences" error, read the contexts and ask the user to confirm which one they want to highlight, or if they want to highlight all.
+`;
+
+      const sessionResponse = await fetch('https://api.openai.com/v1/realtime/sessions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${activeApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: realtimeModel,
+          voice: realtimeVoice,
+          modalities: ['text', 'audio'],
+          instructions: systemPrompt,
+          input_audio_transcription: {
+            model: 'whisper-1'
+          },
+          tools: webToolDefinitions.map(t => ({
+            type: 'function',
+            name: t.function.name,
+            description: t.function.description,
+            parameters: t.function.parameters
+          }))
+        })
+      });
+
+      if (!sessionResponse.ok) {
+        throw new Error(`Failed to create session: ${sessionResponse.statusText}`);
+      }
+
+      const sessionData = await sessionResponse.json();
+      const ephemeralKey = sessionData.client_secret?.value;
+      if (!ephemeralKey) {
+        throw new Error('No ephemeral key returned from OpenAI');
+      }
+
+      // 3. Create RTCPeerConnection
+      const pc = new RTCPeerConnection();
+      pcRef.current = pc;
+
+      // Add local audio tracks to peer connection
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+      // Setup remote audio stream playback
+      const remoteStream = new MediaStream();
+      pc.ontrack = (e) => {
+        remoteStream.addTrack(e.track);
+      };
+
+      const audioEl = document.createElement('audio');
+      audioEl.autoplay = true;
+      audioEl.srcObject = remoteStream;
+      document.body.appendChild(audioEl);
+      audioElRef.current = audioEl;
+
+      // 4. Create data channel for OpenAI Realtime events
+      const dc = pc.createDataChannel('oai-events');
+      dataChannelRef.current = dc;
+
+      dc.addEventListener('open', () => {
+        setRealtimeState('live');
+      });
+
+      dc.addEventListener('message', async (e) => {
+        try {
+          const oaiEvent = JSON.parse(e.data);
+          
+          // AI speaking caption updates
+          if (oaiEvent.type === 'response.audio_transcript.delta') {
+            setRealtimeCaption(prev => prev + oaiEvent.delta);
+          }
+          if (oaiEvent.type === 'response.audio_transcript.done') {
+            setRealtimeCaption(oaiEvent.transcript);
+            const newMsg = { role: 'assistant', content: oaiEvent.transcript };
+            updateMessagesAndSave(prev => [...prev, newMsg]);
+          }
+
+          // User speech transcript updates
+          if (oaiEvent.type === 'conversation.item.input_audio_transcription.completed') {
+            const transcript = oaiEvent.transcript || '';
+            setRealtimeUserTranscript(transcript);
+            const newMsg = { role: 'user', content: transcript };
+            updateMessagesAndSave(prev => [...prev, newMsg]);
+          }
+
+          // User speech started (AI interrupted)
+          if (oaiEvent.type === 'input_audio_buffer.speech_started') {
+            setRealtimeCaption('...');
+            if (audioElRef.current) {
+              audioElRef.current.pause();
+              audioElRef.current.currentTime = 0;
+              audioElRef.current.play().catch(() => {});
+            }
+          }
+
+          // Handle tool/function calls
+          if (oaiEvent.type === 'response.done') {
+            const output = oaiEvent.response?.output;
+            if (output) {
+              for (const item of output) {
+                if (item.type === 'function_call') {
+                  const result = await executeWebTool(item.name, JSON.parse(item.arguments));
+                  
+                  // Send tool result back to OpenAI
+                  const responseEvent = {
+                    type: 'conversation.item.create',
+                    item: {
+                      type: 'function_call_output',
+                      call_id: item.id,
+                      output: JSON.stringify(result)
+                    }
+                  };
+                  dc.send(JSON.stringify(responseEvent));
+                  
+                  // Ask AI to generate verbal response
+                  dc.send(JSON.stringify({ type: 'response.create' }));
+                  setRealtimeCaption('🔄 Đang xử lý...');
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Error parsing OpenAI event:', err);
+        }
+      });
+
+      // 5. SDP Offer Handshake
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const sdpResponse = await fetch(`https://api.openai.com/v1/realtime?model=${realtimeModel}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${ephemeralKey}`,
+          'Content-Type': 'application/sdp'
+        },
+        body: offer.sdp
+      });
+
+      if (!sdpResponse.ok) {
+        throw new Error(`SDP Exchange failed: ${sdpResponse.statusText}`);
+      }
+
+      const answerSdp = await sdpResponse.text();
+      await pc.setRemoteDescription({
+        type: 'answer',
+        sdp: answerSdp
+      });
+
+    } catch (err) {
+      console.error('[Realtime Voice Error]', err);
+      setRealtimeError(err.message || 'Không thể kết nối Voice Mode.');
+      setRealtimeState('error');
+      stopRealtimeVoice();
+    }
+  };
+
+  const stopRealtimeVoice = () => {
+    pcRef.current?.close();
+    pcRef.current = null;
+
+    localStreamRef.current?.getTracks().forEach(track => track.stop());
+    localStreamRef.current = null;
+
+    dataChannelRef.current = null;
+
+    audioElRef.current?.remove();
+    audioElRef.current = null;
+
+    setRealtimeVoiceActive(false);
+    setRealtimeState('idle');
+  };
+
+  useEffect(() => {
+    if (!chatOpen || !activeBook) {
+      if (pcRef.current) {
+        stopRealtimeVoice();
+      }
+    }
+  }, [chatOpen, activeBook]);
 
   const handleCancelChat = () => {
     if (abortControllerRef.current) {
@@ -1546,7 +2407,7 @@ Instructions:
                     <circle cx="12" cy="12" r="3"></circle>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1-1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                   </svg>
-                  <span>Cấu hình AI</span>
+                  <span>Cấu hình Companion Agent</span>
                 </button>
                 <div style="height: 1px; background: rgba(255, 255, 255, 0.08); margin: 4px 0;"></div>
                 <button class="profile-dropdown-item logout" onClick=${handleLogout}>
@@ -1655,12 +2516,12 @@ Instructions:
       <div class="modal-backdrop" onClick=${() => setSettingsOpen(false)}>
         <form class="modal-content modal-content--settings" onSubmit=${saveSettings} onClick=${(e) => e.stopPropagation()}>
           <div class="modal-header">
-            <h3>Cấu hình AI & Voca</h3>
+            <h3>Cấu hình Companion Agent & Voca</h3>
             <button class="nav-btn" type="button" onClick=${() => setSettingsOpen(false)}>✕</button>
           </div>
           <div class="modal-body">
             <section class="settings-section">
-              <h4 class="settings-section__title">Trợ lý AI</h4>
+              <h4 class="settings-section__title">Companion Reader Agent</h4>
               <div class="settings-form-grid">
                 <div class="form-group form-group--full">
                   <label class="form-label">API Provider</label>
@@ -1684,6 +2545,36 @@ Instructions:
                 <div class="form-group">
                   <label class="form-label">Model Name</label>
                   <input class="form-input" type="text" required value=${formModel} onInput=${(e) => setFormModel(e.target.value)} />
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h4 class="settings-section__title">Companion Voice (Realtime)</h4>
+              <p class="settings-section__hint">Cấu hình cuộc gọi giọng nói trực tiếp (WebRTC).</p>
+              <div class="settings-form-grid">
+                <div class="form-group form-group--full">
+                  <label class="form-label">Realtime API Key</label>
+                  <input class="form-input" type="password" placeholder="Mặc định dùng chung API Key chính ở trên" value=${formRealtimeApiKey} onInput=${(e) => setFormRealtimeApiKey(e.target.value)} />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Realtime Model Name</label>
+                  <input class="form-input" type="text" placeholder="gpt-realtime-mini" value=${formRealtimeModel} onInput=${(e) => setFormRealtimeModel(e.target.value)} />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">AI Voice</label>
+                  <select class="form-select" value=${formRealtimeVoice} onChange=${(e) => setFormRealtimeVoice(e.target.value)}>
+                    <option value="alloy">Alloy (Mặc định)</option>
+                    <option value="ash">Ash</option>
+                    <option value="ballad">Ballad</option>
+                    <option value="coral">Coral</option>
+                    <option value="echo">Echo</option>
+                    <option value="sage">Sage</option>
+                    <option value="shimmer">Shimmer</option>
+                    <option value="verse">Verse</option>
+                  </select>
                 </div>
               </div>
             </section>
@@ -1855,7 +2746,7 @@ Instructions:
             </button>
           </div>
 
-          <button class=${`btn-icon ${chatOpen ? 'active' : ''}`} onClick=${() => setChatOpen(!chatOpen)} title="Trợ lý AI">
+          <button class=${`btn-icon ${chatOpen ? 'active' : ''}`} onClick=${() => setChatOpen(!chatOpen)} title="Companion Reader Agent">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
               <circle cx="9" cy="10" r="1"></circle>
@@ -1899,7 +2790,7 @@ Instructions:
                   <circle cx="12" cy="12" r="3"></circle>
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1-1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                 </svg>
-                <span>Cấu hình AI</span>
+                <span>Cấu hình Companion Agent</span>
               </button>
               <div style="height: 1px; background: rgba(255, 255, 255, 0.08); margin: 4px 0;"></div>
               <button class="profile-dropdown-item logout" onClick=${handleLogout}>
@@ -1949,11 +2840,22 @@ Instructions:
 
           <div class="chat-header">
             <span class="chat-header__title">
-              🤖 Agent Assistant
+              🤖 Companion Reader Agent
               <span class="chat-header__badge">Context Active</span>
             </span>
             <div style="display: flex; gap: 8px; align-items: center;">
-              ${messages.length > 0 && html`
+              <button class=${`nav-btn chat-header-mic-btn ${realtimeVoiceActive ? 'active ' + realtimeState : ''}`} 
+                onClick=${realtimeVoiceActive ? stopRealtimeVoice : startRealtimeVoice} 
+                title=${realtimeVoiceActive ? 'Tắt Voice Conversation' : 'Bật Voice Conversation'}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                  <line x1="12" y1="19" x2="12" y2="23"></line>
+                  <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+              </button>
+              ${messages.length > 0 && !realtimeVoiceActive && html`
                 <button class="nav-btn reload-chat-btn" onClick=${handleClearActiveChat} title="Làm mới phiên chat">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M23 4v6h-6"></path>
@@ -1965,77 +2867,150 @@ Instructions:
             </div>
           </div>
 
-          <!-- Messages scrollable area -->
-          <div class="chat-messages">
-            ${messages.map((msg, idx) => html`
-              <div class=${`chat-bubble ${msg.role === 'user' ? 'bubble-user' : 'bubble-assistant'} ${msg.pending ? 'pending' : ''}`} key=${idx}>
-                ${msg.pending 
-                  ? html`
-                    <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted);">
-                      <span>Đang trả lời</span>
-                      <div class="typing-indicator">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </div>
+          ${realtimeVoiceActive 
+            ? html`
+              <!-- Realtime Voice Mode Active Layout -->
+              <div class="voice-overlay">
+                <div class="voice-status">
+                  <span class=${`status-dot ${realtimeState}`}></span>
+                  <span class="status-text">
+                    ${realtimeState === 'connecting' 
+                      ? 'Đang kết nối Realtime...' 
+                      : realtimeState === 'live' 
+                        ? 'Đang kết nối trực tiếp (Live)' 
+                        : realtimeState === 'error' 
+                          ? `Lỗi: ${realtimeError || 'Không thể kết nối'}` 
+                          : 'Đang ngoại tuyến'}
+                  </span>
+                </div>
+
+                <div class="voice-visualizer">
+                  <div class="voice-orb">
+                    <div class=${`voice-pulse-ring ring-1 ${realtimeState}`}></div>
+                    <div class=${`voice-pulse-ring ring-2 ${realtimeState}`}></div>
+                    <div class=${`voice-pulse-ring ring-3 ${realtimeState}`}></div>
+                    <div class=${`voice-icon-inner ${realtimeState}`}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                      </svg>
                     </div>
-                  `
-                  : renderMessageContent(msg.content)
-                }
-              </div>
-            `)}
-            <div ref=${messagesEndRef} />
-          </div>
+                  </div>
+                  <div class=${`voice-wave-bars ${realtimeState === 'live' ? 'active' : ''}`}>
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                  </div>
+                </div>
 
-          <!-- Quick Actions Prompt Toolbar -->
-          <div class="chat-quick-actions">
-            <button class="quick-prompt-btn" onClick=${() => handleQuickPrompt('Tóm tắt ngắn gọn nội dung trang này.')}>
-              📝 Tóm tắt trang
-            </button>
-            <button class="quick-prompt-btn" onClick=${() => handleQuickPrompt('Giải thích các thuật ngữ kỹ thuật xuất hiện ở trang này.')}>
-              💡 Giải thích thuật ngữ
-            </button>
-            <button class="quick-prompt-btn" onClick=${() => handleQuickPrompt('Có những khái niệm quan trọng nào cần lưu ý ở chương này?')}>
-              🔎 Điểm quan trọng
-            </button>
-          </div>
+                <div class="voice-captions">
+                  ${realtimeUserTranscript && html`
+                    <div class="voice-caption-bubble user">
+                      <span class="caption-label">Bạn nói:</span>
+                      <p class="caption-text">${realtimeUserTranscript}</p>
+                    </div>
+                  `}
+                  <div class="voice-caption-bubble assistant">
+                    <span class="caption-label">Companion Reader Agent:</span>
+                    <p class="caption-text">${realtimeCaption || 'Hãy nói gì đó qua micro...'}</p>
+                  </div>
+                </div>
 
-          <!-- Input Composer -->
-          <div class="chat-composer">
-            <div class="chat-composer-container">
-              <textarea class="chat-input" 
-                placeholder="Hỏi về trang này hoặc toàn bộ sách..." 
-                value=${chatInput}
-                onInput=${(e) => setChatInput(e.target.value)}
-                onKeyDown=${(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendChatMessage();
-                  }
-                }}
-              />
-              <div class="chat-composer-actions">
-                <span class="chat-char-counter">${chatInput.length} ký tự</span>
-                ${chatPending 
-                  ? html`
-                    <button class="chat-send-btn chat-cancel-btn" onClick=${handleCancelChat} title="Hủy phản hồi">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="4" y="4" width="16" height="16" rx="2" ry="2" fill="currentColor"></rect>
-                      </svg>
-                    </button>
-                  `
-                  : html`
-                    <button class="chat-send-btn" disabled=${!chatInput.trim()} onClick=${() => sendChatMessage()}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="22" y1="2" x2="11" y2="13"></line>
-                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                      </svg>
-                    </button>
-                  `
-                }
+                <button class="voice-end-btn" onClick=${stopRealtimeVoice}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+                    <rect x="4" y="4" width="16" height="16" rx="2" ry="2" fill="currentColor"></rect>
+                  </svg>
+                  Kết thúc hội thoại
+                </button>
               </div>
-            </div>
-          </div>
+            `
+            : html`
+              <!-- Messages scrollable area -->
+              <div class="chat-messages">
+                ${messages.map((msg, idx) => html`
+                  <div class=${`chat-bubble ${msg.role === 'user' ? 'bubble-user' : 'bubble-assistant'} ${msg.pending ? 'pending' : ''}`} key=${idx}>
+                    ${msg.pending 
+                      ? html`
+                        <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted);">
+                          <span>Đang trả lời</span>
+                          <div class="typing-indicator">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                          </div>
+                        </div>
+                      `
+                      : renderMessageContent(msg.content)
+                    }
+                  </div>
+                `)}
+                <div ref=${messagesEndRef} />
+              </div>
+
+              <!-- Quick Actions Prompt Toolbar -->
+              <div class="chat-quick-actions">
+                <button class="quick-prompt-btn" onClick=${() => handleQuickPrompt('Tóm tắt ngắn gọn nội dung trang này.')}>
+                  📝 Tóm tắt trang
+                </button>
+                ${suggestedPrompts.map((item, idx) => html`
+                  <button key=${idx} class="quick-prompt-btn" onClick=${() => handleQuickPrompt(item.prompt)}>
+                    ${item.icon || '❓'} ${item.title}
+                  </button>
+                `)}
+              </div>
+
+              <!-- Input Composer -->
+              <div class="chat-composer">
+                <div class="chat-composer-container">
+                  <textarea class="chat-input" 
+                    placeholder="Hỏi về trang này hoặc toàn bộ sách..." 
+                    value=${chatInput}
+                    onInput=${(e) => setChatInput(e.target.value)}
+                    onKeyDown=${(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendChatMessage();
+                      }
+                    }}
+                  />
+                  <div class="chat-composer-actions">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span class="chat-char-counter">${chatInput.length} ký tự</span>
+                      <button class=${`chat-mic-btn ${isRecordingMic ? 'recording' : ''}`} onClick=${toggleSpeechRecognition} title="Nhập liệu bằng giọng nói" style="background: none; border: none; cursor: pointer; color: ${isRecordingMic ? '#ef4444' : '#64748b'}; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: color 0.2s;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                          <line x1="12" y1="19" x2="12" y2="23"></line>
+                          <line x1="8" y1="23" x2="16" y2="23"></line>
+                        </svg>
+                      </button>
+                    </div>
+                    ${chatPending 
+                      ? html`
+                        <button class="chat-send-btn chat-cancel-btn" onClick=${handleCancelChat} title="Hủy phản hồi">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="4" y="4" width="16" height="16" rx="2" ry="2" fill="currentColor"></rect>
+                          </svg>
+                        </button>
+                      `
+                      : html`
+                        <button class="chat-send-btn" disabled=${!chatInput.trim()} onClick=${() => sendChatMessage()}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                          </svg>
+                        </button>
+                      `
+                    }
+                  </div>
+                </div>
+              </div>
+            `
+          }
         </div>
       </div>
 
