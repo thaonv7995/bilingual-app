@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS = {
   apiKey: '',
   model: 'gpt-4o-mini',
   realtimeApiKey: '',
-  realtimeModel: 'gpt-4o-mini-realtime-preview',
+  realtimeModel: 'gpt-realtime-mini',
   realtimeVoice: 'alloy',
   ...defaultVocaSettings(),
 };
@@ -624,7 +624,7 @@ function App() {
   const [formApiKey, setFormApiKey] = useState(settings.apiKey);
   const [formModel, setFormModel] = useState(settings.model);
   const [formRealtimeApiKey, setFormRealtimeApiKey] = useState(settings.realtimeApiKey || '');
-  const [formRealtimeModel, setFormRealtimeModel] = useState(settings.realtimeModel || 'gpt-4o-mini-realtime-preview');
+  const [formRealtimeModel, setFormRealtimeModel] = useState(settings.realtimeModel || 'gpt-realtime-mini');
   const [formRealtimeVoice, setFormRealtimeVoice] = useState(settings.realtimeVoice || 'alloy');
   const [formLayoutMode, setFormLayoutMode] = useState(layoutMode);
   const [formVocaBridgeOrigin, setFormVocaBridgeOrigin] = useState(settings.vocaBridgeOrigin || '');
@@ -638,7 +638,7 @@ function App() {
     setFormApiKey(settings.apiKey);
     setFormModel(settings.model);
     setFormRealtimeApiKey(settings.realtimeApiKey || '');
-    setFormRealtimeModel(settings.realtimeModel || 'gpt-4o-mini-realtime-preview');
+    setFormRealtimeModel(settings.realtimeModel || 'gpt-realtime-mini');
     setFormRealtimeVoice(settings.realtimeVoice || 'alloy');
     setFormLayoutMode(layoutMode);
     setFormVocaBridgeOrigin(settings.vocaBridgeOrigin || '');
@@ -1986,7 +1986,7 @@ Instructions:
       localStreamRef.current = stream;
 
       // 2. Fetch ephemeral key from OpenAI Realtime sessions endpoint
-      const realtimeModel = settings.realtimeModel || 'gpt-4o-mini-realtime-preview';
+      const realtimeModel = settings.realtimeModel || 'gpt-realtime-mini';
       const realtimeVoice = settings.realtimeVoice || 'alloy';
       
       const activePageText = getIframePageText();
@@ -2563,7 +2563,7 @@ Instructions:
 
                 <div class="form-group">
                   <label class="form-label">Realtime Model Name</label>
-                  <input class="form-input" type="text" placeholder="gpt-4o-mini-realtime-preview" value=${formRealtimeModel} onInput=${(e) => setFormRealtimeModel(e.target.value)} />
+                  <input class="form-input" type="text" placeholder="gpt-realtime-mini" value=${formRealtimeModel} onInput=${(e) => setFormRealtimeModel(e.target.value)} />
                 </div>
 
                 <div class="form-group">
