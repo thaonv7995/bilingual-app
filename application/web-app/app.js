@@ -2166,7 +2166,11 @@ Instructions:
       });
 
       if (!sdpResponse.ok) {
-        throw new Error(`SDP Exchange failed: ${sdpResponse.statusText}`);
+        let errorDetails = '';
+        try {
+          errorDetails = await sdpResponse.text();
+        } catch (_) {}
+        throw new Error(`SDP Exchange failed: ${sdpResponse.statusText || sdpResponse.status}. Details: ${errorDetails}`);
       }
 
       const answerSdp = await sdpResponse.text();
