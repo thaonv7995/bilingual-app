@@ -2722,6 +2722,7 @@ struct ReaderChatPanelView: View {
                 companionVM.end()
             } else {
                 isAISettingsOpen = false
+                isChatOpen = false
                 Task {
                     await companionVM.start()
                 }
@@ -2891,6 +2892,7 @@ struct CompanionOrbView: View {
     let level: Float
     let aiSpeaking: Bool
     let userSpeaking: Bool
+    var diameter: CGFloat = 220
 
     @State private var breathe: CGFloat = 1.0
     @State private var rotation: Double = 0
@@ -2900,6 +2902,7 @@ struct CompanionOrbView: View {
     private var indigo: Color { Color(hex: "818cf8") }
     private var accent: Color { aiSpeaking ? indigo : teal }
     private var amp: CGFloat { CGFloat(min(level * 1.5, 1.0)) }
+    private var scaleFactor: CGFloat { diameter / 220.0 }
 
     var body: some View {
         ZStack {
@@ -2909,20 +2912,20 @@ struct CompanionOrbView: View {
                     RadialGradient(
                         colors: [accent.opacity(0.08 + Double(amp) * 0.15), .clear],
                         center: .center,
-                        startRadius: 20,
-                        endRadius: 130
+                        startRadius: 20 * scaleFactor,
+                        endRadius: 130 * scaleFactor
                     )
                 )
-                .frame(width: 260, height: 260)
+                .frame(width: 260 * scaleFactor, height: 260 * scaleFactor)
                 .scaleEffect(breathe + amp * 0.08)
 
             // Layer 2: Rotating ring (dashed)
             Circle()
                 .stroke(
                     accent.opacity(0.15 + Double(amp) * 0.2),
-                    style: StrokeStyle(lineWidth: 1, dash: [4, 8], dashPhase: ringPhase)
+                    style: StrokeStyle(lineWidth: 1, dash: [4 * scaleFactor, 8 * scaleFactor], dashPhase: ringPhase)
                 )
-                .frame(width: 160, height: 160)
+                .frame(width: 160 * scaleFactor, height: 160 * scaleFactor)
                 .rotationEffect(.degrees(rotation))
                 .scaleEffect(1.0 + amp * 0.06)
 
@@ -2934,15 +2937,15 @@ struct CompanionOrbView: View {
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 2
+                    lineWidth: 2 * scaleFactor
                 )
-                .frame(width: 130, height: 130)
+                .frame(width: 130 * scaleFactor, height: 130 * scaleFactor)
                 .scaleEffect(1.0 + amp * 0.12)
 
             // Layer 4: Inner glow ring
             Circle()
-                .strokeBorder(accent.opacity(0.2 + Double(amp) * 0.4), lineWidth: 1.5)
-                .frame(width: 100, height: 100)
+                .strokeBorder(accent.opacity(0.2 + Double(amp) * 0.4), lineWidth: 1.5 * scaleFactor)
+                .frame(width: 100 * scaleFactor, height: 100 * scaleFactor)
                 .scaleEffect(1.0 + amp * 0.08)
 
             // Layer 5: Core orb with gradient
@@ -2955,13 +2958,13 @@ struct CompanionOrbView: View {
                             accent.opacity(0.05),
                         ],
                         center: .center,
-                        startRadius: 5,
-                        endRadius: 45
+                        startRadius: 5 * scaleFactor,
+                        endRadius: 45 * scaleFactor
                     )
                 )
-                .frame(width: 80, height: 80)
+                .frame(width: 80 * scaleFactor, height: 80 * scaleFactor)
                 .scaleEffect(1.0 + amp * 0.15)
-                .shadow(color: accent.opacity(Double(amp) * 0.5), radius: 20)
+                .shadow(color: accent.opacity(Double(amp) * 0.5), radius: 20 * scaleFactor)
 
             // Layer 6: Glass highlight
             Ellipse()
@@ -2972,8 +2975,8 @@ struct CompanionOrbView: View {
                         endPoint: .center
                     )
                 )
-                .frame(width: 50, height: 30)
-                .offset(y: -15)
+                .frame(width: 50 * scaleFactor, height: 30 * scaleFactor)
+                .offset(y: -15 * scaleFactor)
                 .scaleEffect(1.0 + amp * 0.1)
         }
         .animation(.easeOut(duration: 0.12), value: level)
@@ -3313,7 +3316,7 @@ struct FloatingVoiceWidgetView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let size: CGFloat = 70
+            let size: CGFloat = 56
             let viewWidth = geometry.size.width
             let viewHeight = geometry.size.height
 
@@ -3342,9 +3345,10 @@ struct FloatingVoiceWidgetView: View {
                             CompanionOrbView(
                                 level: max(companionVM.inputLevel, companionVM.outputLevel),
                                 aiSpeaking: companionVM.micState == .aiSpeaking,
-                                userSpeaking: companionVM.userIsSpeaking
+                                userSpeaking: companionVM.userIsSpeaking,
+                                diameter: 42
                             )
-                            .frame(width: size - 8, height: size - 8)
+                            .frame(width: size, height: size)
                         }
                         
                         // Status text
@@ -3447,11 +3451,11 @@ struct FloatingVoiceWidgetView: View {
                         )
                     }
                     .onEnded { _ in
-                        // Enforce bounding limits to prevent dragging widget off screen
-                        let maxW = viewWidth / 2 - 45
-                        let minW = -viewWidth / 2 + 45
-                        let maxH = viewHeight / 2 - 120
-                        let minH = -viewHeight / 2 + 120
+                        // Enforce bounding limits relative to initial bottom-right alignment
+                        let maxW: CGFloat = 20
+                        let minW: CGFloat = -viewWidth + size + 20
+                        let maxH: CGFloat = 20
+                        let minH: CGFloat = -viewHeight + size + 160
                         
                         offset.width = min(max(offset.width, minW), maxW)
                         offset.height = min(max(offset.height, minH), maxH)

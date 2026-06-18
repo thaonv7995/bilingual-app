@@ -30,7 +30,7 @@ final class CompanionVoiceViewModel: ObservableObject {
     @Published private(set) var inputLevel: Float = 0
     @Published private(set) var outputLevel: Float = 0
     @Published var errorMessage: String?
-    @Published var isMinimized: Bool = false
+    @Published var isMinimized: Bool = true
 
     /// Brief feedback messages from tool calls (auto-dismiss after 3s).
     @Published private(set) var toolFeedback: String?
@@ -62,7 +62,7 @@ final class CompanionVoiceViewModel: ObservableObject {
     func start() async {
         guard phase == .idle || phase == .ended else { return }
         errorMessage = nil
-        isMinimized = false
+        isMinimized = true
 
         let apiKey = (UserDefaults.standard.string(forKey: "realtimeApiKey") ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -90,7 +90,7 @@ final class CompanionVoiceViewModel: ObservableObject {
     func end() {
         reconnectTask?.cancel()
         reconnecting = false
-        isMinimized = false
+        isMinimized = true
         engine?.stopPlayback()
         engine?.disconnect()
         engine = nil
