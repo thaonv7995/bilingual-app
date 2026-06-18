@@ -956,69 +956,49 @@ struct ReaderView: View {
             guard let webView = webViews[key] else { continue }
 
             let highlightId = UUID().uuidString.lowercased()
+            // Use the existing page infrastructure: getParagraphs() + paragraph textContent search
+            // This avoids matching text inside <style>, <script>, or metadata nodes
             let js = """
             (function() {
                 var searchText = '\(escapedText)';
-                var body = document.body;
-                if (!body) return JSON.stringify({success: false, reason: 'no body'});
+                if (!window.getParagraphs) return JSON.stringify({success: false, reason: 'no getParagraphs'});
 
-                // Collect all visible text nodes, skip nodes inside existing highlights
-                var candidates = [];
-                var walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
-                    acceptNode: function(node) {
-                        if (node.parentElement && node.parentElement.closest('mark.reader-highlight')) {
-                            return NodeFilter.FILTER_REJECT;
-                        }
-                        if (!node.textContent.trim()) return NodeFilter.FILTER_REJECT;
-                        return NodeFilter.FILTER_ACCEPT;
+                var paragraphs = window.getParagraphs();
+                var foundP = -1, foundStart = -1;
+
+                // Pass 1: exact case match within paragraphs
+                for (var i = 0; i < paragraphs.length; i++) {
+                    var pText = paragraphs[i].textContent;
+                    var idx = pText.indexOf(searchText);
+                    if (idx >= 0) {
+                        foundP = i; foundStart = idx; break;
                     }
-                }, false);
-                var n;
-                while (n = walker.nextNode()) { candidates.push(n); }
-
-                // Pass 1: exact case match
-                var found = null;
-                for (var i = 0; i < candidates.length; i++) {
-                    var idx = candidates[i].textContent.indexOf(searchText);
-                    if (idx >= 0) { found = {node: candidates[i], idx: idx}; break; }
                 }
                 // Pass 2: case-insensitive fallback
-                if (!found) {
+                if (foundP < 0) {
                     var lower = searchText.toLowerCase();
-                    for (var i = 0; i < candidates.length; i++) {
-                        var idx = candidates[i].textContent.toLowerCase().indexOf(lower);
-                        if (idx >= 0) { found = {node: candidates[i], idx: idx}; break; }
+                    for (var i = 0; i < paragraphs.length; i++) {
+                        var pText = paragraphs[i].textContent.toLowerCase();
+                        var idx = pText.indexOf(lower);
+                        if (idx >= 0) {
+                            foundP = i; foundStart = idx; break;
+                        }
                     }
                 }
-                if (!found) return JSON.stringify({success: false, reason: 'text not found'});
+                if (foundP < 0) return JSON.stringify({success: false, reason: 'text not found in paragraphs'});
 
-                var node = found.node;
-                var idx = found.idx;
-                var range = document.createRange();
-                range.setStart(node, idx);
-                range.setEnd(node, idx + searchText.length);
+                var endOffset = foundStart + searchText.length;
+                var highlightData = {
+                    id: '\(highlightId)',
+                    color: '\(colorHex)',
+                    note: null
+                };
 
-                var mark = document.createElement('mark');
-                mark.className = 'reader-highlight';
-                mark.dataset.highlightId = '\(highlightId)';
-                mark.style.backgroundColor = '\(colorHex)';
-                mark.style.borderRadius = '3px';
-                mark.style.padding = '1px 0';
-
-                try {
-                    range.surroundContents(mark);
-                } catch(e) {
-                    var fragment = range.extractContents();
-                    mark.appendChild(fragment);
-                    range.insertNode(mark);
+                var ok = window.wrapTextRange(paragraphs[foundP], foundStart, endOffset, highlightData);
+                if (ok) {
+                    return JSON.stringify({success: true, paragraphIndex: foundP, startOffset: foundStart, endOffset: endOffset});
                 }
-
-                var paragraphs = body.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, li, td, th');
-                var pIndex = 0;
-                for (var i = 0; i < paragraphs.length; i++) {
-                    if (paragraphs[i].contains(mark)) { pIndex = i; break; }
-                }
-                return JSON.stringify({success: true, paragraphIndex: pIndex, startOffset: idx, endOffset: idx + searchText.length, lang: '\(lang)'});
+                return JSON.stringify({success: false, reason: 'wrapTextRange failed'});
             })();
             """
 
