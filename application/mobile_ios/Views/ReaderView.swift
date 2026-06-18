@@ -2007,25 +2007,13 @@ struct ReaderChatPanelView: View {
                     sendChat(with: "Tóm tắt nội dung chính và các ý chính của trang sách này giúp tôi.")
                 }
                 
-                if isLoadingSuggestions {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .tint(.gray)
-                        Text("Đang tạo gợi ý...")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 8)
-                } else {
-                    ForEach(Array(suggestedPrompts.enumerated()), id: \.offset) { _, item in
-                        SuggestedPromptRow(
-                            icon: item.icon,
-                            title: item.title,
-                            prompt: item.prompt
-                        ) {
-                            sendChat(with: item.prompt)
-                        }
+                ForEach(Array(suggestedPrompts.enumerated()), id: \.offset) { _, item in
+                    SuggestedPromptRow(
+                        icon: item.icon,
+                        title: item.title,
+                        prompt: item.prompt
+                    ) {
+                        sendChat(with: item.prompt)
                     }
                 }
             }
