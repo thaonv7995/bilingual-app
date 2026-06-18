@@ -2038,7 +2038,7 @@ Instructions:
       }
 
       const sessionData = await sessionResponse.json();
-      const ephemeralKey = sessionData.client_secret?.value;
+      const ephemeralKey = sessionData.client_secret?.value || sessionData.value;
       if (!ephemeralKey) {
         throw new Error('No ephemeral key returned from OpenAI');
       }
