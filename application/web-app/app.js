@@ -2120,7 +2120,6 @@ TOOLS:
           session: {
             type: 'realtime',
             output_modalities: ['audio'],
-            voice: realtimeVoice,
             input_audio_transcription: {
               model: 'whisper-1'
             },
