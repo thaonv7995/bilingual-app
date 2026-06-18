@@ -2065,6 +2065,7 @@ TOOLS:
           session: {
             type: 'realtime',
             model: realtimeModel,
+            voice: realtimeVoice,
             instructions: systemPrompt
           }
         })
@@ -2120,7 +2121,6 @@ TOOLS:
           session: {
             type: 'realtime',
             output_modalities: ['audio'],
-            voice: realtimeVoice,
             input_audio_transcription: {
               model: 'whisper-1'
             },
