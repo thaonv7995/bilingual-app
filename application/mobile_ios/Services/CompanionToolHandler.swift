@@ -27,6 +27,10 @@ final class CompanionToolHandler {
     var getPageContent: ((Int?, String?) async -> String)?
     /// Get current reading context (page, viewMode, book info).
     var getCurrentContext: (() -> [String: Any])?
+    /// Switch the view mode (en, vi, split).
+    var onSwitchViewMode: ((String) -> Void)?
+    /// List highlights on the current page. Returns array of highlight info.
+    var listHighlights: (() -> [[String: Any]])?
 
     /// Called when a tool produces user-visible feedback (for UI toast).
     var onToolFeedback: ((String) -> Void)?
@@ -160,6 +164,31 @@ final class CompanionToolHandler {
                 "properties": [:] as [String: Any]
             ] as [String: Any]
         ],
+        [
+            "type": "function",
+            "name": "switch_view_mode",
+            "description": "Switch the reading view mode. 'en' shows English only, 'vi' shows Vietnamese only, 'split' shows bilingual side-by-side. Use when the user asks to change language display.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "mode": [
+                        "type": "string",
+                        "enum": ["en", "vi", "split"],
+                        "description": "The view mode: 'en' (English only), 'vi' (Vietnamese only), 'split' (bilingual)"
+                    ]
+                ],
+                "required": ["mode"]
+            ] as [String: Any]
+        ],
+        [
+            "type": "function",
+            "name": "list_highlights",
+            "description": "List all highlights the user has made on the current page.",
+            "parameters": [
+                "type": "object",
+                "properties": [:] as [String: Any]
+            ] as [String: Any]
+        ],
     ]
 
     // MARK: - Color mapping
@@ -204,6 +233,10 @@ final class CompanionToolHandler {
             result = await handleGetPageContent(args)
         case "get_current_context":
             result = handleGetCurrentContext()
+        case "switch_view_mode":
+            result = handleSwitchViewMode(args)
+        case "list_highlights":
+            result = handleListHighlights()
         default:
             result = ["success": false, "error": "Unknown tool: \(name)"]
         }
@@ -332,6 +365,31 @@ final class CompanionToolHandler {
             return result
         }
         return ["success": false, "error": "Context not available"]
+    }
+
+    private func handleSwitchViewMode(_ args: [String: Any]) -> [String: Any] {
+        guard let mode = args["mode"] as? String, ["en", "vi", "split"].contains(mode) else {
+            return ["success": false, "error": "Invalid mode. Use 'en', 'vi', or 'split'."]
+        }
+        guard let handler = onSwitchViewMode else {
+            return ["success": false, "error": "Switch view mode not available"]
+        }
+        let modeNames = ["en": "English only", "vi": "Vietnamese only", "split": "Bilingual"]
+        let modeNamesVi = ["en": "tiếng Anh", "vi": "tiếng Việt", "split": "song ngữ"]
+        handler(mode)
+        onToolFeedback?("👁️ Chuyển sang \(modeNamesVi[mode] ?? mode)")
+        return ["success": true, "message": "Switched to \(modeNames[mode] ?? mode) view"]
+    }
+
+    private func handleListHighlights() -> [String: Any] {
+        guard let handler = listHighlights else {
+            return ["success": false, "error": "List highlights not available"]
+        }
+        let highlights = handler()
+        if highlights.isEmpty {
+            return ["success": true, "count": 0, "message": "No highlights on the current page"]
+        }
+        return ["success": true, "count": highlights.count, "highlights": highlights]
     }
 
     // MARK: - Helpers

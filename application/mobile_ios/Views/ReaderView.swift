@@ -908,6 +908,25 @@ struct ReaderView: View {
         companionVM.toolHandler.onAddWordToVoca = { [self] word in
             return await self.addWordToVocaViaCompanion(word: word)
         }
+        companionVM.toolHandler.onSwitchViewMode = { [self] mode in
+            self.viewMode = mode
+            self.companionVM.currentViewMode = mode
+            self.saveProgress()
+        }
+        companionVM.toolHandler.listHighlights = { [self] in
+            let pageHighlights = self.api.highlights.filter { $0.page == self.page }
+            return pageHighlights.map { h in
+                var info: [String: Any] = [
+                    "text": h.text,
+                    "color": h.color,
+                    "lang": h.lang
+                ]
+                if let note = h.note, !note.isEmpty {
+                    info["note"] = note
+                }
+                return info
+            }
+        }
     }
 
     /// Sync companion VM state and inject new page context after any page change.

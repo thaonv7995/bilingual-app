@@ -200,6 +200,10 @@ final class CompanionVoiceViewModel: ObservableObject {
         - Color names for highlight_text: "yellow", "blue", "pink", "green"
         - Vietnamese color mapping: vàng=yellow, xanh/xanh dương=blue, hồng=pink, xanh lá=green
         - When user says "mark" or "đánh dấu" they mean highlight
+        - switch_view_mode: "en" = English only, "vi" = Vietnamese only, "split" = bilingual/song ngữ
+        - When user says "song ngữ", "bilingual", "cả hai" → use split
+        - When user says "tiếng Anh thôi" → use en; "tiếng Việt thôi" → use vi
+        - list_highlights: lists all highlights on the current page
         """
     }
 
