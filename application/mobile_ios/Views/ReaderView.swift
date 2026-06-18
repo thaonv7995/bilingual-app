@@ -949,13 +949,12 @@ struct ReaderView: View {
         let escapedText = text.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
             .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\"", with: "\\\"")
 
         for lang in langs {
             let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
             guard let webView = webViews[key] else { continue }
 
-            // Use JS to find text node and wrap it with a highlight <mark> tag.
-            // This matches the existing wrapTextRange infrastructure from BilingualWebView.
             let highlightId = UUID().uuidString.lowercased()
             let js = """
             (function() {
@@ -963,45 +962,63 @@ struct ReaderView: View {
                 var body = document.body;
                 if (!body) return JSON.stringify({success: false, reason: 'no body'});
 
-                // Walk all text nodes to find matching text
-                var walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
-                var node;
-                while (node = walker.nextNode()) {
-                    var content = node.textContent;
-                    var idx = content.toLowerCase().indexOf(searchText.toLowerCase());
-                    if (idx >= 0) {
-                        // Found! Create a <mark> wrapper around the matched range
-                        var range = document.createRange();
-                        range.setStart(node, idx);
-                        range.setEnd(node, idx + searchText.length);
-
-                        var mark = document.createElement('mark');
-                        mark.className = 'reader-highlight';
-                        mark.dataset.highlightId = '\(highlightId)';
-                        mark.style.backgroundColor = '\(colorHex)';
-                        mark.style.borderRadius = '3px';
-                        mark.style.padding = '1px 0';
-
-                        try {
-                            range.surroundContents(mark);
-                        } catch(e) {
-                            // surroundContents fails if range crosses element boundaries
-                            // Fallback: extract and wrap
-                            var fragment = range.extractContents();
-                            mark.appendChild(fragment);
-                            range.insertNode(mark);
+                // Collect all visible text nodes, skip nodes inside existing highlights
+                var candidates = [];
+                var walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
+                    acceptNode: function(node) {
+                        if (node.parentElement && node.parentElement.closest('mark.reader-highlight')) {
+                            return NodeFilter.FILTER_REJECT;
                         }
+                        if (!node.textContent.trim()) return NodeFilter.FILTER_REJECT;
+                        return NodeFilter.FILTER_ACCEPT;
+                    }
+                }, false);
+                var n;
+                while (n = walker.nextNode()) { candidates.push(n); }
 
-                        // Compute paragraph index for persistence
-                        var paragraphs = body.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, li, td, th');
-                        var pIndex = 0;
-                        for (var i = 0; i < paragraphs.length; i++) {
-                            if (paragraphs[i].contains(mark)) { pIndex = i; break; }
-                        }
-                        return JSON.stringify({success: true, paragraphIndex: pIndex, startOffset: idx, endOffset: idx + searchText.length, lang: '\(lang)'});
+                // Pass 1: exact case match
+                var found = null;
+                for (var i = 0; i < candidates.length; i++) {
+                    var idx = candidates[i].textContent.indexOf(searchText);
+                    if (idx >= 0) { found = {node: candidates[i], idx: idx}; break; }
+                }
+                // Pass 2: case-insensitive fallback
+                if (!found) {
+                    var lower = searchText.toLowerCase();
+                    for (var i = 0; i < candidates.length; i++) {
+                        var idx = candidates[i].textContent.toLowerCase().indexOf(lower);
+                        if (idx >= 0) { found = {node: candidates[i], idx: idx}; break; }
                     }
                 }
-                return JSON.stringify({success: false, reason: 'text not found'});
+                if (!found) return JSON.stringify({success: false, reason: 'text not found'});
+
+                var node = found.node;
+                var idx = found.idx;
+                var range = document.createRange();
+                range.setStart(node, idx);
+                range.setEnd(node, idx + searchText.length);
+
+                var mark = document.createElement('mark');
+                mark.className = 'reader-highlight';
+                mark.dataset.highlightId = '\(highlightId)';
+                mark.style.backgroundColor = '\(colorHex)';
+                mark.style.borderRadius = '3px';
+                mark.style.padding = '1px 0';
+
+                try {
+                    range.surroundContents(mark);
+                } catch(e) {
+                    var fragment = range.extractContents();
+                    mark.appendChild(fragment);
+                    range.insertNode(mark);
+                }
+
+                var paragraphs = body.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, li, td, th');
+                var pIndex = 0;
+                for (var i = 0; i < paragraphs.length; i++) {
+                    if (paragraphs[i].contains(mark)) { pIndex = i; break; }
+                }
+                return JSON.stringify({success: true, paragraphIndex: pIndex, startOffset: idx, endOffset: idx + searchText.length, lang: '\(lang)'});
             })();
             """
 
@@ -1020,7 +1037,7 @@ struct ReaderView: View {
                   let endOffset = info["endOffset"] as? Int
             else { continue }
 
-            // Also persist to API so highlight survives page reloads
+            // Persist to API
             let highlight = Highlight(
                 id: highlightId,
                 page: page,
@@ -1043,43 +1060,84 @@ struct ReaderView: View {
     }
 
     private func removeHighlightViaCompanion(text: String) async -> Bool {
-        guard let existing = api.highlights.first(where: {
-            $0.text.lowercased() == text.lowercased() && $0.page == page
-        }) else { return false }
-
-        // Remove <mark> element from DOM visually
         let containerMode = viewMode
-        let key = webViewKey(lang: existing.lang, page: page, containerMode: containerMode)
-        if let webView = webViews[key] {
-            let escapedId = existing.id.replacingOccurrences(of: "'", with: "\\'")
-            let js = """
-            (function() {
-                var mark = document.querySelector('mark.reader-highlight[data-highlight-id="\\(escapedId)"]');
-                if (mark) {
-                    var parent = mark.parentNode;
-                    while (mark.firstChild) { parent.insertBefore(mark.firstChild, mark); }
-                    parent.removeChild(mark);
-                    parent.normalize();
-                    return true;
-                }
-                return false;
-            })();
-            """
-            let _: Any? = await withCheckedContinuation { continuation in
+        let langs: [String] = viewMode == "split" ? ["en", "vi"] : [viewMode]
+        let escapedText = text.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+
+        // Try to find highlight in API data first (for API deletion)
+        let existing = api.highlights.first(where: {
+            $0.text.lowercased() == text.lowercased() && $0.page == page
+        })
+
+        // Remove <mark> from DOM — search by ID if available, otherwise by text content
+        var domRemoved = false
+        for lang in langs {
+            let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
+            guard let webView = webViews[key] else { continue }
+
+            let js: String
+            if let existingId = existing?.id {
+                let escapedId = existingId.replacingOccurrences(of: "'", with: "\\'")
+                js = """
+                (function() {
+                    var mark = document.querySelector('mark.reader-highlight[data-highlight-id="\(escapedId)"]');
+                    if (!mark) {
+                        // Fallback: find by text content
+                        var marks = document.querySelectorAll('mark.reader-highlight');
+                        for (var i = 0; i < marks.length; i++) {
+                            if (marks[i].textContent.toLowerCase().indexOf('\(escapedText)'.toLowerCase()) >= 0) {
+                                mark = marks[i]; break;
+                            }
+                        }
+                    }
+                    if (mark) {
+                        var parent = mark.parentNode;
+                        while (mark.firstChild) { parent.insertBefore(mark.firstChild, mark); }
+                        parent.removeChild(mark);
+                        parent.normalize();
+                        return true;
+                    }
+                    return false;
+                })();
+                """
+            } else {
+                // No API record — search by text content only
+                js = """
+                (function() {
+                    var marks = document.querySelectorAll('mark.reader-highlight');
+                    for (var i = 0; i < marks.length; i++) {
+                        if (marks[i].textContent.toLowerCase().indexOf('\(escapedText)'.toLowerCase()) >= 0) {
+                            var mark = marks[i];
+                            var parent = mark.parentNode;
+                            while (mark.firstChild) { parent.insertBefore(mark.firstChild, mark); }
+                            parent.removeChild(mark);
+                            parent.normalize();
+                            return true;
+                        }
+                    }
+                    return false;
+                })();
+                """
+            }
+
+            let removed: Bool = await withCheckedContinuation { continuation in
                 webView.evaluateJavaScript(js) { result, _ in
-                    continuation.resume(returning: result)
+                    continuation.resume(returning: (result as? Bool) ?? false)
                 }
+            }
+            if removed { domRemoved = true; break }
+        }
+
+        // Delete from API if record exists
+        if let existing = existing {
+            Task {
+                try? await api.deleteHighlight(slug: book.slug, highlightId: existing.id)
             }
         }
 
-        // Delete from API
-        do {
-            try await api.deleteHighlight(slug: book.slug, highlightId: existing.id)
-            return true
-        } catch {
-            print("[Companion] Failed to delete highlight: \(error)")
-            return false
-        }
+        return domRemoved || existing != nil
     }
 
     private func lookupWordViaCompanion(word: String) async -> String? {
