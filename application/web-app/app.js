@@ -2118,6 +2118,7 @@ TOOLS:
         const updateEvent = {
           type: 'session.update',
           session: {
+            type: 'realtime',
             output_modalities: ['audio'],
             voice: realtimeVoice,
             input_audio_transcription: {
