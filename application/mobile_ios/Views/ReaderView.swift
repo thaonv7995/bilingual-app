@@ -894,10 +894,8 @@ struct ReaderView: View {
             let mode = lang ?? self.viewMode
             return await self.buildPageContext(for: p, viewMode: mode)
         }
-        companionVM.toolHandler.onHighlightText = { [self] text, colorHex in
-            // Find text in current page highlights or create new highlight
-            // For now, search through loaded page content via WebView
-            return await self.highlightTextViaCompanion(text: text, colorHex: colorHex)
+        companionVM.toolHandler.onHighlightText = { [self] text, colorHex, occurrenceIndex, highlightAll in
+            return await self.highlightTextViaCompanion(text: text, colorHex: colorHex, occurrenceIndex: occurrenceIndex, highlightAll: highlightAll)
         }
         companionVM.toolHandler.onRemoveHighlight = { [self] text in
             return await self.removeHighlightViaCompanion(text: text)
@@ -943,7 +941,12 @@ struct ReaderView: View {
 
     // MARK: - Companion Tool Implementations
 
-    private func highlightTextViaCompanion(text: String, colorHex: String) async -> Bool {
+    private func highlightTextViaCompanion(
+        text: String,
+        colorHex: String,
+        occurrenceIndex: Int?,
+        highlightAll: Bool
+    ) async -> [String: Any] {
         let containerMode = viewMode
         let langs: [String] = viewMode == "split" ? ["en", "vi"] : [viewMode]
         let escapedText = text.replacingOccurrences(of: "\\", with: "\\\\")
@@ -951,53 +954,120 @@ struct ReaderView: View {
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\"", with: "\\\"")
 
+        var allOccurrences: [[String: Any]] = []
+
         for lang in langs {
             let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
             guard let webView = webViews[key] else { continue }
 
-            let highlightId = UUID().uuidString.lowercased()
-            // Use the existing page infrastructure: getParagraphs() + paragraph textContent search
-            // This avoids matching text inside <style>, <script>, or metadata nodes
+            let highlightAllJs = highlightAll ? "true" : "false"
+            let occurrenceIndexJs = occurrenceIndex != nil ? "\(occurrenceIndex!)" : "null"
+
             let js = """
             (function() {
                 var searchText = '\(escapedText)';
                 if (!window.getParagraphs) return JSON.stringify({success: false, reason: 'no getParagraphs'});
 
                 var paragraphs = window.getParagraphs();
-                var foundP = -1, foundStart = -1;
+                var occurrences = [];
 
-                // Pass 1: exact case match within paragraphs
+                function generateUUID() {
+                    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                        return v.toString(16);
+                    });
+                }
+
+                // Pass 1: exact match
                 for (var i = 0; i < paragraphs.length; i++) {
                     var pText = paragraphs[i].textContent;
                     var idx = pText.indexOf(searchText);
-                    if (idx >= 0) {
-                        foundP = i; foundStart = idx; break;
+                    while (idx >= 0) {
+                        occurrences.push({
+                            paragraphIndex: i,
+                            startOffset: idx,
+                            endOffset: idx + searchText.length,
+                            context: pText.trim()
+                        });
+                        idx = pText.indexOf(searchText, idx + 1);
                     }
                 }
+
                 // Pass 2: case-insensitive fallback
-                if (foundP < 0) {
-                    var lower = searchText.toLowerCase();
+                if (occurrences.length === 0) {
+                    var lowerSearch = searchText.toLowerCase();
                     for (var i = 0; i < paragraphs.length; i++) {
-                        var pText = paragraphs[i].textContent.toLowerCase();
-                        var idx = pText.indexOf(lower);
-                        if (idx >= 0) {
-                            foundP = i; foundStart = idx; break;
+                        var pText = paragraphs[i].textContent;
+                        var lowerPText = pText.toLowerCase();
+                        var idx = lowerPText.indexOf(lowerSearch);
+                        while (idx >= 0) {
+                            occurrences.push({
+                                paragraphIndex: i,
+                                startOffset: idx,
+                                endOffset: idx + searchText.length,
+                                context: pText.trim()
+                            });
+                            idx = lowerPText.indexOf(lowerSearch, idx + 1);
                         }
                     }
                 }
-                if (foundP < 0) return JSON.stringify({success: false, reason: 'text not found in paragraphs'});
 
-                var endOffset = foundStart + searchText.length;
-                var highlightData = {
-                    id: '\(highlightId)',
-                    color: '\(colorHex)',
-                    note: null
-                };
-
-                var ok = window.wrapTextRange(paragraphs[foundP], foundStart, endOffset, highlightData);
-                if (ok) {
-                    return JSON.stringify({success: true, paragraphIndex: foundP, startOffset: foundStart, endOffset: endOffset});
+                if (occurrences.length === 0) {
+                    return JSON.stringify({success: false, reason: 'text_not_found'});
                 }
+
+                var highlightAll = \(highlightAllJs);
+                var occurrenceIndex = \(occurrenceIndexJs);
+
+                if (occurrences.length > 1 && occurrenceIndex === null && !highlightAll) {
+                    return JSON.stringify({
+                        success: false,
+                        reason: 'multiple_occurrences',
+                        occurrences: occurrences
+                    });
+                }
+
+                // Determine what to highlight
+                var targets = [];
+                if (highlightAll) {
+                    targets = occurrences;
+                } else if (occurrenceIndex !== null) {
+                    if (occurrenceIndex < 0 || occurrenceIndex >= occurrences.length) {
+                        return JSON.stringify({success: false, reason: 'invalid_occurrence_index'});
+                    }
+                    targets = [occurrences[occurrenceIndex]];
+                } else {
+                    targets = [occurrences[0]];
+                }
+
+                var highlightedList = [];
+                for (var k = 0; k < targets.length; k++) {
+                    var occ = targets[k];
+                    var hId = generateUUID();
+                    var highlightData = {
+                        id: hId,
+                        color: '\(colorHex)',
+                        note: null
+                    };
+                    var ok = window.wrapTextRange(paragraphs[occ.paragraphIndex], occ.startOffset, occ.endOffset, highlightData);
+                    if (ok) {
+                        highlightedList.push({
+                            id: hId,
+                            paragraphIndex: occ.paragraphIndex,
+                            startOffset: occ.startOffset,
+                            endOffset: occ.endOffset,
+                            text: searchText
+                        });
+                    }
+                }
+
+                if (highlightedList.length > 0) {
+                    return JSON.stringify({
+                        success: true,
+                        highlighted: highlightedList
+                    });
+                }
+
                 return JSON.stringify({success: false, reason: 'wrapTextRange failed'});
             })();
             """
@@ -1010,33 +1080,56 @@ struct ReaderView: View {
 
             guard let jsonString = result,
                   let data = jsonString.data(using: .utf8),
-                  let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  info["success"] as? Bool == true,
-                  let paragraphIndex = info["paragraphIndex"] as? Int,
-                  let startOffset = info["startOffset"] as? Int,
-                  let endOffset = info["endOffset"] as? Int
+                  let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             else { continue }
 
-            // Persist to API
-            let highlight = Highlight(
-                id: highlightId,
-                page: page,
-                lang: lang,
-                color: colorHex,
-                text: text,
-                startOffset: startOffset,
-                endOffset: endOffset,
-                paragraphIndex: paragraphIndex,
-                note: nil,
-                createdAt: Int64(Date().timeIntervalSince1970 * 1000)
-            )
-
-            Task {
-                try? await api.saveHighlight(slug: book.slug, highlight: highlight)
+            if let success = info["success"] as? Bool, success {
+                if let highlighted = info["highlighted"] as? [[String: Any]] {
+                    for h in highlighted {
+                        if let hId = h["id"] as? String,
+                           let pIdx = h["paragraphIndex"] as? Int,
+                           let start = h["startOffset"] as? Int,
+                           let end = h["endOffset"] as? Int {
+                            let highlight = Highlight(
+                                id: hId,
+                                page: page,
+                                lang: lang,
+                                color: colorHex,
+                                text: text,
+                                startOffset: start,
+                                endOffset: end,
+                                paragraphIndex: pIdx,
+                                note: nil,
+                                createdAt: Int64(Date().timeIntervalSince1970 * 1000)
+                            )
+                            Task {
+                                try? await api.saveHighlight(slug: book.slug, highlight: highlight)
+                            }
+                        }
+                    }
+                }
+                return ["success": true]
+            } else if let reason = info["reason"] as? String, reason == "multiple_occurrences",
+                      let occurrences = info["occurrences"] as? [[String: Any]] {
+                let decoratedOccurrences = occurrences.map { occ -> [String: Any] in
+                    var dict = occ
+                    dict["lang"] = lang
+                    return dict
+                }
+                allOccurrences.append(contentsOf: decoratedOccurrences)
             }
-            return true
         }
-        return false
+
+        if !allOccurrences.isEmpty {
+            return [
+                "success": false,
+                "error": "multiple_occurrences",
+                "message": "Found \(allOccurrences.count) occurrences of '\(text)' on the current page. Please ask the user which one they want to highlight, or if they want to highlight all of them.",
+                "occurrences": allOccurrences
+            ]
+        }
+
+        return ["success": false, "error": "text_not_found", "message": "Text '\(text)' not found on this page."]
     }
 
     private func removeHighlightViaCompanion(text: String) async -> Bool {

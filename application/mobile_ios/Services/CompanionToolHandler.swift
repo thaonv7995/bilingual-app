@@ -9,8 +9,8 @@ import Foundation
 final class CompanionToolHandler {
     // MARK: - Callbacks (set by ReaderView to wire into existing functionality)
 
-    /// Highlight a word/phrase on the current page. Parameters: (text, color hex).
-    var onHighlightText: ((String, String) async -> Bool)?
+    /// Highlight a word/phrase on the current page. Parameters: (text, color hex, occurrenceIndex, highlightAll).
+    var onHighlightText: ((String, String, Int?, Bool) async -> [String: Any])?
     /// Remove highlight for a word/phrase.
     var onRemoveHighlight: ((String) async -> Bool)?
     /// Look up a word in Voca dictionary. Returns definition string or nil.
@@ -52,7 +52,15 @@ final class CompanionToolHandler {
                     "color": [
                         "type": "string",
                         "enum": ["yellow", "blue", "pink", "green"],
-                        "description": "The highlight color. Default is yellow."
+                        "description": "The highlight color. The AI Agent must choose an appropriate color for highlighting."
+                    ],
+                    "occurrenceIndex": [
+                        "type": "integer",
+                        "description": "If there are multiple occurrences of the text, specify the 0-based index of the occurrence to highlight."
+                    ],
+                    "highlightAll": [
+                        "type": "boolean",
+                        "description": "If true, highlights all occurrences of the text on the page."
                     ]
                 ],
                 "required": ["text"]
@@ -257,19 +265,19 @@ final class CompanionToolHandler {
         let colorName = (args["color"] as? String) ?? "yellow"
         let colorHex = Self.colorMap[colorName] ?? "#fde68a"
         let colorVi = Self.colorNameVi[colorName] ?? colorName
+        
+        let occurrenceIndex = args["occurrenceIndex"] as? Int
+        let highlightAll = args["highlightAll"] as? Bool ?? false
 
         guard let handler = onHighlightText else {
             return ["success": false, "error": "Highlight not available"]
         }
-        // Fire-and-forget: return immediately, run in background
-        let feedback = onToolFeedback
-        Task { @MainActor in
-            let success = await handler(text, colorHex)
-            if success {
-                feedback?("✅ Đã highlight '\(text)' màu \(colorVi)")
-            }
+        
+        let result = await handler(text, colorHex, occurrenceIndex, highlightAll)
+        if let success = result["success"] as? Bool, success {
+            onToolFeedback?("✅ Đã highlight '\(text)' màu \(colorVi)")
         }
-        return ["success": true, "message": "Highlighting '\(text)' in \(colorName)"]
+        return result
     }
 
     private func handleRemoveHighlight(_ args: [String: Any]) async -> [String: Any] {

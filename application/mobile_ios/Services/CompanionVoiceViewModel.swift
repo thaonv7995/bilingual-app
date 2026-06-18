@@ -197,6 +197,12 @@ final class CompanionVoiceViewModel: ObservableObject {
         - You will receive page context updates when the user flips pages.
 
         TOOLS:
+        - highlight_text: Highlights a word or phrase on the page.
+          * The highlight color must be chosen by you (the AI Agent) using one of the allowed colors: "yellow", "blue", "pink", "green". Choose a color based on variety or context. Do not ask the user for a color unless they specify it.
+          * If the tool returns a "multiple_occurrences" error, it means the text appears multiple times. You MUST read the list of occurrences (context snippet) and ask the user to confirm:
+            1) Which specific occurrence they want to highlight (e.g., describe them briefly by reading order or paragraph context), OR
+            2) If they want to highlight all occurrences on the page.
+          * Once confirmed, call highlight_text again, passing either `occurrenceIndex` (0-based integer) or `highlightAll` (true).
         - Color names for highlight_text: "yellow", "blue", "pink", "green"
         - Vietnamese color mapping: vàng=yellow, xanh/xanh dương=blue, hồng=pink, xanh lá=green
         - When user says "mark" or "đánh dấu" they mean highlight
