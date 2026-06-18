@@ -2957,77 +2957,66 @@ Instructions:
                   </span>
                 </div>
 
-                <div class="voice-visualizer">
-                  <div class=${`voice-orb ${realtimeSpeakingState}`}>
-                    <div class=${`voice-pulse-ring ring-1 ${realtimeSpeakingState}`}></div>
-                    <div class=${`voice-pulse-ring ring-2 ${realtimeSpeakingState}`}></div>
-                    <div class=${`voice-pulse-ring ring-3 ${realtimeSpeakingState}`}></div>
-                    <div class=${`voice-icon-inner ${realtimeSpeakingState}`}>
-                      ${realtimeSpeakingState === 'ai-speaking'
-                        ? html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                          </svg>`
-                        : html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                            <line x1="12" y1="19" x2="12" y2="23"></line>
-                            <line x1="8" y1="23" x2="16" y2="23"></line>
-                          </svg>`
-                      }
+                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 32px; width: 100%; margin: 20px 0;">
+                  <div class="voice-visualizer">
+                    <div class=${`voice-orb ${realtimeSpeakingState}`}>
+                      <div class=${`voice-pulse-ring ring-1 ${realtimeSpeakingState}`}></div>
+                      <div class=${`voice-pulse-ring ring-2 ${realtimeSpeakingState}`}></div>
+                      <div class=${`voice-pulse-ring ring-3 ${realtimeSpeakingState}`}></div>
+                      <div class=${`voice-icon-inner ${realtimeSpeakingState}`}>
+                        ${realtimeSpeakingState === 'ai-speaking'
+                          ? html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                            </svg>`
+                          : html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                              <line x1="12" y1="19" x2="12" y2="23"></line>
+                              <line x1="8" y1="23" x2="16" y2="23"></line>
+                            </svg>`
+                        }
+                      </div>
+                    </div>
+                    <div class=${`voice-wave-bars ${realtimeSpeakingState}`}>
+                      <span class="bar"></span>
+                      <span class="bar"></span>
+                      <span class="bar"></span>
+                      <span class="bar"></span>
+                      <span class="bar"></span>
                     </div>
                   </div>
-                  <div class=${`voice-wave-bars ${realtimeSpeakingState}`}>
-                    <span class="bar"></span>
-                    <span class="bar"></span>
-                    <span class="bar"></span>
-                    <span class="bar"></span>
-                    <span class="bar"></span>
-                  </div>
-                </div>
 
-                ${realtimeToolCall && html`
-                  <div class=${`voice-tool-feedback ${realtimeToolCall.status}`}>
-                    <span class="tool-feedback-icon">
-                      ${realtimeToolCall.status === 'executing' 
-                        ? html`<span class="tool-spinner"></span>` 
-                        : realtimeToolCall.status === 'success' 
-                          ? '✅' 
-                          : '❌'
-                      }
-                    </span>
-                    <span class="tool-feedback-text">
-                      ${realtimeToolCall.name === 'highlight_text' 
-                        ? `Đã highlight "${realtimeToolCall.text}" màu ${translateColor(realtimeToolCall.color || 'yellow')}`
-                        : realtimeToolCall.name === 'remove_highlight'
-                          ? `Đã xóa highlight "${realtimeToolCall.text}"`
-                          : realtimeToolCall.name === 'lookup_word'
-                            ? `Đang tra từ "${realtimeToolCall.text}"...`
-                            : realtimeToolCall.name === 'add_word_to_voca'
-                              ? `Đã thêm "${realtimeToolCall.text}" vào Voca`
-                              : realtimeToolCall.name === 'go_to_page'
-                                ? `Chuyển sang trang ${realtimeToolCall.text}`
-                                : realtimeToolCall.name === 'next_page'
-                                  ? `Trang tiếp theo`
-                                  : realtimeToolCall.name === 'previous_page'
-                                    ? `Trang trước`
-                                    : `Thực thi ${realtimeToolCall.name}`
-                      }
-                    </span>
-                  </div>
-                `}
-
-                <div class="voice-captions">
-                  ${realtimeUserTranscript && html`
-                    <div class="voice-caption-bubble user">
-                      <span class="caption-label">Bạn nói:</span>
-                      <p class="caption-text">${realtimeUserTranscript}</p>
+                  ${realtimeToolCall && html`
+                    <div class=${`voice-tool-feedback ${realtimeToolCall.status}`}>
+                      <span class="tool-feedback-icon">
+                        ${realtimeToolCall.status === 'executing' 
+                          ? html`<span class="tool-spinner"></span>` 
+                          : realtimeToolCall.status === 'success' 
+                            ? '✅' 
+                            : '❌'
+                        }
+                      </span>
+                      <span class="tool-feedback-text">
+                        ${realtimeToolCall.name === 'highlight_text' 
+                          ? `Đã highlight "${realtimeToolCall.text}" màu ${translateColor(realtimeToolCall.color || 'yellow')}`
+                          : realtimeToolCall.name === 'remove_highlight'
+                            ? `Đã xóa highlight "${realtimeToolCall.text}"`
+                            : realtimeToolCall.name === 'lookup_word'
+                              ? `Đang tra từ "${realtimeToolCall.text}"...`
+                              : realtimeToolCall.name === 'add_word_to_voca'
+                                ? `Đã thêm "${realtimeToolCall.text}" vào Voca`
+                                : realtimeToolCall.name === 'go_to_page'
+                                  ? `Chuyển sang trang ${realtimeToolCall.text}`
+                                  : realtimeToolCall.name === 'next_page'
+                                    ? `Trang tiếp theo`
+                                    : realtimeToolCall.name === 'previous_page'
+                                      ? `Trang trước`
+                                      : `Thực thi ${realtimeToolCall.name}`
+                        }
+                      </span>
                     </div>
                   `}
-                  <div class="voice-caption-bubble assistant">
-                    <span class="caption-label">Companion Reader Agent:</span>
-                    <p class="caption-text">${realtimeCaption || 'Hãy nói gì đó qua micro...'}</p>
-                  </div>
                 </div>
 
                 <button class="voice-end-btn" onClick=${stopRealtimeVoice}>
