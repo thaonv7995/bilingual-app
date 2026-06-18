@@ -2087,6 +2087,9 @@ Instructions:
           }
         };
         dc.send(JSON.stringify(updateEvent));
+
+        // Trigger the initial greeting message
+        dc.send(JSON.stringify({ type: 'response.create' }));
       });
 
       dc.addEventListener('message', async (e) => {
