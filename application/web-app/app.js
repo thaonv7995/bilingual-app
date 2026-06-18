@@ -2011,13 +2011,13 @@ Instructions:
 5. If highlight_text returns a "multiple_occurrences" error, read the contexts and ask the user to confirm which one they want to highlight, or if they want to highlight all.
 `;
 
-      const sessionResponse = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+      const sessionResponse = await apiFetch('/api/chat/realtime/session', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${activeApiKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+          apiKey: activeApiKey,
           session: {
             type: 'realtime',
             model: realtimeModel,
@@ -2038,7 +2038,14 @@ Instructions:
       });
 
       if (!sessionResponse.ok) {
-        throw new Error(`Failed to create session: ${sessionResponse.statusText}`);
+        let errMsg = `Failed to create session: ${sessionResponse.statusText}`;
+        try {
+          const errData = await sessionResponse.json();
+          if (errData && errData.detail) {
+            errMsg = errData.detail;
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
       }
 
       const sessionData = await sessionResponse.json();
