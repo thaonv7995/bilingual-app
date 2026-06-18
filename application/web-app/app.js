@@ -2019,7 +2019,6 @@ Instructions:
         body: JSON.stringify({
           apiKey: activeApiKey,
           session: {
-            type: 'realtime',
             model: realtimeModel,
             voice: realtimeVoice,
             modalities: ['text', 'audio'],
