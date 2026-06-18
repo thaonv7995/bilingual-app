@@ -3353,7 +3353,7 @@ struct FloatingVoiceWidgetView: View {
                         
                         // Status text
                         if companionVM.micState == .aiSpeaking {
-                            Text("Agent nói...")
+                            Text("Speaking...")
                                 .font(.system(size: 8, weight: .semibold))
                                 .foregroundColor(Color(hex: "818cf8"))
                                 .padding(.horizontal, 6)
@@ -3361,7 +3361,7 @@ struct FloatingVoiceWidgetView: View {
                                 .background(Color(hex: "818cf8").opacity(0.15))
                                 .cornerRadius(6)
                         } else if companionVM.userIsSpeaking {
-                            Text("Đang nghe...")
+                            Text("Listening...")
                                 .font(.system(size: 8, weight: .semibold))
                                 .foregroundColor(Color(hex: "14b8a6"))
                                 .padding(.horizontal, 6)
@@ -3369,9 +3369,13 @@ struct FloatingVoiceWidgetView: View {
                                 .background(Color(hex: "14b8a6").opacity(0.15))
                                 .cornerRadius(6)
                         } else {
-                            Text("Realtime Voice")
-                                .font(.system(size: 8, weight: .medium))
-                                .foregroundColor(.white.opacity(0.5))
+                            Text("Ready")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.6))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(6)
                         }
 
                         // Quick Controls
