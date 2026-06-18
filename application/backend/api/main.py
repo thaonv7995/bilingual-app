@@ -103,7 +103,21 @@ def get_favicon():
 
 @app.get("/config.js")
 def get_config():
-    return FileResponse(WEB_APP_DIR / "config.js")
+    config_path = WEB_APP_DIR / "config.js"
+    if config_path.is_file():
+        return FileResponse(config_path)
+    
+    # Fallback to example if exists
+    example_path = WEB_APP_DIR / "config.example.js"
+    if example_path.is_file():
+        return FileResponse(example_path)
+        
+    # Ultimate fallback response
+    from fastapi.responses import Response
+    return Response(
+        content='const CONFIG = { OPENAI_API_KEY: "", GEMINI_API_KEY: "" };',
+        media_type="application/javascript"
+    )
 
 @app.get("/app.js")
 def get_app_js():
