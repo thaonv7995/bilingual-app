@@ -36,7 +36,7 @@ struct AISettingsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         // Header note
-                        Text("Cấu hình API Key và nhà cung cấp dịch vụ AI để sử dụng tính năng Trợ lý AI (AI Agent) dịch thuật, giải thích và tóm tắt sách.")
+                        Text("Cấu hình API Key và nhà cung cấp dịch vụ AI để sử dụng Companion Agent — phân tích, thảo luận và khám phá nội dung sách.")
                             .font(.system(size: 13))
                             .foregroundColor(Color(hex: "94a3b8"))
                             .lineSpacing(4)

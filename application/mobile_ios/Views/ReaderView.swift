@@ -1741,6 +1741,9 @@ struct ReaderChatPanelView: View {
     @State private var chatMessages: [ChatMessage] = []
     @State private var chatInputText: String = ""
     @State private var isChatPending = false
+    @State private var suggestedPrompts: [(icon: String, title: String, prompt: String)] = []
+    @State private var suggestionsPage: Int = -1 // track which page suggestions were generated for
+    @State private var isLoadingSuggestions = false
     
     // Settings States
     @AppStorage("aiProvider") private var aiProvider: String = "openai"
@@ -1831,11 +1834,11 @@ struct ReaderChatPanelView: View {
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(Color(hex: "14b8a6"))
                             .shadow(color: Color(hex: "14b8a6").opacity(0.5), radius: 4)
-                        Text("Trợ lý AI")
+                        Text("Companion Agent")
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(.white)
                     }
-                    Text("Trợ lý phân tích sách thông minh")
+                    Text("AI-powered reading companion")
                         .font(.system(size: 10))
                         .foregroundColor(.gray)
                 }
@@ -1979,7 +1982,7 @@ struct ReaderChatPanelView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.white)
                 
-                Text("Tôi là Trợ lý AI. Tôi có thể giúp bạn phân tích, tóm tắt, giải thích thuật ngữ hoặc dịch nghĩa cuốn sách này.")
+                Text("Companion Agent sẵn sàng hỗ trợ bạn phân tích, thảo luận và khám phá nội dung cuốn sách.")
                     .font(.caption)
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
@@ -1991,7 +1994,7 @@ struct ReaderChatPanelView: View {
             
             // Suggested Prompt cards
             VStack(alignment: .leading, spacing: 10) {
-                Text("GỢI Ý CÂU HỎI NHANH")
+                Text("GỢI Ý CÂU HỎI")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.gray.opacity(0.8))
                     .padding(.horizontal, 4)
@@ -2004,32 +2007,40 @@ struct ReaderChatPanelView: View {
                     sendChat(with: "Tóm tắt nội dung chính và các ý chính của trang sách này giúp tôi.")
                 }
                 
-                SuggestedPromptRow(
-                    icon: "🔍",
-                    title: "Giải thích thuật ngữ",
-                    prompt: "Tìm và giải thích các từ khó, khái niệm..."
-                ) {
-                    sendChat(with: "Hãy tìm các thuật ngữ phức tạp, khái niệm quan trọng hoặc từ khó trong trang này và giải thích ngắn gọn.")
-                }
-                
-                SuggestedPromptRow(
-                    icon: "💡",
-                    title: "Ý chính bài học",
-                    prompt: "Rút ra thông điệp chính cốt lõi..."
-                ) {
-                    sendChat(with: "Bài học hoặc thông điệp cốt lõi nhất mà tác giả muốn truyền đạt ở trang này là gì?")
-                }
-                
-                SuggestedPromptRow(
-                    icon: "🌐",
-                    title: "Dịch & Phân tích",
-                    prompt: "Dịch các câu phức tạp trong trang..."
-                ) {
-                    sendChat(with: "Dịch các câu học thuật hoặc câu khó trong trang này sang tiếng Việt và giải nghĩa chi tiết cấu trúc.")
+                if isLoadingSuggestions {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .tint(.gray)
+                        Text("Đang tạo gợi ý...")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 8)
+                } else {
+                    ForEach(Array(suggestedPrompts.enumerated()), id: \.offset) { _, item in
+                        SuggestedPromptRow(
+                            icon: item.icon,
+                            title: item.title,
+                            prompt: item.prompt
+                        ) {
+                            sendChat(with: item.prompt)
+                        }
+                    }
                 }
             }
         }
         .padding(.bottom, 20)
+        .onAppear {
+            if suggestionsPage != page {
+                generateSuggestions()
+            }
+        }
+        .onChange(of: page) { newPage in
+            if suggestionsPage != newPage {
+                generateSuggestions()
+            }
+        }
     }
     
     @ViewBuilder
@@ -2450,7 +2461,7 @@ struct ReaderChatPanelView: View {
         if textToSend.isEmpty || isChatPending { return }
         
         if aiApiKey.isEmpty {
-            chatMessages.append(ChatMessage(role: "assistant", content: "Vui lòng vào Settings (nút răng cưa góc trên phải) cấu hình API Key của bạn để sử dụng Trợ lý AI!"))
+            chatMessages.append(ChatMessage(role: "assistant", content: "Vui lòng vào Settings (nút răng cưa góc trên phải) cấu hình API Key của bạn để sử dụng Companion Agent!"))
             chatInputText = ""
             return
         }
@@ -2506,6 +2517,77 @@ struct ReaderChatPanelView: View {
                 self.isChatPending = false
                 self.saveChatHistory()
             }
+        }
+    }
+
+    // MARK: - Dynamic Suggestion Prompts
+
+    private func generateSuggestions() {
+        guard !aiApiKey.isEmpty else { return }
+        let targetPage = page
+        isLoadingSuggestions = true
+        suggestedPrompts = []
+
+        Task { @MainActor in
+            let pageText = await pageContextBuilder(targetPage, viewMode)
+            guard !pageText.isEmpty else {
+                isLoadingSuggestions = false
+                return
+            }
+
+            let systemPrompt = """
+            You generate 3 contextual question suggestions for a reader. The reader is reading page \(targetPage) of "\(book.title)".
+
+            PAGE CONTENT:
+            \(pageText.prefix(2000))
+
+            Return ONLY a JSON array of exactly 3 objects, each with:
+            - "icon": a single emoji that fits the question theme
+            - "title": short title in Vietnamese (max 20 chars)
+            - "prompt": the full question in Vietnamese (1-2 sentences)
+
+            The questions should be specific to THIS page content, not generic. Focus on:
+            - Key concepts, terminology, or ideas mentioned on this page
+            - Interesting connections or deeper analysis
+            - Practical applications or real-world relevance
+
+            Example format: [{"icon":"🧠","title":"Khái niệm X","prompt":"Giải thích khái niệm X được đề cập trong trang này..."}]
+            Return ONLY the JSON array, no other text.
+            """
+
+            let messages = [
+                ["role": "system", "content": systemPrompt],
+                ["role": "user", "content": "Generate 3 suggestion prompts for this page."]
+            ]
+
+            do {
+                let response = try await api.sendChat(
+                    baseURL: aiBaseURL,
+                    apiKey: aiApiKey,
+                    model: aiModel,
+                    messages: messages
+                )
+                // Parse JSON response
+                let cleaned = response.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "```json", with: "")
+                    .replacingOccurrences(of: "```", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                if let data = cleaned.data(using: .utf8),
+                   let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: String]] {
+                    self.suggestedPrompts = arr.prefix(3).compactMap { item in
+                        guard let icon = item["icon"],
+                              let title = item["title"],
+                              let prompt = item["prompt"]
+                        else { return nil }
+                        return (icon: icon, title: title, prompt: prompt)
+                    }
+                }
+                self.suggestionsPage = targetPage
+            } catch {
+                print("[Companion] Failed to generate suggestions: \(error)")
+            }
+            self.isLoadingSuggestions = false
         }
     }
 
