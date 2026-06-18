@@ -2118,8 +2118,7 @@ TOOLS:
         const updateEvent = {
           type: 'session.update',
           session: {
-            type: 'realtime',
-            modalities: ['text', 'audio'],
+            output_modalities: ['audio'],
             voice: realtimeVoice,
             input_audio_transcription: {
               model: 'whisper-1'
