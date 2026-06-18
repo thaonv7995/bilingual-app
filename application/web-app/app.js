@@ -3178,6 +3178,24 @@ function injectHighlightCSS(doc, isEnglish) {
     : 'rgba(250, 204, 21, 0.08)';
 
   style.textContent = `
+    html {
+      background-color: #F9F7F1 !important;
+    }
+    body, body.book-standalone {
+      background-color: #F9F7F1 !important;
+      color: #333333 !important;
+    }
+    main, article, .prose-page {
+      background-color: transparent !important;
+      color: inherit !important;
+    }
+    .book-page, .book-page--sheet, .sheet-flow {
+      background-color: transparent !important;
+    }
+    div, p, h1, h2, h3, h4, h5, h6, ul, ol, li {
+      background-color: transparent !important;
+      color: inherit !important;
+    }
     .sentence-node {
       transition: background-color 0.2s ease;
       border-radius: 3px;
