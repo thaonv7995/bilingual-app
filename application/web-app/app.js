@@ -679,11 +679,13 @@ function App() {
   const [realtimeCaption, setRealtimeCaption] = useState('');
   const [realtimeUserTranscript, setRealtimeUserTranscript] = useState('');
   const [realtimeError, setRealtimeError] = useState('');
+  const [realtimeMicMuted, setRealtimeMicMuted] = useState(false);
 
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
   const dataChannelRef = useRef(null);
   const audioElRef = useRef(null);
+  const realtimeReconnectRef = useRef(0);
 
   // --- Chat Resizing State & Event Handlers ---
   const [chatWidth, setChatWidth] = useState(() => {
@@ -2118,17 +2120,16 @@ TOOLS:
         const updateEvent = {
           type: 'session.update',
           session: {
-            type: 'realtime',
-            output_modalities: ['audio'],
-            audio: {
-              input: {
-                transcription: {
-                  model: 'whisper-1'
-                }
-              },
-              output: {
-                voice: realtimeVoice
-              }
+            modalities: ['text', 'audio'],
+            voice: realtimeVoice,
+            input_audio_transcription: {
+              model: 'whisper-1'
+            },
+            turn_detection: {
+              type: 'server_vad',
+              threshold: 0.5,
+              prefix_padding_ms: 400,
+              silence_duration_ms: 1200
             },
             tools: webToolDefinitions.map(t => ({
               type: 'function',
@@ -2163,6 +2164,10 @@ TOOLS:
           if (oaiEvent.type === 'response.created') {
             setRealtimeSpeakingState('ai-speaking');
             setRealtimeCaption('');
+            // Auto-mute mic while AI is speaking (matching mobile behavior)
+            if (localStreamRef.current) {
+              localStreamRef.current.getAudioTracks().forEach(t => t.enabled = false);
+            }
           }
 
           // AI speaking caption updates
@@ -2175,6 +2180,10 @@ TOOLS:
             const newMsg = { role: 'assistant', content: oaiEvent.transcript };
             updateMessagesAndSave(prev => [...prev, newMsg]);
             setRealtimeSpeakingState('listening');
+            // Auto-unmute mic after AI finishes speaking (matching mobile behavior)
+            if (localStreamRef.current && !realtimeMicMuted) {
+              localStreamRef.current.getAudioTracks().forEach(t => t.enabled = true);
+            }
           }
 
           // User speech transcript updates
@@ -2200,6 +2209,10 @@ TOOLS:
           // Handle tool/function calls
           if (oaiEvent.type === 'response.done') {
             setRealtimeSpeakingState('listening');
+            // Auto-unmute mic after response completes
+            if (localStreamRef.current && !realtimeMicMuted) {
+              localStreamRef.current.getAudioTracks().forEach(t => t.enabled = true);
+            }
             const output = oaiEvent.response?.output;
             if (output) {
               for (const item of output) {
@@ -2305,7 +2318,40 @@ TOOLS:
     setRealtimeState('idle');
     setRealtimeSpeakingState('idle');
     setRealtimeToolCall(null);
+    setRealtimeMicMuted(false);
+    realtimeReconnectRef.current = 0;
   };
+
+  const toggleRealtimeMic = () => {
+    if (!localStreamRef.current || realtimeSpeakingState === 'ai-speaking') return;
+    const tracks = localStreamRef.current.getAudioTracks();
+    if (realtimeMicMuted) {
+      tracks.forEach(t => t.enabled = true);
+      setRealtimeMicMuted(false);
+    } else {
+      tracks.forEach(t => t.enabled = false);
+      setRealtimeMicMuted(true);
+    }
+  };
+
+  // Inject page context update when user flips pages during voice session
+  useEffect(() => {
+    if (realtimeVoiceActive && realtimeState === 'live' && dataChannelRef.current?.readyState === 'open') {
+      const pageText = getIframePageText();
+      if (pageText) {
+        const contextEvent = {
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'system',
+            content: [{ type: 'input_text', text: `[PAGE UPDATE] User is now on page ${page}.\n${pageText}` }]
+          }
+        };
+        dataChannelRef.current.send(JSON.stringify(contextEvent));
+        console.log('[Realtime Voice] Injected page context update for page', page);
+      }
+    }
+  }, [page, realtimeVoiceActive, realtimeState]);
 
   useEffect(() => {
     if (!chatOpen || !activeBook) {
@@ -3003,42 +3049,74 @@ TOOLS:
                     ${realtimeState === 'connecting' 
                       ? 'Đang kết nối Realtime...' 
                       : realtimeState === 'live' 
-                        ? 'Đang kết nối trực tiếp (Live)' 
+                        ? (realtimeSpeakingState === 'ai-speaking' ? '🔊 AI đang nói...' 
+                          : realtimeSpeakingState === 'user-speaking' ? '🎤 Đang nghe bạn...'
+                          : realtimeMicMuted ? '🔇 Mic tắt' : '🎙️ Đang lắng nghe')
                         : realtimeState === 'error' 
                           ? `Lỗi: ${realtimeError || 'Không thể kết nối'}` 
                           : 'Đang ngoại tuyến'}
                   </span>
                 </div>
 
-                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 32px; width: 100%; margin: 20px 0;">
-                  <div class="voice-visualizer">
-                    <div class=${`voice-orb ${realtimeSpeakingState}`}>
-                      <div class=${`voice-pulse-ring ring-1 ${realtimeSpeakingState}`}></div>
-                      <div class=${`voice-pulse-ring ring-2 ${realtimeSpeakingState}`}></div>
-                      <div class=${`voice-pulse-ring ring-3 ${realtimeSpeakingState}`}></div>
-                      <div class=${`voice-icon-inner ${realtimeSpeakingState}`}>
-                        ${realtimeSpeakingState === 'ai-speaking'
-                          ? html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                            </svg>`
-                          : html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                              <line x1="12" y1="19" x2="12" y2="23"></line>
-                              <line x1="8" y1="23" x2="16" y2="23"></line>
-                            </svg>`
-                        }
+                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; width: 100%; margin: 12px 0; min-height: 0;">
+                  ${realtimeState === 'error' ? html`
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
+                      <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); display: flex; align-items: center; justify-content: center;">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <line x1="15" y1="9" x2="9" y2="15"></line>
+                          <line x1="9" y1="9" x2="15" y2="15"></line>
+                        </svg>
+                      </div>
+                      <div style="text-align: center; color: rgba(255,255,255,0.6); font-size: 13px; max-width: 260px;">
+                        ${realtimeError || 'Không thể kết nối với Voice Mode'}
+                      </div>
+                      <button class="voice-retry-btn" onClick=${() => { setRealtimeError(''); stopRealtimeVoice(); setTimeout(() => startRealtimeVoice(), 300); }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+                          <path d="M23 4v6h-6"></path>
+                          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                        Thử lại
+                      </button>
+                    </div>
+                  ` : html`
+                    <div class="voice-visualizer">
+                      <div class=${`voice-orb ${realtimeSpeakingState}`}>
+                        <div class=${`voice-pulse-ring ring-1 ${realtimeSpeakingState}`}></div>
+                        <div class=${`voice-pulse-ring ring-2 ${realtimeSpeakingState}`}></div>
+                        <div class=${`voice-pulse-ring ring-3 ${realtimeSpeakingState}`}></div>
+                        <div class=${`voice-icon-inner ${realtimeSpeakingState} ${realtimeMicMuted && realtimeSpeakingState === 'listening' ? 'muted' : ''}`}>
+                          ${realtimeSpeakingState === 'ai-speaking'
+                            ? html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                              </svg>`
+                            : realtimeMicMuted
+                              ? html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                  <line x1="1" y1="1" x2="23" y2="23"></line>
+                                  <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
+                                  <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.13 1.49-.35 2.17"></path>
+                                  <line x1="12" y1="19" x2="12" y2="23"></line>
+                                  <line x1="8" y1="23" x2="16" y2="23"></line>
+                                </svg>`
+                              : html`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                  <line x1="12" y1="19" x2="12" y2="23"></line>
+                                  <line x1="8" y1="23" x2="16" y2="23"></line>
+                                </svg>`
+                          }
+                        </div>
+                      </div>
+                      <div class=${`voice-wave-bars ${realtimeSpeakingState}`}>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
                       </div>
                     </div>
-                    <div class=${`voice-wave-bars ${realtimeSpeakingState}`}>
-                      <span class="bar"></span>
-                      <span class="bar"></span>
-                      <span class="bar"></span>
-                      <span class="bar"></span>
-                      <span class="bar"></span>
-                    </div>
-                  </div>
+                  `}
 
                   ${realtimeToolCall && html`
                     <div class=${`voice-tool-feedback ${realtimeToolCall.status}`}>
@@ -3070,14 +3148,48 @@ TOOLS:
                       </span>
                     </div>
                   `}
+
+                  ${realtimeCaption && html`
+                    <div class="voice-live-caption">
+                      <span class="caption-label" style="color: #c084fc;">AI</span>
+                      <span class="caption-text">${realtimeCaption}</span>
+                    </div>
+                  `}
+                  ${realtimeUserTranscript && html`
+                    <div class="voice-live-caption user-caption">
+                      <span class="caption-label" style="color: #818cf8;">Bạn</span>
+                      <span class="caption-text">${realtimeUserTranscript}</span>
+                    </div>
+                  `}
                 </div>
 
-                <button class="voice-end-btn" onClick=${stopRealtimeVoice}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                    <rect x="4" y="4" width="16" height="16" rx="2" ry="2" fill="currentColor"></rect>
-                  </svg>
-                  Kết thúc hội thoại
-                </button>
+                <div class="voice-bottom-controls">
+                  <button class=${`voice-mic-btn ${realtimeMicMuted ? 'muted' : ''} ${realtimeSpeakingState === 'ai-speaking' ? 'disabled' : ''}`}
+                    onClick=${toggleRealtimeMic}
+                    title=${realtimeMicMuted ? 'Bật mic' : 'Tắt mic'}
+                    disabled=${realtimeSpeakingState === 'ai-speaking'}
+                  >
+                    ${realtimeMicMuted 
+                      ? html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <line x1="1" y1="1" x2="23" y2="23"></line>
+                          <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
+                          <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.13 1.49-.35 2.17"></path>
+                        </svg>`
+                      : html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        </svg>`
+                    }
+                  </button>
+                  <button class="voice-end-btn" onClick=${stopRealtimeVoice}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+                      <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 2.59 3.4z"></path>
+                      <line x1="23" y1="1" x2="17" y2="7"></line>
+                      <line x1="17" y1="1" x2="23" y2="7"></line>
+                    </svg>
+                    Kết thúc
+                  </button>
+                </div>
               </div>
             `
             : html`
