@@ -112,6 +112,8 @@ struct BilingualWebView: UIViewRepresentable {
         let highlightColor = isEnglish ? "rgba(56, 189, 248, 0.22)" : "rgba(250, 204, 21, 0.24)"
         let hoverColor = isEnglish ? "rgba(56, 189, 248, 0.08)" : "rgba(250, 204, 21, 0.08)"
         
+        let paddingCss = viewMode == "split" ? "padding: 16px 20px !important;" : "padding: 24px 32px !important;"
+        
         // 1. Set background color of root html tag immediately at .atDocumentStart to prevent white flash
         let cssStyleSource = """
         (function() {
@@ -153,7 +155,7 @@ struct BilingualWebView: UIViewRepresentable {
                         }
                         body, body.book-standalone {
                             margin: 0 !important;
-                            padding: 0 !important;
+                            \(paddingCss)
                             width: 100% !important;
                             max-width: 100% !important;
                             height: auto !important;

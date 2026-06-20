@@ -200,6 +200,23 @@ struct ReaderView: View {
                                     .id("vi_\(useDoubleSided)")
                                     .opacity(viewMode == "vi" ? 1 : 0)
                                     .allowsHitTesting(viewMode == "vi")
+                                    
+                                    // Hiệu ứng bóng đổ 3D ở gáy sách (Spine Shadow)
+                                    if useDoubleSided && viewMode != "split" {
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [
+                                                Color.black.opacity(0.0),
+                                                Color.black.opacity(0.03),
+                                                Color.black.opacity(0.12),
+                                                Color.black.opacity(0.03),
+                                                Color.black.opacity(0.0)
+                                            ]),
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                        .frame(width: 50)
+                                        .allowsHitTesting(false)
+                                    }
                                 }
                             } // End of isReadyToRender block
                         }
