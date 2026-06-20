@@ -14,6 +14,7 @@ struct ReaderView: View {
     
     @State private var page: Int
     @State private var viewMode: String // "en" | "vi" | "split"
+    @State private var isFullScreen = false
     
     // Jump to page dialog
     @State private var showJumpToPageDialog = false
@@ -94,17 +95,20 @@ struct ReaderView: View {
                 // Main Reading Pane
                 VStack(spacing: 0) {
                     // Custom Slim Top Navigation Bar
-                    ReaderHeaderView(
-                        book: book,
-                        useDoubleSided: useDoubleSided,
-                        page: $page,
-                        viewMode: $viewMode,
-                        isChatOpen: $isChatOpen,
-                        isPencilModeActive: $isPencilModeActive,
-                        showJumpToPageDialog: $showJumpToPageDialog,
-                        inputPageString: $inputPageString,
-                        onDismiss: { dismiss() }
-                    )
+                    if !isFullScreen {
+                        ReaderHeaderView(
+                            book: book,
+                            useDoubleSided: useDoubleSided,
+                            page: $page,
+                            viewMode: $viewMode,
+                            isChatOpen: $isChatOpen,
+                            isPencilModeActive: $isPencilModeActive,
+                            showJumpToPageDialog: $showJumpToPageDialog,
+                            inputPageString: $inputPageString,
+                            isFullScreen: $isFullScreen,
+                            onDismiss: { dismiss() }
+                        )
+                    }
                     
                     // Reading Area
                         ZStack {
@@ -151,24 +155,25 @@ struct ReaderView: View {
                                         layout {
                                             if isEnFirst {
                                                 renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
-                                                    .padding(.leading, isHorizontal ? 28 : 16)
-                                                    .padding(.trailing, isHorizontal ? 4 : 16)
-                                                    .padding(.vertical, 6)
+                                                    .padding(.leading, isFullScreen ? 0 : (isHorizontal ? 10 : 0))
+                                                    .padding(.trailing, isHorizontal ? 2 : 0)
+                                                    .padding(.vertical, isFullScreen ? 0 : 6)
                                                 renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
-                                                    .padding(.leading, isHorizontal ? 4 : 16)
-                                                    .padding(.trailing, isHorizontal ? 28 : 16)
-                                                    .padding(.vertical, 6)
+                                                    .padding(.leading, isHorizontal ? 2 : 0)
+                                                    .padding(.trailing, isFullScreen ? 0 : (isHorizontal ? 10 : 0))
+                                                    .padding(.vertical, isFullScreen ? 0 : 6)
                                             } else {
                                                 renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
-                                                    .padding(.leading, isHorizontal ? 28 : 16)
-                                                    .padding(.trailing, isHorizontal ? 4 : 16)
-                                                    .padding(.vertical, 6)
+                                                    .padding(.leading, isFullScreen ? 0 : (isHorizontal ? 10 : 0))
+                                                    .padding(.trailing, isHorizontal ? 2 : 0)
+                                                    .padding(.vertical, isFullScreen ? 0 : 6)
                                                 renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
-                                                    .padding(.leading, isHorizontal ? 4 : 16)
-                                                    .padding(.trailing, isHorizontal ? 28 : 16)
-                                                    .padding(.vertical, 6)
+                                                    .padding(.leading, isHorizontal ? 2 : 0)
+                                                    .padding(.trailing, isFullScreen ? 0 : (isHorizontal ? 10 : 0))
+                                                    .padding(.vertical, isFullScreen ? 0 : 6)
                                             }
                                         }
+                                        .ignoresSafeArea()
                                     }
                                     .id("split_\(bilingualLayoutMode)")
                                     .opacity(viewMode == "split" ? 1 : 0)
@@ -184,10 +189,11 @@ struct ReaderView: View {
                                     ) { p in
                                         let isLeft = p % 2 == 1
                                         renderWebView(lang: "en", p: p, isDoubleSided: useDoubleSided, containerMode: "en")
-                                            .padding(.top, 6)
-                                            .padding(.bottom, 6)
-                                            .padding(.leading, useDoubleSided ? (isLeft ? 32 : 0) : 16)
-                                            .padding(.trailing, useDoubleSided ? (isLeft ? 0 : 32) : 16)
+                                            .padding(.top, isFullScreen ? 0 : 6)
+                                            .padding(.bottom, isFullScreen ? 0 : 6)
+                                            .padding(.leading, isFullScreen ? 0 : (useDoubleSided ? (isLeft ? 10 : 0) : 0))
+                                            .padding(.trailing, isFullScreen ? 0 : (useDoubleSided ? (isLeft ? 0 : 10) : 0))
+                                            .ignoresSafeArea()
                                     }
                                     .id("en_\(useDoubleSided)")
                                     .opacity(viewMode == "en" ? 1 : 0)
@@ -203,10 +209,11 @@ struct ReaderView: View {
                                     ) { p in
                                         let isLeft = p % 2 == 1
                                         renderWebView(lang: "vi", p: p, isDoubleSided: useDoubleSided, containerMode: "vi")
-                                            .padding(.top, 6)
-                                            .padding(.bottom, 6)
-                                            .padding(.leading, useDoubleSided ? (isLeft ? 32 : 0) : 16)
-                                            .padding(.trailing, useDoubleSided ? (isLeft ? 0 : 32) : 16)
+                                            .padding(.top, isFullScreen ? 0 : 6)
+                                            .padding(.bottom, isFullScreen ? 0 : 6)
+                                            .padding(.leading, isFullScreen ? 0 : (useDoubleSided ? (isLeft ? 10 : 0) : 0))
+                                            .padding(.trailing, isFullScreen ? 0 : (useDoubleSided ? (isLeft ? 0 : 10) : 0))
+                                            .ignoresSafeArea()
                                     }
                                     .id("vi_\(useDoubleSided)")
                                     .opacity(viewMode == "vi" ? 1 : 0)
@@ -269,8 +276,8 @@ struct ReaderView: View {
                     )
                     .background(Color(hex: "111827").ignoresSafeArea())
                 }
-            }
             .background(Color(hex: "0f172a"))
+            .statusBarHidden(true)
             .onAppear {
                 loadProgress()
                 fetchHighlights()
@@ -291,6 +298,8 @@ struct ReaderView: View {
                     }
                 }
             )
+        }
+        .ignoresSafeArea()
     }
     
     // --- Highlights UI / logic ---
@@ -449,6 +458,12 @@ struct ReaderView: View {
             guard !vocaLookupInProgress else { return }
             guard vocaPanelMode == nil else { return }
             dismissVocaPanel()
+        case .toggleFullScreen:
+            if vocaPanelMode == nil && !vocaLookupInProgress {
+                withAnimation { isFullScreen.toggle() }
+            } else {
+                dismissVocaPanel()
+            }
         }
     }
     
@@ -3005,6 +3020,7 @@ struct ReaderHeaderView: View {
     @Binding var isPencilModeActive: Bool
     @Binding var showJumpToPageDialog: Bool
     @Binding var inputPageString: String
+    @Binding var isFullScreen: Bool
     
     var onDismiss: () -> Void
     

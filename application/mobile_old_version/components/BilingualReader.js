@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { StyleSheet, View, Text, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 
-export default function BilingualReader({ bookSlug, page, serverUrl, token }) {
+export default function BilingualReader({ bookSlug, page, serverUrl, token, onToggleFullScreen }) {
   const enWebViewRef = useRef(null);
   const viWebViewRef = useRef(null);
   
@@ -36,6 +36,17 @@ export default function BilingualReader({ bookSlug, page, serverUrl, token }) {
           }
         } catch(e) {}
       });
+
+      // Listen for tap to toggle full screen
+      window.addEventListener('click', function(event) {
+        // Don't trigger if user is selecting text
+        var selection = window.getSelection();
+        if (selection && selection.type === 'Range') return;
+
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'toggleFullScreen'
+        }));
+      });
     })();
     true;
   `;
@@ -50,6 +61,8 @@ export default function BilingualReader({ bookSlug, page, serverUrl, token }) {
         } else if (data.lang === 'vi' && enWebViewRef.current) {
           enWebViewRef.current.postMessage(payload);
         }
+      } else if (data.type === 'toggleFullScreen' && onToggleFullScreen) {
+        onToggleFullScreen();
       }
     } catch (e) {
       console.warn('Failed parsing WebView message:', e);

@@ -15,6 +15,7 @@ export default function App() {
   const [activeBook, setActiveBook] = useState(null);
   const [page, setPage] = useState(1);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isFullScreen, setIsFullScreen] = useState(false);
 
   // Handle Login
   const handleLogin = async () => {
@@ -100,16 +101,23 @@ export default function App() {
   if (activeBook) {
     return (
       <SafeAreaView style={styles.container}>
-        <StatusBar style="light" />
+        <StatusBar style="light" hidden={isFullScreen} />
         
         {/* Navigation Bar */}
-        <View style={styles.navBar}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => setActiveBook(null)}>
-            <Text style={styles.backBtnText}>✕ Đóng</Text>
-          </TouchableOpacity>
-          <Text style={styles.navTitle} numberOfLines={1}>{activeBook.title}</Text>
-          <Text style={styles.navPages}>Trang {page} / {activeBook.pageCount}</Text>
-        </View>
+        {!isFullScreen && (
+          <View style={styles.navBar}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => { setActiveBook(null); setIsFullScreen(false); }}>
+              <Text style={styles.backBtnText}>✕ Đóng</Text>
+            </TouchableOpacity>
+            <Text style={styles.navTitle} numberOfLines={1}>{activeBook.title}</Text>
+            <View style={styles.navRight}>
+              <Text style={styles.navPages}>Trang {page} / {activeBook.pageCount}</Text>
+              <TouchableOpacity style={styles.fullScreenBtn} onPress={() => setIsFullScreen(true)}>
+                <Text style={styles.fullScreenBtnText}>⤢</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* The Bilingual split view reader */}
         <BilingualReader
@@ -117,26 +125,29 @@ export default function App() {
           page={page}
           serverUrl={serverUrl}
           token={token}
+          onToggleFullScreen={() => setIsFullScreen(prev => !prev)}
         />
 
         {/* Footer pagination */}
-        <View style={styles.paginationBar}>
-          <TouchableOpacity 
-            style={[styles.pageBtn, page <= 1 && styles.pageBtnDisabled]} 
-            onPress={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page <= 1}
-          >
-            <Text style={styles.pageBtnText}>◀ Trang Trước</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.pageBtn, page >= activeBook.pageCount && styles.pageBtnDisabled]} 
-            onPress={() => setPage(p => Math.min(activeBook.pageCount, p + 1))}
-            disabled={page >= activeBook.pageCount}
-          >
-            <Text style={styles.pageBtnText}>Trang Tiếp ▶</Text>
-          </TouchableOpacity>
-        </View>
+        {!isFullScreen && (
+          <View style={styles.paginationBar}>
+            <TouchableOpacity 
+              style={[styles.pageBtn, page <= 1 && styles.pageBtnDisabled]} 
+              onPress={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              <Text style={styles.pageBtnText}>◀ Trang Trước</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.pageBtn, page >= activeBook.pageCount && styles.pageBtnDisabled]} 
+              onPress={() => setPage(p => Math.min(activeBook.pageCount, p + 1))}
+              disabled={page >= activeBook.pageCount}
+            >
+              <Text style={styles.pageBtnText}>Trang Tiếp ▶</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </SafeAreaView>
     );
   }
@@ -315,9 +326,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: 10,
   },
+  navRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   navPages: {
     color: '#94a3b8',
     fontSize: 13,
+    marginRight: 15,
+  },
+  fullScreenBtn: {
+    padding: 5,
+  },
+  fullScreenBtnText: {
+    color: '#f8fafc',
+    fontSize: 18,
+    fontWeight: '600',
   },
   paginationBar: {
     flexDirection: 'row',

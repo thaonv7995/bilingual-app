@@ -48,6 +48,7 @@ enum HighlightMessage {
     case textSelected(selectionInfo: SelectionInfo)
     case highlightClicked(id: String, rect: CGRect?)
     case clearSelection
+    case toggleFullScreen
 }
 
 enum VocaWebAction {
@@ -152,7 +153,7 @@ struct BilingualWebView: UIViewRepresentable {
                         }
                         body, body.book-standalone {
                             margin: 0 !important;
-                            padding: 24px 24px 40px 24px !important;
+                            padding: 0 !important;
                             width: 100% !important;
                             max-width: 100% !important;
                             height: auto !important;
@@ -429,6 +430,30 @@ struct BilingualWebView: UIViewRepresentable {
 
         document.addEventListener('mouseup', handleSelectionEnd);
         document.addEventListener('touchend', handleSelectionEnd);
+
+        let lastTapTime = 0;
+        function handleDoubleTap(e) {
+            if (e.target && typeof e.target.closest === 'function' && e.target.closest('.voca-lookup-panel')) {
+                return;
+            }
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTapTime;
+            if (tapLength < 400 && tapLength > 0) {
+                // Double tap detected
+                window.webkit.messageHandlers.iosListener.postMessage(JSON.stringify({
+                    type: 'toggleFullScreen'
+                }));
+                // Prevent default to stop zooming
+                if (e.cancelable) e.preventDefault();
+            }
+            lastTapTime = currentTime;
+        }
+
+        document.addEventListener('touchstart', function(e) {
+            if (e.touches.length === 1) {
+                handleDoubleTap(e);
+            }
+        }, {passive: false});
 
         function handleSelectionEnd(e) {
             setTimeout(() => {
@@ -791,6 +816,7 @@ struct BilingualWebView: UIViewRepresentable {
         webView.isOpaque = true
         webView.backgroundColor = UIColor(red: 249/255, green: 247/255, blue: 241/255, alpha: 1.0)
         webView.scrollView.backgroundColor = UIColor(red: 249/255, green: 247/255, blue: 241/255, alpha: 1.0)
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         
         // Register observer for programmatical scrolling
         NotificationCenter.default.addObserver(
@@ -1093,6 +1119,8 @@ struct BilingualWebView: UIViewRepresentable {
                             if let sId = json["sentenceId"] as? String {
                                 parent.onSentenceClicked(sId)
                             }
+                        } else if type == "toggleFullScreen" {
+                            parent.onHighlightMessage(.toggleFullScreen)
                         } else if type == "clearSelection" {
                             parent.onHighlightMessage(.clearSelection)
                             parent.onSentenceClicked(nil)
