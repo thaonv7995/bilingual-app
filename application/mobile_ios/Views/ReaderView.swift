@@ -93,26 +93,8 @@ struct ReaderView: View {
             
             HStack(spacing: 0) {
                 // Main Reading Pane
-                VStack(spacing: 0) {
-                    // Custom Slim Top Navigation Bar
-                    if !isFullScreen {
-                        ReaderHeaderView(
-                            book: book,
-                            useDoubleSided: useDoubleSided,
-                            page: $page,
-                            viewMode: $viewMode,
-                            isChatOpen: $isChatOpen,
-                            isPencilModeActive: $isPencilModeActive,
-                            showJumpToPageDialog: $showJumpToPageDialog,
-                            inputPageString: $inputPageString,
-                            isFullScreen: $isFullScreen,
-                            onDismiss: { dismiss() }
-                        )
-                    }
-                    
-                    // Reading Area
-                        ZStack {
-                            Color(hex: "0f172a").ignoresSafeArea()
+                ZStack {
+                    Color(hex: "0f172a").ignoresSafeArea()
                             
                             if !isReadyToRender {
                                 ProgressView()
@@ -155,22 +137,22 @@ struct ReaderView: View {
                                         layout {
                                             if isEnFirst {
                                                 renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
-                                                    .padding(.leading, isFullScreen ? 0 : (isHorizontal ? 10 : 0))
+                                                    .padding(.leading, isHorizontal ? 10 : 0)
                                                     .padding(.trailing, isHorizontal ? 2 : 0)
-                                                    .padding(.vertical, isFullScreen ? 0 : 6)
+                                                    .padding(.vertical, 0)
                                                 renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
                                                     .padding(.leading, isHorizontal ? 2 : 0)
-                                                    .padding(.trailing, isFullScreen ? 0 : (isHorizontal ? 10 : 0))
-                                                    .padding(.vertical, isFullScreen ? 0 : 6)
+                                                    .padding(.trailing, isHorizontal ? 10 : 0)
+                                                    .padding(.vertical, 0)
                                             } else {
                                                 renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
-                                                    .padding(.leading, isFullScreen ? 0 : (isHorizontal ? 10 : 0))
+                                                    .padding(.leading, isHorizontal ? 10 : 0)
                                                     .padding(.trailing, isHorizontal ? 2 : 0)
-                                                    .padding(.vertical, isFullScreen ? 0 : 6)
+                                                    .padding(.vertical, 0)
                                                 renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
                                                     .padding(.leading, isHorizontal ? 2 : 0)
-                                                    .padding(.trailing, isFullScreen ? 0 : (isHorizontal ? 10 : 0))
-                                                    .padding(.vertical, isFullScreen ? 0 : 6)
+                                                    .padding(.trailing, isHorizontal ? 10 : 0)
+                                                    .padding(.vertical, 0)
                                             }
                                         }
                                         .ignoresSafeArea()
@@ -189,10 +171,10 @@ struct ReaderView: View {
                                     ) { p in
                                         let isLeft = p % 2 == 1
                                         renderWebView(lang: "en", p: p, isDoubleSided: useDoubleSided, containerMode: "en")
-                                            .padding(.top, isFullScreen ? 0 : 6)
-                                            .padding(.bottom, isFullScreen ? 0 : 6)
-                                            .padding(.leading, isFullScreen ? 0 : (useDoubleSided ? (isLeft ? 10 : 0) : 0))
-                                            .padding(.trailing, isFullScreen ? 0 : (useDoubleSided ? (isLeft ? 0 : 10) : 0))
+                                            .padding(.top, 0)
+                                            .padding(.bottom, 0)
+                                            .padding(.leading, useDoubleSided ? (isLeft ? 10 : 0) : 0)
+                                            .padding(.trailing, useDoubleSided ? (isLeft ? 0 : 10) : 0)
                                             .ignoresSafeArea()
                                     }
                                     .id("en_\(useDoubleSided)")
@@ -209,10 +191,10 @@ struct ReaderView: View {
                                     ) { p in
                                         let isLeft = p % 2 == 1
                                         renderWebView(lang: "vi", p: p, isDoubleSided: useDoubleSided, containerMode: "vi")
-                                            .padding(.top, isFullScreen ? 0 : 6)
-                                            .padding(.bottom, isFullScreen ? 0 : 6)
-                                            .padding(.leading, isFullScreen ? 0 : (useDoubleSided ? (isLeft ? 10 : 0) : 0))
-                                            .padding(.trailing, isFullScreen ? 0 : (useDoubleSided ? (isLeft ? 0 : 10) : 0))
+                                            .padding(.top, 0)
+                                            .padding(.bottom, 0)
+                                            .padding(.leading, useDoubleSided ? (isLeft ? 10 : 0) : 0)
+                                            .padding(.trailing, useDoubleSided ? (isLeft ? 0 : 10) : 0)
                                             .ignoresSafeArea()
                                     }
                                     .id("vi_\(useDoubleSided)")
@@ -232,6 +214,26 @@ struct ReaderView: View {
                         .onChange(of: useDoubleSided) { readerUsesDoubleSided = $0 }
                         .onChange(of: viewMode) { _ in readerUsesDoubleSided = useDoubleSided }
                         .onChange(of: isChatOpen) { _ in readerUsesDoubleSided = useDoubleSided }
+                        .scaleEffect(isFullScreen ? 1.0 : 0.95)
+                        .offset(y: isFullScreen ? 0 : 15)
+                        .overlay(alignment: .top) {
+                            if !isFullScreen {
+                                ReaderHeaderView(
+                                    book: book,
+                                    useDoubleSided: useDoubleSided,
+                                    page: $page,
+                                    viewMode: $viewMode,
+                                    isChatOpen: $isChatOpen,
+                                    isPencilModeActive: $isPencilModeActive,
+                                    showJumpToPageDialog: $showJumpToPageDialog,
+                                    inputPageString: $inputPageString,
+                                    isFullScreen: $isFullScreen,
+                                    onDismiss: { dismiss() }
+                                )
+                                .padding(.top, 5)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                            }
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     
