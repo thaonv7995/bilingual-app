@@ -93,7 +93,8 @@ struct ReaderView: View {
             
             HStack(spacing: 0) {
                 // Main Reading Pane
-                ZStack {
+                ZStack(alignment: .top) {
+                    ZStack {
                     Color(hex: "0f172a").ignoresSafeArea()
                             
                             if !isReadyToRender {
@@ -231,26 +232,29 @@ struct ReaderView: View {
                         .onChange(of: useDoubleSided) { readerUsesDoubleSided = $0 }
                         .onChange(of: viewMode) { _ in readerUsesDoubleSided = useDoubleSided }
                         .onChange(of: isChatOpen) { _ in readerUsesDoubleSided = useDoubleSided }
-                        .scaleEffect(isFullScreen ? 1.0 : 0.95)
-                        .offset(y: isFullScreen ? 0 : 15)
-                        .overlay(alignment: .top) {
-                            if !isFullScreen {
-                                ReaderHeaderView(
-                                    book: book,
-                                    useDoubleSided: useDoubleSided,
-                                    page: $page,
-                                    viewMode: $viewMode,
-                                    isChatOpen: $isChatOpen,
-                                    isPencilModeActive: $isPencilModeActive,
-                                    showJumpToPageDialog: $showJumpToPageDialog,
-                                    inputPageString: $inputPageString,
-                                    isFullScreen: $isFullScreen,
-                                    onDismiss: { dismiss() }
-                                )
-                                .padding(.top, 5)
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                            }
-                        }
+                        .scaleEffect(isFullScreen ? 1.0 : 0.94)
+                        .offset(y: isFullScreen ? 0 : 20)
+                        .clipShape(RoundedRectangle(cornerRadius: isFullScreen ? 0 : 16, style: .continuous))
+                        .shadow(color: Color.black.opacity(isFullScreen ? 0 : 0.4), radius: isFullScreen ? 0 : 20, x: 0, y: 10)
+                    
+                    // Header nằm ĐỘC LẬP bên trên, không bị Scale
+                    if !isFullScreen {
+                        ReaderHeaderView(
+                            book: book,
+                            useDoubleSided: useDoubleSided,
+                            page: $page,
+                            viewMode: $viewMode,
+                            isChatOpen: $isChatOpen,
+                            isPencilModeActive: $isPencilModeActive,
+                            showJumpToPageDialog: $showJumpToPageDialog,
+                            inputPageString: $inputPageString,
+                            isFullScreen: $isFullScreen,
+                            onDismiss: { dismiss() }
+                        )
+                        .padding(.top, 5)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
                     .frame(maxWidth: .infinity)
                     
                     // Slide-in AI Assistant Sidebar (For large screens)
