@@ -137,21 +137,21 @@ struct ReaderView: View {
                                         layout {
                                             if isEnFirst {
                                                 renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
-                                                    .padding(.leading, isHorizontal ? 10 : 0)
+                                                    .padding(.leading, 0)
                                                     .padding(.trailing, isHorizontal ? 2 : 0)
                                                     .padding(.vertical, 0)
                                                 renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
                                                     .padding(.leading, isHorizontal ? 2 : 0)
-                                                    .padding(.trailing, isHorizontal ? 10 : 0)
+                                                    .padding(.trailing, 0)
                                                     .padding(.vertical, 0)
                                             } else {
                                                 renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
-                                                    .padding(.leading, isHorizontal ? 10 : 0)
+                                                    .padding(.leading, 0)
                                                     .padding(.trailing, isHorizontal ? 2 : 0)
                                                     .padding(.vertical, 0)
                                                 renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
                                                     .padding(.leading, isHorizontal ? 2 : 0)
-                                                    .padding(.trailing, isHorizontal ? 10 : 0)
+                                                    .padding(.trailing, 0)
                                                     .padding(.vertical, 0)
                                             }
                                         }
@@ -173,8 +173,8 @@ struct ReaderView: View {
                                         renderWebView(lang: "en", p: p, isDoubleSided: useDoubleSided, containerMode: "en")
                                             .padding(.top, 0)
                                             .padding(.bottom, 0)
-                                            .padding(.leading, useDoubleSided ? (isLeft ? 10 : 0) : 0)
-                                            .padding(.trailing, useDoubleSided ? (isLeft ? 0 : 10) : 0)
+                                            .padding(.leading, 0)
+                                            .padding(.trailing, 0)
                                             .ignoresSafeArea()
                                     }
                                     .id("en_\(useDoubleSided)")
@@ -193,8 +193,8 @@ struct ReaderView: View {
                                         renderWebView(lang: "vi", p: p, isDoubleSided: useDoubleSided, containerMode: "vi")
                                             .padding(.top, 0)
                                             .padding(.bottom, 0)
-                                            .padding(.leading, useDoubleSided ? (isLeft ? 10 : 0) : 0)
-                                            .padding(.trailing, useDoubleSided ? (isLeft ? 0 : 10) : 0)
+                                            .padding(.leading, 0)
+                                            .padding(.trailing, 0)
                                             .ignoresSafeArea()
                                     }
                                     .id("vi_\(useDoubleSided)")
@@ -234,7 +234,6 @@ struct ReaderView: View {
                                 .transition(.move(edge: .top).combined(with: .opacity))
                             }
                         }
-                    }
                     .frame(maxWidth: .infinity)
                     
                     // Slide-in AI Assistant Sidebar (For large screens)
