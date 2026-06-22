@@ -314,6 +314,55 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
+function getVocaIconSvg(name) {
+  const icons = {
+    speaker: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M18.5 5.5a9 9 0 0 1 0 13"></path></svg>',
+  };
+  return icons[name] || '';
+}
+
+function setVocaButtonIcon(button, name) {
+  button.innerHTML = getVocaIconSvg(name);
+}
+
+function positionVocaLookupPanel(doc, panel, anchorRect) {
+  const margin = 12;
+  const gap = 12;
+  const viewport = doc.documentElement;
+  const vw = viewport.clientWidth || doc.defaultView?.innerWidth || 0;
+  const vh = viewport.clientHeight || doc.defaultView?.innerHeight || 0;
+  const anchorLeft = Number(anchorRect?.left) || 0;
+  const anchorTop = Number(anchorRect?.top) || 0;
+  const anchorWidth = Number(anchorRect?.width) || 0;
+  const anchorHeight = Number(anchorRect?.height) || 0;
+
+  panel.style.transform = 'none';
+  panel.style.visibility = 'hidden';
+  panel.style.left = '0px';
+  panel.style.top = '0px';
+  doc.body.appendChild(panel);
+
+  const panelWidth = panel.offsetWidth;
+  const panelHeight = panel.offsetHeight;
+  const anchorCenterX = anchorLeft + anchorWidth / 2;
+
+  let top = anchorTop - gap - panelHeight;
+  if (top < margin) {
+    top = anchorTop + anchorHeight + gap;
+  }
+  if (top + panelHeight > vh - margin) {
+    top = Math.max(margin, vh - margin - panelHeight);
+  }
+
+  let left = anchorCenterX - panelWidth / 2;
+  const maxLeft = Math.max(margin, vw - margin - panelWidth);
+  left = Math.max(margin, Math.min(maxLeft, left));
+
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+  panel.style.visibility = 'visible';
+}
+
 export function removeVocaLookupPanel(doc) {
   doc?.querySelectorAll('.voca-lookup-panel').forEach((el) => el.remove());
 }
@@ -354,7 +403,8 @@ export function showVocaLookupPanel(doc, anchorRect, card) {
   voiceBtn.type = 'button';
   voiceBtn.className = 'voca-lookup-panel__voice';
   voiceBtn.title = 'Play pronunciation';
-  voiceBtn.textContent = '🔊';
+  voiceBtn.setAttribute('aria-label', 'Play pronunciation');
+  setVocaButtonIcon(voiceBtn, 'speaker');
   voiceBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     voiceBtn.disabled = true;
@@ -365,7 +415,7 @@ export function showVocaLookupPanel(doc, anchorRect, card) {
       showVocaToast(err instanceof Error ? err.message : 'Cannot play audio.', { error: true });
     } finally {
       voiceBtn.disabled = false;
-      voiceBtn.textContent = '🔊';
+      setVocaButtonIcon(voiceBtn, 'speaker');
     }
   });
   head.append(wordEl, voiceBtn);
@@ -389,7 +439,7 @@ export function showVocaLookupPanel(doc, anchorRect, card) {
 
   panel.addEventListener('mousedown', (e) => e.stopPropagation());
   panel.addEventListener('mouseup', (e) => e.stopPropagation());
-  doc.body.appendChild(panel);
+  positionVocaLookupPanel(doc, panel, anchorRect);
 }
 
 function showVocaLookupMultiPanel(doc, anchorRect, query, cards) {
@@ -436,7 +486,7 @@ function showVocaLookupMultiPanel(doc, anchorRect, query, cards) {
   panel.append(queryEl, hintEl, list);
   panel.addEventListener('mousedown', (e) => e.stopPropagation());
   panel.addEventListener('mouseup', (e) => e.stopPropagation());
-  doc.body.appendChild(panel);
+  positionVocaLookupPanel(doc, panel, anchorRect);
 }
 
 export function showVocaNotFoundPanel(doc, anchorRect, word) {
@@ -475,7 +525,7 @@ export function showVocaNotFoundPanel(doc, anchorRect, word) {
   panel.append(wordEl, hintEl, addBtn);
   panel.addEventListener('mousedown', (e) => e.stopPropagation());
   panel.addEventListener('mouseup', (e) => e.stopPropagation());
-  doc.body.appendChild(panel);
+  positionVocaLookupPanel(doc, panel, anchorRect);
 }
 
 function removeReaderVocaLookupClass(doc) {
@@ -487,22 +537,40 @@ export function getVocaLookupPanelCss() {
     .voca-lookup-panel {
       position: fixed;
       z-index: 2147483000;
-      transform: translate(-50%, calc(-100% - 12px));
+      box-sizing: border-box;
       min-width: 200px;
       max-width: min(300px, calc(100vw - 24px));
       padding: 10px 12px;
-      border-radius: 10px;
-      background: #ffffff;
+      border-radius: 12px;
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+      background-image: none !important;
       border: 1px solid rgba(15, 23, 42, 0.18);
-      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.9) inset;
+      box-shadow: 0 16px 36px rgba(15, 23, 42, 0.24), 0 0 0 1px rgba(255, 255, 255, 0.92) inset;
       color: #0f172a;
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       font-size: 13px;
-      opacity: 1;
+      opacity: 1 !important;
       isolation: isolate;
+      overflow: hidden;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+    }
+    .voca-lookup-panel::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      border-radius: inherit;
+      background: #ffffff;
+      pointer-events: none;
+    }
+    .voca-lookup-panel > * {
+      position: relative;
+      z-index: 1;
     }
     .voca-lookup-panel--empty { opacity: 1; }
-    .voca-lookup-panel--multi { max-width: 320px; }
+    .voca-lookup-panel--multi { max-width: min(320px, calc(100vw - 24px)); }
     .voca-lookup-panel__query {
       font-weight: 700; font-size: 13px; margin-bottom: 2px;
     }
@@ -542,10 +610,12 @@ export function getVocaLookupPanelCss() {
     .voca-lookup-panel__create:hover:not(:disabled) { background: #1d4ed8; }
     .voca-lookup-panel__create:disabled { opacity: 0.65; cursor: wait; }
     .voca-lookup-panel__voice {
-      border: 1px solid rgba(2, 132, 199, 0.18); background: #e0f2fe; border-radius: 7px; width: 30px; height: 30px;
+      border: 1px solid rgba(2, 132, 199, 0.18); background: #e0f2fe; border-radius: 8px; width: 30px; height: 30px;
       cursor: pointer; font-size: 16px; line-height: 1; color: #075985;
       display: inline-flex; align-items: center; justify-content: center;
+      padding: 0; flex-shrink: 0;
     }
+    .voca-lookup-panel__voice svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .voca-lookup-panel__voice:disabled { opacity: 0.5; cursor: wait; }
     .voca-lookup-panel__ipa { margin-top: 4px; color: #475569; font-size: 12px; }
     .voca-lookup-panel__meaning { margin-top: 6px; color: #1e293b; line-height: 1.45; }

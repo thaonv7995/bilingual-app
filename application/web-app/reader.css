@@ -1427,26 +1427,42 @@ body.is-resizing .reader-iframe {
   transform: translate(-50%, -100%);
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 9px;
-  background: #ffffff;
-  border: 1px solid rgba(15, 23, 42, 0.14);
+  gap: 7px;
+  padding: 8px 10px;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border: 1px solid rgba(15, 23, 42, 0.16);
   border-radius: 12px;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.9) inset;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.24), 0 0 0 1px rgba(255, 255, 255, 0.92) inset;
   animation: highlightPopupIn 0.18s cubic-bezier(0.25, 0.8, 0.25, 1);
   isolation: isolate;
+  opacity: 1 !important;
+  overflow: hidden;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.highlight-popup::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: #ffffff;
+  pointer-events: none;
 }
 
 .highlight-popup__colors {
   display: flex;
-  gap: 6px;
+  gap: 7px;
 }
 
 .highlight-popup__color-btn {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  border: 2px solid rgba(15, 23, 42, 0.16);
+  border: 2px solid rgba(15, 23, 42, 0.18);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 1px 2px rgba(15, 23, 42, 0.16);
   cursor: pointer;
   transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
@@ -1464,10 +1480,9 @@ body.is-resizing .reader-iframe {
   background: #f8fafc;
   border: 1px solid rgba(15, 23, 42, 0.14);
   color: #0f172a;
-  width: 30px;
-  height: 30px;
+  width: 31px;
+  height: 31px;
   border-radius: 8px;
-  font-size: 16px;
   line-height: 1;
   display: inline-flex;
   align-items: center;
@@ -1483,6 +1498,16 @@ body.is-resizing .reader-iframe {
   background: #e0f2fe;
   border-color: rgba(2, 132, 199, 0.24);
   transform: translateY(-1px);
+}
+
+.highlight-popup__icon-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .highlight-popup__icon-btn--danger:hover {

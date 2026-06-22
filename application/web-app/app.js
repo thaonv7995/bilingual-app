@@ -38,6 +38,16 @@ const HIGHLIGHT_COLORS = [
   { id: 'green', value: '#86efac', label: 'Xanh lá' },
 ];
 
+const HIGHLIGHT_TOOLBAR_ICONS = {
+  note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>',
+  book: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H21"></path><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H21v20H6.5A2.5 2.5 0 0 1 4 19.5Z"></path><path d="M8 6h8"></path><path d="M8 10h6"></path></svg>',
+  trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path></svg>',
+};
+
+function setHighlightToolbarIcon(button, iconName) {
+  button.innerHTML = HIGHLIGHT_TOOLBAR_ICONS[iconName] || '';
+}
+
 const PARAGRAPH_SELECTOR =
   'p, .chapter-start, .no-indent, h1, h2, h3, h4, h5, h6, li, blockquote, .section-title, .action-header, .action-title';
 
@@ -3438,7 +3448,9 @@ function injectHighlightCSS(doc, isEnglish) {
     .book-page, .book-page--sheet, .sheet-flow {
       background-color: transparent !important;
     }
-    div, p, h1, h2, h3, h4, h5, h6, ul, ol, li {
+    main div, main p, main h1, main h2, main h3, main h4, main h5, main h6, main ul, main ol, main li,
+    article div, article p, article h1, article h2, article h3, article h4, article h5, article h6, article ul, article ol, article li,
+    .prose-page div, .prose-page p, .prose-page h1, .prose-page h2, .prose-page h3, .prose-page h4, .prose-page h5, .prose-page h6, .prose-page ul, .prose-page ol, .prose-page li {
       background-color: transparent !important;
       color: inherit !important;
     }
@@ -3487,24 +3499,39 @@ function injectHighlightCSS(doc, isEnglish) {
       transform: translate(-50%, -100%);
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 7px 9px;
-      background: #ffffff;
-      border: 1px solid rgba(15, 23, 42, 0.14);
+      gap: 7px;
+      padding: 8px 10px;
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+      background-image: none !important;
+      border: 1px solid rgba(15, 23, 42, 0.16);
       border-radius: 12px;
-      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.9) inset;
+      box-shadow: 0 16px 34px rgba(15, 23, 42, 0.24), 0 0 0 1px rgba(255, 255, 255, 0.92) inset;
       animation: readerToolbarIn 0.15s ease;
       isolation: isolate;
+      opacity: 1 !important;
+      overflow: hidden;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+    }
+    .reader-highlight-toolbar::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      border-radius: inherit;
+      background: #ffffff;
+      pointer-events: none;
     }
     .reader-highlight-toolbar__colors {
       display: flex;
-      gap: 6px;
+      gap: 7px;
     }
     .reader-highlight-toolbar__color {
       width: 24px;
       height: 24px;
       border-radius: 50%;
-      border: 2px solid rgba(15, 23, 42, 0.16);
+      border: 2px solid rgba(15, 23, 42, 0.18);
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 1px 2px rgba(15, 23, 42, 0.16);
       cursor: pointer;
       padding: 0;
@@ -3517,13 +3544,12 @@ function injectHighlightCSS(doc, isEnglish) {
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.85), 0 2px 5px rgba(15, 23, 42, 0.22);
     }
     .reader-highlight-toolbar__icon {
-      width: 30px;
-      height: 30px;
+      width: 31px;
+      height: 31px;
       border-radius: 8px;
       border: 1px solid rgba(15, 23, 42, 0.14);
       background: #f8fafc;
       color: #0f172a;
-      font-size: 16px;
       line-height: 1;
       cursor: pointer;
       padding: 0;
@@ -3538,6 +3564,22 @@ function injectHighlightCSS(doc, isEnglish) {
       background: #e0f2fe;
       border-color: rgba(2, 132, 199, 0.24);
       transform: translateY(-1px);
+    }
+    .reader-highlight-toolbar__icon svg {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .reader-highlight-toolbar__icon--danger {
+      color: #b91c1c;
+    }
+    .reader-highlight-toolbar__icon--danger:hover {
+      background: #fee2e2;
+      border-color: rgba(239, 68, 68, 0.28);
     }
     .reader-highlight-sticky {
       position: fixed;
@@ -3843,7 +3885,8 @@ function showReaderHighlightToolbar(doc, anchorRect, options) {
   noteBtn.type = 'button';
   noteBtn.className = 'reader-highlight-toolbar__icon';
   noteBtn.title = 'Ghi chú';
-  noteBtn.textContent = '📝';
+  noteBtn.setAttribute('aria-label', 'Ghi chú');
+  setHighlightToolbarIcon(noteBtn, 'note');
   noteBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     toolbar.remove();
@@ -3864,7 +3907,8 @@ function showReaderHighlightToolbar(doc, anchorRect, options) {
     lookupBtn.type = 'button';
     lookupBtn.className = 'reader-highlight-toolbar__icon';
     lookupBtn.title = 'Tra cứu Voca';
-    lookupBtn.textContent = '📖';
+    lookupBtn.setAttribute('aria-label', 'Tra cứu Voca');
+    setHighlightToolbarIcon(lookupBtn, 'book');
     lookupBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       toolbar.remove();
@@ -3887,9 +3931,10 @@ function showReaderHighlightToolbar(doc, anchorRect, options) {
   if (options.mode === 'edit') {
     const delBtn = doc.createElement('button');
     delBtn.type = 'button';
-    delBtn.className = 'reader-highlight-toolbar__icon';
+    delBtn.className = 'reader-highlight-toolbar__icon reader-highlight-toolbar__icon--danger';
     delBtn.title = 'Xóa';
-    delBtn.textContent = '🗑';
+    delBtn.setAttribute('aria-label', 'Xóa');
+    setHighlightToolbarIcon(delBtn, 'trash');
     delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       highlightAppContext?.deleteHighlight?.(options.highlightId);
