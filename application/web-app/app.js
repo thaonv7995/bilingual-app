@@ -3483,49 +3483,61 @@ function injectHighlightCSS(doc, isEnglish) {
     }
     .reader-highlight-toolbar {
       position: fixed;
-      z-index: 9999;
+      z-index: 2147482999;
       transform: translate(-50%, -100%);
       display: flex;
       align-items: center;
-      gap: 4px;
-      padding: 5px 7px;
-      background: rgba(17, 24, 39, 0.92);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 10px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+      gap: 6px;
+      padding: 7px 9px;
+      background: #ffffff;
+      border: 1px solid rgba(15, 23, 42, 0.14);
+      border-radius: 12px;
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.9) inset;
       animation: readerToolbarIn 0.15s ease;
+      isolation: isolate;
     }
     .reader-highlight-toolbar__colors {
       display: flex;
-      gap: 4px;
+      gap: 6px;
     }
     .reader-highlight-toolbar__color {
-      width: 18px;
-      height: 18px;
+      width: 24px;
+      height: 24px;
       border-radius: 50%;
-      border: 1.5px solid rgba(255, 255, 255, 0.3);
+      border: 2px solid rgba(15, 23, 42, 0.16);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 1px 2px rgba(15, 23, 42, 0.16);
       cursor: pointer;
       padding: 0;
+      flex-shrink: 0;
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     }
     .reader-highlight-toolbar__color:hover {
       transform: scale(1.1);
+      border-color: rgba(15, 23, 42, 0.34);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.85), 0 2px 5px rgba(15, 23, 42, 0.22);
     }
     .reader-highlight-toolbar__icon {
-      width: 22px;
-      height: 22px;
-      border-radius: 6px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      background: rgba(255, 255, 255, 0.08);
-      font-size: 11px;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      border: 1px solid rgba(15, 23, 42, 0.14);
+      background: #f8fafc;
+      color: #0f172a;
+      font-size: 16px;
+      line-height: 1;
       cursor: pointer;
       padding: 0;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+      flex-shrink: 0;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
     }
     .reader-highlight-toolbar__icon:hover {
-      background: rgba(255, 255, 255, 0.16);
+      background: #e0f2fe;
+      border-color: rgba(2, 132, 199, 0.24);
+      transform: translateY(-1px);
     }
     .reader-highlight-sticky {
       position: fixed;

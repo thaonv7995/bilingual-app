@@ -486,20 +486,22 @@ export function getVocaLookupPanelCss() {
   return `
     .voca-lookup-panel {
       position: fixed;
-      z-index: 10000;
+      z-index: 2147483000;
       transform: translate(-50%, calc(-100% - 12px));
       min-width: 200px;
-      max-width: 280px;
+      max-width: min(300px, calc(100vw - 24px));
       padding: 10px 12px;
       border-radius: 10px;
-      background: rgba(255, 255, 255, 0.97);
-      border: 1px solid rgba(15, 23, 42, 0.12);
-      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+      background: #ffffff;
+      border: 1px solid rgba(15, 23, 42, 0.18);
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.9) inset;
       color: #0f172a;
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       font-size: 13px;
+      opacity: 1;
+      isolation: isolate;
     }
-    .voca-lookup-panel--empty { opacity: 0.95; }
+    .voca-lookup-panel--empty { opacity: 1; }
     .voca-lookup-panel--multi { max-width: 320px; }
     .voca-lookup-panel__query {
       font-weight: 700; font-size: 13px; margin-bottom: 2px;
@@ -540,8 +542,9 @@ export function getVocaLookupPanelCss() {
     .voca-lookup-panel__create:hover:not(:disabled) { background: #1d4ed8; }
     .voca-lookup-panel__create:disabled { opacity: 0.65; cursor: wait; }
     .voca-lookup-panel__voice {
-      border: 0; background: #e0f2fe; border-radius: 6px; width: 28px; height: 28px;
-      cursor: pointer; font-size: 14px; line-height: 1;
+      border: 1px solid rgba(2, 132, 199, 0.18); background: #e0f2fe; border-radius: 7px; width: 30px; height: 30px;
+      cursor: pointer; font-size: 16px; line-height: 1; color: #075985;
+      display: inline-flex; align-items: center; justify-content: center;
     }
     .voca-lookup-panel__voice:disabled { opacity: 0.5; cursor: wait; }
     .voca-lookup-panel__ipa { margin-top: 4px; color: #475569; font-size: 12px; }
