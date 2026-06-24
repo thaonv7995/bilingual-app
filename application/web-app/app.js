@@ -38,6 +38,21 @@ const HIGHLIGHT_COLORS = [
   { id: 'green', value: '#86efac', label: 'Xanh lá' },
 ];
 
+const READER_PAGE_WIDTH = 794;
+const READER_PAGE_HEIGHT = 1123;
+const READER_VIEWPORT_PADDING = 40;
+const READER_ZOOM_MIN = 0.5;
+const READER_ZOOM_MAX = 2;
+const READER_ZOOM_STEP = 0.1;
+
+function clampReaderZoom(scale, min = READER_ZOOM_MIN) {
+  return Math.min(READER_ZOOM_MAX, Math.max(min, scale));
+}
+
+function formatReaderZoom(scale) {
+  return `${Math.round(scale * 100)}%`;
+}
+
 const HIGHLIGHT_TOOLBAR_ICONS = {
   note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>',
   book: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H21"></path><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H21v20H6.5A2.5 2.5 0 0 1 4 19.5Z"></path><path d="M8 6h8"></path><path d="M8 10h6"></path></svg>',
@@ -410,6 +425,18 @@ function App() {
   const [layoutMode, setLayoutMode] = useState(() => {
     return localStorage.getItem('bilingual.reader.layoutMode') || 'en-vi';
   });
+  const [zoomMode, setZoomMode] = useState(() => {
+    const saved = localStorage.getItem('bilingual.reader.zoomMode');
+    if (['fit-page', 'fit-width', 'custom'].includes(saved)) return saved;
+    return ['en-over-vi', 'vi-over-en'].includes(layoutMode) ? 'fit-width' : 'fit-page';
+  });
+  const [manualZoom, setManualZoom] = useState(() => {
+    const saved = parseFloat(localStorage.getItem('bilingual.reader.zoomScale'));
+    return Number.isFinite(saved) ? clampReaderZoom(saved) : 1;
+  });
+  const zoomModeRef = useRef(zoomMode);
+  const manualZoomRef = useRef(manualZoom);
+  const currentZoomRef = useRef(manualZoom);
   const [fullBookText, setFullBookText] = useState('');
 
   // Authorized API Fetch wrapper for automatic access token silent refresh
@@ -712,6 +739,16 @@ function App() {
   }, [viewMode]);
 
   useEffect(() => {
+    zoomModeRef.current = zoomMode;
+    localStorage.setItem('bilingual.reader.zoomMode', zoomMode);
+  }, [zoomMode]);
+
+  useEffect(() => {
+    manualZoomRef.current = manualZoom;
+    localStorage.setItem('bilingual.reader.zoomScale', String(manualZoom));
+  }, [manualZoom]);
+
+  useEffect(() => {
     localStorage.setItem('bilingual.reader.chatOpen', chatOpen);
   }, [chatOpen]);
 
@@ -804,46 +841,113 @@ function App() {
     };
   }, []);
 
-  // --- Dynamic scaling for iframes to fit standard A4 dimension ---
+  // --- Dynamic scaling and user zoom for standard A4 pages ---
   const scaleIframes = () => {
     const wrappers = document.querySelectorAll('.iframe-wrapper');
-    const panesContainer = document.querySelector('.reader-panes');
-    const isVertical = panesContainer && (
-      panesContainer.classList.contains('layout-en-over-vi') || 
-      panesContainer.classList.contains('layout-vi-over-en')
-    );
+    let displayedScale = null;
 
     wrappers.forEach(wrapper => {
       const iframe = wrapper.querySelector('.reader-iframe');
-      if (!iframe) return;
+      const stage = wrapper.querySelector('.iframe-stage');
+      if (!iframe || !stage) return;
 
       const containerWidth = wrapper.clientWidth;
       const containerHeight = wrapper.clientHeight;
 
-      const targetWidth = 794;
-      const targetHeight = 1123;
-      const padding = 20;
+      const availableWidth = Math.max(containerWidth - READER_VIEWPORT_PADDING, 100);
+      const availableHeight = Math.max(containerHeight - READER_VIEWPORT_PADDING, 100);
+      const fitWidthScale = availableWidth / READER_PAGE_WIDTH;
+      const fitPageScale = Math.min(fitWidthScale, availableHeight / READER_PAGE_HEIGHT);
 
-      const availableWidth = Math.max(containerWidth - padding, 100);
-      const availableHeight = Math.max(containerHeight - padding, 100);
-
-      const scaleX = availableWidth / targetWidth;
-      const scaleY = availableHeight / targetHeight;
-      
-      // If layout is vertical stack, scale to fit the width only and scroll vertically
-      const scale = isVertical ? Math.min(scaleX, 1) : Math.min(scaleX, scaleY, 1);
+      let scale = manualZoomRef.current;
+      if (zoomModeRef.current === 'fit-page') scale = fitPageScale;
+      if (zoomModeRef.current === 'fit-width') scale = fitWidthScale;
+      scale = clampReaderZoom(scale, 0.2);
 
       iframe.style.transform = `scale(${scale})`;
-      iframe.style.width = `${targetWidth}px`;
-      iframe.style.height = `${targetHeight}px`;
+      iframe.style.width = `${READER_PAGE_WIDTH}px`;
+      iframe.style.height = `${READER_PAGE_HEIGHT}px`;
+      stage.style.width = `${READER_PAGE_WIDTH * scale}px`;
+      stage.style.height = `${READER_PAGE_HEIGHT * scale}px`;
+      wrapper.dataset.zoomScale = String(scale);
+      if (displayedScale === null) displayedScale = scale;
     });
+
+    if (displayedScale !== null) {
+      currentZoomRef.current = displayedScale;
+      document.querySelectorAll('.zoom-level').forEach(label => {
+        label.textContent = formatReaderZoom(displayedScale);
+      });
+    }
+  };
+
+  const selectZoomMode = (mode) => {
+    zoomModeRef.current = mode;
+    setZoomMode(mode);
+    requestAnimationFrame(scaleIframes);
+  };
+
+  const adjustReaderZoom = (direction) => {
+    const nextZoom = clampReaderZoom(
+      Math.round((currentZoomRef.current + direction * READER_ZOOM_STEP) * 100) / 100
+    );
+    zoomModeRef.current = 'custom';
+    manualZoomRef.current = nextZoom;
+    currentZoomRef.current = nextZoom;
+    setZoomMode('custom');
+    setManualZoom(nextZoom);
+    requestAnimationFrame(scaleIframes);
+  };
+
+  const handleZoomShortcut = (event) => {
+    if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const key = event.key.toLowerCase();
+      if (key === 'p') {
+        event.preventDefault();
+        selectZoomMode('fit-page');
+        return true;
+      }
+      if (key === 'w') {
+        event.preventDefault();
+        selectZoomMode('fit-width');
+        return true;
+      }
+    }
+
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return false;
+
+    if (event.key === '+' || event.key === '=') {
+      event.preventDefault();
+      adjustReaderZoom(1);
+      return true;
+    }
+    if (event.key === '-') {
+      event.preventDefault();
+      adjustReaderZoom(-1);
+      return true;
+    }
+    if (event.key === '0') {
+      event.preventDefault();
+      selectZoomMode('fit-page');
+      return true;
+    }
+    return false;
   };
 
   // Trigger scale adjustment on layout updates
   useEffect(() => {
     const timer = setTimeout(scaleIframes, 50);
     return () => clearTimeout(timer);
-  }, [viewMode, chatOpen, chatWidth, page, activeBook, layoutMode]);
+  }, [viewMode, chatOpen, chatWidth, page, activeBook, layoutMode, zoomMode, manualZoom]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      document.querySelectorAll('.iframe-wrapper').forEach(wrapper => {
+        wrapper.scrollTo({ top: 0, left: 0 });
+      });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [page]);
 
   // Handle window resizing
   useEffect(() => {
@@ -1059,6 +1163,8 @@ function App() {
         return;
       }
 
+      if (handleZoomShortcut(e)) return;
+
       if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
         e.preventDefault();
         setPage(p => Math.max(1, p - 1));
@@ -1103,6 +1209,8 @@ function App() {
 
         // Listen for keys inside the iframe to slide pages
         doc.addEventListener('keydown', (event) => {
+          if (handleZoomShortcut(event)) return;
+
           if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
             event.preventDefault();
             setPage(p => Math.max(1, p - 1));
@@ -2882,25 +2990,48 @@ TOOLS:
           <span class="reader-topbar__title">${activeBook.title}</span>
         </div>
 
-        <div class="reader-nav">
-          <button class="nav-btn" disabled=${page <= 1} onClick=${() => setPage(p => Math.max(1, p - 1))}>
-            ◀
-          </button>
-          <span class="page-indicator">
-            Trang
-            <input class="page-input" type="number" min="1" max=${activeBook.pageCount} value=${page} 
-              onChange=${(e) => {
-                let val = parseInt(e.target.value, 10);
-                if (isNaN(val) || val < 1) val = 1;
-                if (val > activeBook.pageCount) val = activeBook.pageCount;
-                setPage(val);
-              }}
-            />
-            / ${activeBook.pageCount}
-          </span>
-          <button class="nav-btn" disabled=${page >= activeBook.pageCount} onClick=${() => setPage(p => Math.min(activeBook.pageCount, p + 1))}>
-            ▶
-          </button>
+        <div class="reader-topbar__center">
+          <div class="reader-nav">
+            <button class="nav-btn page-nav__arrow" disabled=${page <= 1} onClick=${() => setPage(p => Math.max(1, p - 1))} title="Previous page" aria-label="Previous page">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m15 18-6-6 6-6"></path>
+              </svg>
+            </button>
+            <span class="page-indicator">
+              Trang
+              <input class="page-input" type="number" min="1" max=${activeBook.pageCount} value=${page}
+                onChange=${(e) => {
+                  let val = parseInt(e.target.value, 10);
+                  if (isNaN(val) || val < 1) val = 1;
+                  if (val > activeBook.pageCount) val = activeBook.pageCount;
+                  setPage(val);
+                }}
+              />
+              / ${activeBook.pageCount}
+            </span>
+            <button class="nav-btn page-nav__arrow" disabled=${page >= activeBook.pageCount} onClick=${() => setPage(p => Math.min(activeBook.pageCount, p + 1))} title="Next page" aria-label="Next page">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m9 18 6-6-6-6"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="reader-zoom-toolbar" role="group" aria-label="Page zoom controls">
+            <button class="zoom-step-btn" onClick=${() => adjustReaderZoom(-1)} title="Zoom out" aria-label="Zoom out">−</button>
+            <span class="zoom-level" aria-live="polite">${formatReaderZoom(manualZoom)}</span>
+            <button class="zoom-step-btn" onClick=${() => adjustReaderZoom(1)} title="Zoom in" aria-label="Zoom in">+</button>
+            <span class="zoom-toolbar-divider" aria-hidden="true"></span>
+            <button
+              class=${`zoom-fit-btn ${zoomMode === 'fit-page' ? 'active' : ''}`}
+              onClick=${() => selectZoomMode('fit-page')}
+              title="Fit the entire page (Shift+P)"
+            >Fit Page</button>
+            <button
+              class=${`zoom-fit-btn ${zoomMode === 'fit-width' ? 'active' : ''}`}
+              onClick=${() => selectZoomMode('fit-width')}
+              title="Fit page to available width (Shift+W)"
+            >Fit Width</button>
+          </div>
         </div>
 
         <div class="reader-topbar__right">
@@ -2937,22 +3068,24 @@ TOOLS:
             </svg>
           </button>
           
-          <button class="btn-icon" onClick=${openSettings} title="Cấu hình API Key">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1-1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-            </svg>
-          </button>
-          
           <div class="profile-menu-container ${profileDropdownOpen ? 'open' : ''}">
-            <button class="profile-trigger-btn" style="padding: 6px 12px; border-radius: 16px;" onClick=${(e) => {
-              e.stopPropagation();
-              setProfileDropdownOpen(!profileDropdownOpen);
-            }}>
-              <div class="profile-avatar" style="width: 20px; height: 20px; font-size: 10px;">${username.slice(0, 2)}</div>
-              <span style="font-size: 13px;">${username}</span>
+            <button
+              class="profile-trigger-btn profile-trigger-btn--reader"
+              aria-haspopup="menu"
+              aria-expanded=${profileDropdownOpen}
+              title="Account menu"
+              onClick=${(e) => {
+                e.stopPropagation();
+                setProfileDropdownOpen(!profileDropdownOpen);
+              }}
+            >
+              <div class="profile-avatar">${username.slice(0, 2)}</div>
+              <span class="profile-trigger-btn__name">${username}</span>
+              <svg class="profile-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6"></path>
+              </svg>
             </button>
-            <div class="profile-dropdown-menu" onClick=${(e) => e.stopPropagation()}>
+            <div class="profile-dropdown-menu" role="menu" onClick=${(e) => e.stopPropagation()}>
               ${isAdmin && html`
                 <a href="/admin" class="profile-dropdown-item" target="_blank">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2999,7 +3132,9 @@ TOOLS:
             <div class="reader-pane" id="en-pane">
               <span class="pane-label">EN</span>
               <div class="iframe-wrapper">
-                <iframe class="reader-iframe en-pane-iframe" src=${enPageUrl} key=${`en-${page}`} onLoad=${handleIframeLoad} scrolling="no" />
+                <div class="iframe-stage">
+                  <iframe class="reader-iframe en-pane-iframe" src=${enPageUrl} key=${`en-${page}`} onLoad=${handleIframeLoad} scrolling="no" />
+                </div>
               </div>
             </div>
           `}
@@ -3009,10 +3144,13 @@ TOOLS:
             <div class="reader-pane" id="vi-pane">
               <span class="pane-label">VI</span>
               <div class="iframe-wrapper">
-                <iframe class="reader-iframe vi-pane-iframe" src=${viPageUrl} key=${`vi-${page}`} onLoad=${handleIframeLoad} scrolling="no" />
+                <div class="iframe-stage">
+                  <iframe class="reader-iframe vi-pane-iframe" src=${viPageUrl} key=${`vi-${page}`} onLoad=${handleIframeLoad} scrolling="no" />
+                </div>
               </div>
             </div>
           `}
+
         </div>
 
         <!-- Chat Sidebar Drawer -->
