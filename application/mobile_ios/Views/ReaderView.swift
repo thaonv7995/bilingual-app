@@ -1916,6 +1916,7 @@ struct ReaderChatPanelView: View {
     @State private var suggestedPrompts: [(icon: String, title: String, prompt: String)] = []
     @State private var suggestionsPage: Int = -1 // track which page suggestions were generated for
     @State private var isLoadingSuggestions = false
+    @State private var keyboardHeight: CGFloat = 0
     
     // Settings States
     @AppStorage("aiProvider") private var aiProvider: String = "openai"
@@ -1992,6 +1993,18 @@ struct ReaderChatPanelView: View {
         .background(Color(hex: "0b0f19"))
         .onAppear {
             loadChatHistory()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
+            if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    self.keyboardHeight = keyboardFrame.height
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeOut(duration: 0.25)) {
+                self.keyboardHeight = 0
+            }
         }
     }
     
@@ -2124,6 +2137,7 @@ struct ReaderChatPanelView: View {
                 chatInputArea()
             }
         }
+        .padding(.bottom, isLargeScreen ? keyboardHeight : 0)
     }
     
     @ViewBuilder

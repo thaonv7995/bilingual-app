@@ -1,7 +1,7 @@
 // sw.js - Service Worker for Bilingual Reader Offline Caching
 
-const CORE_CACHE_NAME = 'bilingual-reader-core-v35';
-const BOOK_CACHE_NAME = 'bilingual-reader-books';
+const CORE_CACHE_NAME = 'bilingual-reader-core-v36';
+const BOOK_CACHE_NAME = 'bilingual-reader-books-v2';
 
 // Core assets to pre-cache on install
 const STATIC_ASSETS = [
@@ -33,18 +33,20 @@ self.addEventListener('install', (event) => {
 // Activate event: Clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CORE_CACHE_NAME && cacheName !== BOOK_CACHE_NAME) {
-            console.log(`[Service Worker] Deleting old cache: ${cacheName}`);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
+    Promise.all([
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            if (cacheName !== CORE_CACHE_NAME && cacheName !== BOOK_CACHE_NAME) {
+              console.log(`[Service Worker] Deleting old cache: ${cacheName}`);
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      }),
+      self.clients.claim(),
+    ])
   );
-  self.clients.claim();
 });
 
 // Fetch event: Intercept network requests and cache strategically
@@ -72,53 +74,55 @@ self.addEventListener('fetch', (event) => {
   // 1. Cache-First Strategy for Book Resources (HTML pages, book assets)
   if (isBookResource) {
     event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
+      caches.open(BOOK_CACHE_NAME).then(async (cache) => {
+        const cachedResponse = await cache.match(event.request);
         if (cachedResponse) {
           return cachedResponse;
         }
-        // If not in cache, fetch from network and dynamically cache it
-        return fetch(event.request).then((networkResponse) => {
+
+        try {
+          const networkResponse = await fetch(event.request);
           if (networkResponse && networkResponse.status === 200) {
-            const responseToCache = networkResponse.clone();
-            caches.open(BOOK_CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
+            await cache.put(event.request, networkResponse.clone());
           }
           return networkResponse;
-        }).catch((err) => {
+        } catch (err) {
           console.warn(`[Service Worker] Fetch failed for book resource: ${url.pathname}`, err);
           return new Response('Offline Page Content (Not Cached)', { status: 404, statusText: 'Not Found' });
-        });
+        }
       })
     );
     return;
   }
 
   // 2. Stale-While-Revalidate for Application Shell & CDN scripts/fonts
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
+  const cachePromise = caches.open(CORE_CACHE_NAME);
+  const fetchPromise = cachePromise.then((cache) => {
+    return fetch(event.request).then(async (networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CORE_CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+          await cache.put(event.request, networkResponse.clone());
         }
         return networkResponse;
-      }).catch((err) => {
-        // Silent catch for background fetches when offline
-        if (cachedResponse) {
-          return cachedResponse;
-        }
+      });
+  });
+
+  // Register the background update while the fetch event is still active.
+  event.waitUntil(fetchPromise.then(() => undefined).catch(() => undefined));
+
+  event.respondWith(
+    cachePromise.then(async (cache) => {
+      const cachedResponse = await cache.match(event.request);
+      if (cachedResponse) return cachedResponse;
+
+      try {
+        return await fetchPromise;
+      } catch (err) {
         return new Response('Network error occurred. Please check your connection.', {
           status: 503,
           statusText: 'Service Unavailable',
           headers: { 'Content-Type': 'text/plain' }
         });
-      });
-
-      // Return cached response instantly if present, else wait for network
-      return cachedResponse || fetchPromise;
+      }
     })
   );
 });
