@@ -166,9 +166,15 @@ class APIService: ObservableObject {
         request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
         
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            logout()
-            throw NSError(domain: "APIService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Phiên làm việc hết hạn"])
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        
+        if httpResponse.statusCode != 200 {
+            if [400, 401, 403].contains(httpResponse.statusCode) {
+                logout()
+            }
+            throw NSError(domain: "APIService", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Lỗi làm mới phiên làm việc"])
         }
         
         struct RefreshResponse: Codable {

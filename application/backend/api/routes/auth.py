@@ -120,12 +120,10 @@ def refresh_token_endpoint(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
         
-    # 4. Generate new access token and optional new rotated refresh token
+    # 4. Generate new access token
     new_access_token = create_access_token(data={"sub": user.username})
-    new_refresh_token = secrets.token_hex(32)
     
-    # Update refresh token in DB
-    db_token.token = new_refresh_token
+    # Update refresh token expiry in DB, but keep the same token string to prevent race conditions
     db_token.expires_at = int(time.time()) + REFRESH_TOKEN_EXPIRE_SECONDS
     db.commit()
     
@@ -139,7 +137,7 @@ def refresh_token_endpoint(
     )
     response.set_cookie(
         key="refresh_token",
-        value=new_refresh_token,
+        value=refresh_token,
         httponly=True,
         max_age=REFRESH_TOKEN_EXPIRE_SECONDS,
         samesite="lax"
@@ -147,7 +145,7 @@ def refresh_token_endpoint(
     
     return {
         "access_token": new_access_token,
-        "refresh_token": new_refresh_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer"
     }
 

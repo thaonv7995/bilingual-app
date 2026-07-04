@@ -669,6 +669,19 @@ function App() {
     }).catch(err => console.warn('Failed saving progress to server:', err));
   }, [activeBook, page, viewMode, token]);
 
+  // Proactively refresh token every 10 minutes to prevent passive iframe 401s while reading
+  useEffect(() => {
+    if (!token) return;
+    const interval = setInterval(() => {
+      if (localStorage.getItem(ACCESS_TOKEN_KEY)) {
+        ensureFreshAccessToken().catch(err => {
+          console.warn('[Auth] Periodic token refresh failed:', err);
+        });
+      }
+    }, 10 * 60 * 1000); // 10 minutes
+    return () => clearInterval(interval);
+  }, [token]);
+
   // --- Dynamic Dashboard Layout & Pagination State ---
   const getColsCount = () => {
     const width = window.innerWidth;
