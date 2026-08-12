@@ -76,20 +76,6 @@ function getSavedProgress(slug) {
   return null;
 }
 
-function getRelativeTime(timestamp) {
-  const now = Date.now();
-  const diffMs = now - timestamp;
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return 'Vừa xong';
-  if (diffMins < 60) return `${diffMins} phút trước`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours} giờ trước`;
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 30) return `${diffDays} ngày trước`;
-  const diffMonths = Math.floor(diffDays / 30);
-  return `${diffMonths} tháng trước`;
-}
-
 function generateHighlightId() {
   return `hl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -686,11 +672,14 @@ function App() {
   const getColsCount = () => {
     const width = window.innerWidth;
     if (width < 600) return 2;
-    if (width < 1000) return 3;
-    return 4;
+    if (width < 900) return 4;
+    if (width < 1200) return 5;
+    if (width < 1500) return 6;
+    return 7;
   };
   const [cols, setCols] = useState(getColsCount);
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     const handleResize = () => {
@@ -730,14 +719,22 @@ function App() {
       .map(({ book }) => book);
   }, [activeBook, booksState, token]);
 
+  const filteredBooks = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return sortedBooks;
+    return sortedBooks.filter(b =>
+      (b.title || '').toLowerCase().includes(q) || (b.author || '').toLowerCase().includes(q)
+    );
+  }, [sortedBooks, searchQuery]);
+
   const pageSize = cols * 3;
-  const totalPages = Math.ceil(sortedBooks.length / pageSize);
+  const totalPages = Math.ceil(filteredBooks.length / pageSize);
   const clampedPage = Math.min(currentPage, Math.max(1, totalPages));
 
   const paginatedBooks = useMemo(() => {
     const start = (clampedPage - 1) * pageSize;
-    return sortedBooks.slice(start, start + pageSize);
-  }, [sortedBooks, clampedPage, pageSize]);
+    return filteredBooks.slice(start, start + pageSize);
+  }, [filteredBooks, clampedPage, pageSize]);
 
   // --- UI Layout State ---
   const [chatOpen, setChatOpen] = useState(() => {
@@ -3013,6 +3010,18 @@ TOOLS:
         <header>
           <div class="header-container">
             <h1>Bilingual Digital Library</h1>
+            <div class="header-search">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                type="search"
+                placeholder="Tìm trong ${sortedBooks.length} cuốn sách..."
+                value=${searchQuery}
+                onInput=${(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              />
+            </div>
             <div class="profile-menu-container ${profileDropdownOpen ? 'open' : ''}">
               <button class="profile-trigger-btn" onClick=${(e) => {
                 e.stopPropagation();
@@ -3058,11 +3067,6 @@ TOOLS:
         </header>
 
         <main class="dashboard-container">
-          <div class="dashboard-title-section">
-            <h2>Danh sách Tủ Sách Song Ngữ</h2>
-            <span style="color: var(--text-muted); font-size: 14px;">Tổng cộng: ${sortedBooks.length} cuốn</span>
-          </div>
-
           ${sortedBooks.length === 0
             ? html`
               <div class="empty-state" style="text-align: center; padding: 80px 20px; color: var(--text-muted); background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 16px; margin-top: 20px; backdrop-filter: blur(10px);">
@@ -3073,14 +3077,23 @@ TOOLS:
                 </p>
               </div>
             `
+            : filteredBooks.length === 0
+            ? html`
+              <div class="no-results-state">
+                Không tìm thấy sách nào khớp với "<strong>${searchQuery}</strong>"
+              </div>
+            `
             : html`
               <div class="books-grid">
-                ${paginatedBooks.map(book => {
+                ${paginatedBooks.map((book, index) => {
                   const hasCover = !!book.cover;
                   const progress = getSavedProgress(book.slug);
-                  const hasProgress = progress && progress.page > 1;
+                  const hasProgress = !!(progress && progress.page > 1 && book.pageCount);
+                  const progressPercent = hasProgress
+                    ? Math.min(100, Math.round((progress.page / book.pageCount) * 100))
+                    : 0;
                   return html`
-                    <div class="book-card" key=${book.slug} onClick=${() => {
+                    <div class="book-card" key=${book.slug} style="animation-delay: ${index * 40}ms" onClick=${() => {
                       if (progress) {
                         setActiveBook(book);
                         setPage(progress.page);
@@ -3102,16 +3115,19 @@ TOOLS:
                           `
                         }
                         ${hasProgress && html`
-                          <div class="book-card__last-read">🕐 ${getRelativeTime(progress.lastRead)}</div>
+                          <div class="book-card__progress-track">
+                            <div class="book-card__progress-fill" style="width: ${progressPercent}%"></div>
+                          </div>
                         `}
                       </div>
                       <div class="book-card__content">
                         <h3 class="book-card__title">${book.title}</h3>
-                        <div class="book-card__author">Tác giả: ${book.author}</div>
-                        <p class="book-card__desc">${book.description}</p>
-                        <div class="book-card__footer">
-                          <span>📖 ${hasProgress ? `${progress.page}/${book.pageCount} trang` : `${book.pageCount} trang`}</span>
-                          <span class="book-card__badge">Bilingual</span>
+                        <div class="book-card__meta">
+                          <span>${hasProgress
+                            ? `${progress.page}/${book.pageCount} trang`
+                            : (book.pageCount ? `${book.pageCount} trang` : '')
+                          }</span>
+                          <span class="book-card__langs">EN · VI</span>
                         </div>
                       </div>
                     </div>
