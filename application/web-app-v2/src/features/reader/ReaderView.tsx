@@ -8,7 +8,16 @@ import { useAuthStore } from '@/features/auth/authStore';
 import { useBooks } from '@/features/library/useBooks';
 import type { Book, ViewMode } from '@/types/api';
 import { ReaderTopbar } from './ReaderTopbar';
-import { injectReaderPageStyles } from './bookPageStyles';
+import { injectReaderStyles } from './iframe/readerStyles';
+import { segmentDocSentences } from './iframe/segmentation';
+import {
+  applyStoredHighlights,
+  clearAllHighlights,
+  registerIframeHighlightListeners,
+  removeAllReaderHighlightUI,
+  setHighlightContext,
+} from './iframe/highlightDom';
+import { useHighlights } from './useHighlights';
 import { getLocalProgress } from './localProgress';
 import { useSaveProgress, useServerProgress } from './useReaderProgress';
 import {
@@ -84,6 +93,22 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   const saveProgress = useSaveProgress(book.slug);
   const { data: serverProgress } = useServerProgress(book.slug);
   const appliedServerRef = useRef(false);
+
+  const { createHighlight, updateHighlight, deleteHighlight } = useHighlights(book.slug, page);
+
+  // Keep the imperative highlight layer's context fresh every render (v2's
+  // typed replacement for v1's reassigned `highlightAppContext` global).
+  useEffect(() => {
+    setHighlightContext({
+      slug: book.slug,
+      page,
+      createHighlight,
+      updateHighlight,
+      deleteHighlight,
+      onLookup: () => toast.show('Tra cứu Voca sẽ có ở phase kế tiếp', 'info'),
+    });
+    return () => setHighlightContext(null);
+  }, [book.slug, page, createHighlight, updateHighlight, deleteHighlight, toast]);
 
   const enPageUrl = `/books/${encodeURIComponent(book.slug)}/output/en/page_${padPage(page)}.html`;
   const viPageUrl = `/books/${encodeURIComponent(book.slug)}/output/vi/page_${padPage(page)}.html`;
@@ -256,9 +281,12 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         if (doc.body) doc.body.style.overflow = 'hidden';
         const nav = doc.querySelector<HTMLElement>('.page-nav');
         if (nav) nav.style.display = 'none';
-        injectReaderPageStyles(doc);
-        // Highlights, sentence segmentation, and voca listeners attach here in
-        // Phase 4/5.
+
+        injectReaderStyles(doc, isEnglish);
+        segmentDocSentences(doc);
+        applyStoredHighlights(doc, book.slug, page, lang);
+        const win = iframeEl.contentWindow;
+        if (win) registerIframeHighlightListeners(win, doc, lang);
       } catch (err) {
         console.warn('[Reader] could not style iframe content:', err);
       }
@@ -332,6 +360,19 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       viWrapper.removeEventListener('scroll', onVi);
     };
   }, [viewMode, page]);
+
+  // Clicking the app chrome (outside any iframe) clears transient sentence-sync
+  // highlights and toolbars (app.js:1248-1260).
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (!(e.target as Element).closest('.reader-iframe')) {
+        clearAllHighlights();
+        removeAllReaderHighlightUI();
+      }
+    };
+    window.addEventListener('click', onClick);
+    return () => window.removeEventListener('click', onClick);
+  }, []);
 
   // Keep the URL in sync with the current page (deep-linkable, no reload loop).
   useEffect(() => {

@@ -25,20 +25,20 @@ export interface Book {
 }
 
 export type HighlightLang = 'en' | 'vi';
-export type HighlightColor = 'yellow' | 'blue' | 'pink' | 'green';
 
-/** GET/POST /api/books/:slug/highlights item. */
+/** GET/POST /api/books/:slug/highlights item. `color` is the CSS hex the mark is
+ * painted with (v1 stores the value, not a palette name). */
 export interface Highlight {
   id: string;
   page: number;
   lang: HighlightLang;
-  color: HighlightColor;
+  color: string;
   text: string;
   startOffset: number;
   endOffset: number;
   paragraphIndex: number;
   note: string;
-  createdAt: string;
+  createdAt: number;
 }
 
 export type ViewMode = 'en' | 'vi' | 'split';
