@@ -5,6 +5,7 @@ import { AuthRefreshError, ensureFreshAccessToken } from '@/lib/api-client';
 import { readJSON, readString, writeJSON, writeString } from '@/lib/storage';
 import { STORAGE_KEYS } from '@/lib/storageKeys';
 import { ChatSidebar } from '@/features/chat/ChatSidebar';
+import { useVoice } from '@/features/voice/useVoice';
 import { SettingsModal } from '@/features/settings/SettingsModal';
 import { useSettingsStore } from '@/features/settings/settingsStore';
 import { useAuthStore } from '@/features/auth/authStore';
@@ -284,6 +285,19 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     [page, saveProgress],
   );
 
+  // Realtime voice lives here (ReaderView holds all reader state) so its tools
+  // and page-context injection see the live page/highlights.
+  const voice = useVoice({
+    book,
+    page,
+    viewMode,
+    highlights,
+    requestPageChange,
+    setViewMode,
+    createHighlight,
+    deleteHighlight,
+  });
+
   // -- iframe load: auth-retry, paper theme, hide internal nav ----------------
   const handleIframeLoad = useCallback(
     (e: React.SyntheticEvent<HTMLIFrameElement>) => {
@@ -323,11 +337,14 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         applyStoredHighlights(doc, book.slug, page, lang);
         const win = iframeEl.contentWindow;
         if (win) registerIframeHighlightListeners(win, doc, lang);
+        // Feed the freshly-loaded page to a live voice session (fix #14: v1
+        // sent context on page-state change, before the iframe had content).
+        voice.sendPageContext(page);
       } catch (err) {
         console.warn('[Reader] could not style iframe content:', err);
       }
     },
-    [book.slug, page, scaleIframes, toast],
+    [book.slug, page, scaleIframes, toast, voice],
   );
 
   // Re-scale on any layout-affecting change (app.js:1191-1194).
@@ -505,6 +522,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
           highlights={highlights}
           open={chatOpen}
           chatWidth={chatWidth}
+          voice={voice}
           onClose={toggleChat}
           onWidthChange={(w) => {
             setChatWidth(w);

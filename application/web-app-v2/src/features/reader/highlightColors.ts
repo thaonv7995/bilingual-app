@@ -21,6 +21,17 @@ export const colorMap: Record<string, string> = {
   green: '#86efac',
 };
 
+const COLOR_VI: Record<string, string> = {
+  yellow: 'vàng',
+  blue: 'xanh dương',
+  pink: 'hồng',
+  green: 'xanh lá',
+};
+
+export function translateColor(color: string): string {
+  return COLOR_VI[color] || color;
+}
+
 const TOOLBAR_ICONS: Record<'note' | 'book' | 'trash', string> = {
   note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>',
   book: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H21"></path><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H21v20H6.5A2.5 2.5 0 0 1 4 19.5Z"></path><path d="M8 6h8"></path><path d="M8 10h6"></path></svg>',

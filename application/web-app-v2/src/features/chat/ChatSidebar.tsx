@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { useToast } from '@/components/Toast';
 import type { Book, Highlight } from '@/types/api';
+import { VoiceOverlay } from '@/features/voice/VoiceOverlay';
+import type { useVoice } from '@/features/voice/useVoice';
 import { renderMessageContent } from './markdown';
 import { useChat } from './useChat';
 import './chat.css';
@@ -14,6 +15,7 @@ export function ChatSidebar({
   highlights,
   open,
   chatWidth,
+  voice,
   onClose,
   onWidthChange,
   onResizing,
@@ -23,11 +25,11 @@ export function ChatSidebar({
   highlights: Highlight[];
   open: boolean;
   chatWidth: number;
+  voice: ReturnType<typeof useVoice>;
   onClose: () => void;
   onWidthChange: (width: number) => void;
   onResizing: () => void;
 }) {
-  const toast = useToast();
   const {
     messages,
     chatInput,
@@ -99,13 +101,13 @@ export function ChatSidebar({
         </span>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button
-            className="nav-btn"
-            onClick={() => toast.show('Voice Conversation sẽ có ở phase kế tiếp', 'info')}
-            title="Voice Conversation"
+            className={`nav-btn chat-header-mic-btn ${voice.active ? 'active ' + voice.state : ''}`}
+            onClick={() => (voice.active ? voice.stop() : void voice.start())}
+            title={voice.active ? 'Tắt Voice Conversation' : 'Bật Voice Conversation'}
           >
             <MicIcon />
           </button>
-          {messages.length > 0 && (
+          {messages.length > 0 && !voice.active && (
             <button className="nav-btn" onClick={clearChat} title="Làm mới phiên chat">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M23 4v6h-6" />
@@ -119,6 +121,10 @@ export function ChatSidebar({
         </div>
       </div>
 
+      {voice.active ? (
+        <VoiceOverlay voice={voice} />
+      ) : (
+        <>
       <div className="chat-messages">
         {messages.map((msg, idx) => (
           <div
@@ -197,6 +203,8 @@ export function ChatSidebar({
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }
