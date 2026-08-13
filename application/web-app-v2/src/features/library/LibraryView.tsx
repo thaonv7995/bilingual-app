@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useToast } from '@/components/Toast';
 import { ProfileMenu } from '@/components/ProfileMenu';
+import { SettingsModal } from '@/features/settings/SettingsModal';
 import { useAuthStore } from '@/features/auth/authStore';
 import { BookCard } from './BookCard';
 import { useBooks } from './useBooks';
@@ -35,11 +35,11 @@ function useColumnCount(): number {
 }
 
 export function LibraryView() {
-  const toast = useToast();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const { data: books = [], isLoading, isError } = useBooks();
 
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const cols = useColumnCount();
@@ -84,7 +84,7 @@ export function LibraryView() {
             <ProfileMenu
               username={user.username}
               isAdmin={user.is_admin}
-              onOpenSettings={() => toast.show('Cấu hình sẽ có ở bản kế tiếp', 'info')}
+              onOpenSettings={() => setSettingsOpen(true)}
               onLogout={logout}
             />
           )}
@@ -142,6 +142,8 @@ export function LibraryView() {
       <footer className={styles.footer}>
         <p>© 2026 Bilingual Book Reader. Digital restoration crafted with ♥ by @thaonv795.</p>
       </footer>
+
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }

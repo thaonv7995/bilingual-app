@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { readJSON, writeJSON } from '@/lib/storage';
+import { readJSON, readString, writeJSON } from '@/lib/storage';
 import { STORAGE_KEYS } from '@/lib/storageKeys';
+import type { LayoutMode } from '@/features/reader/readerConstants';
 
 /**
  * User AI/voca settings. In v2 the voca-bridge origin/token are NOT here — they
@@ -18,6 +19,7 @@ export interface Settings {
   ttsEndpoint: string;
   ttsModel: string;
   useApiTts: boolean;
+  layoutMode: LayoutMode;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -31,6 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ttsEndpoint: '',
   ttsModel: 'edge-tts/en-US-SteffanNeural',
   useApiTts: true,
+  layoutMode: 'en-vi',
 };
 
 interface SettingsState {
@@ -38,8 +41,15 @@ interface SettingsState {
   setSettings: (patch: Partial<Settings>) => void;
 }
 
+// Migrate v1's standalone layoutMode key into settings if present.
+const legacyLayout = readString(STORAGE_KEYS.layoutMode) as LayoutMode | null;
+
 export const useSettingsStore = create<SettingsState>((set) => ({
-  settings: { ...DEFAULT_SETTINGS, ...readJSON<Partial<Settings>>(STORAGE_KEYS.settings, {}) },
+  settings: {
+    ...DEFAULT_SETTINGS,
+    ...(legacyLayout ? { layoutMode: legacyLayout } : {}),
+    ...readJSON<Partial<Settings>>(STORAGE_KEYS.settings, {}),
+  },
   setSettings: (patch) =>
     set((s) => {
       const next = { ...s.settings, ...patch };

@@ -5,6 +5,8 @@ import { AuthRefreshError, ensureFreshAccessToken } from '@/lib/api-client';
 import { readJSON, readString, writeJSON, writeString } from '@/lib/storage';
 import { STORAGE_KEYS } from '@/lib/storageKeys';
 import { ChatSidebar } from '@/features/chat/ChatSidebar';
+import { SettingsModal } from '@/features/settings/SettingsModal';
+import { useSettingsStore } from '@/features/settings/settingsStore';
 import { useAuthStore } from '@/features/auth/authStore';
 import { useBooks } from '@/features/library/useBooks';
 import type { Book, ViewMode } from '@/types/api';
@@ -39,7 +41,6 @@ import {
   READER_ZOOM_STEP,
   clampReaderZoom,
   padPage,
-  type LayoutMode,
   type ZoomMode,
 } from './readerConstants';
 import './reader.css';
@@ -75,9 +76,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     return Math.max(1, Math.min(book.pageCount || 1, initial));
   });
   const [viewMode, setViewModeState] = useState<ViewMode>(() => local?.viewMode ?? 'en');
-  const [layoutMode] = useState<LayoutMode>(
-    () => (readString(STORAGE_KEYS.layoutMode) as LayoutMode) || 'en-vi',
-  );
+  const layoutMode = useSettingsStore((s) => s.settings.layoutMode);
   const [zoomMode, setZoomMode] = useState<ZoomMode>(
     () => (readString(STORAGE_KEYS.zoomMode) as ZoomMode) || 'fit-page',
   );
@@ -121,6 +120,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       return !v;
     });
   }, []);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Keep the imperative highlight layer's context fresh every render (v2's
   // typed replacement for v1's reassigned `highlightAppContext` global).
@@ -455,7 +455,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         onSelectZoomMode={selectZoomMode}
         onAdjustZoom={adjustReaderZoom}
         onToggleChat={toggleChat}
-        onOpenSettings={() => toast.show('Cấu hình sẽ có ở phase kế tiếp', 'info')}
+        onOpenSettings={() => setSettingsOpen(true)}
         onLogout={logout}
       />
 
@@ -513,6 +513,8 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
           onResizing={scaleIframes}
         />
       </div>
+
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }
