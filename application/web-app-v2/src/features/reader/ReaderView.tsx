@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '@/components/Toast';
 import { AuthRefreshError, ensureFreshAccessToken } from '@/lib/api-client';
-import { readString, writeString } from '@/lib/storage';
+import { readJSON, readString, writeJSON, writeString } from '@/lib/storage';
 import { STORAGE_KEYS } from '@/lib/storageKeys';
+import { ChatSidebar } from '@/features/chat/ChatSidebar';
 import { useAuthStore } from '@/features/auth/authStore';
 import { useBooks } from '@/features/library/useBooks';
 import type { Book, ViewMode } from '@/types/api';
@@ -105,7 +106,21 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   const { data: serverProgress } = useServerProgress(book.slug);
   const appliedServerRef = useRef(false);
 
-  const { createHighlight, updateHighlight, deleteHighlight } = useHighlights(book.slug, page);
+  const { highlights, createHighlight, updateHighlight, deleteHighlight } = useHighlights(
+    book.slug,
+    page,
+  );
+
+  const [chatOpen, setChatOpen] = useState<boolean>(() => readJSON(STORAGE_KEYS.chatOpen, false));
+  const [chatWidth, setChatWidth] = useState<number>(
+    () => parseInt(readString(STORAGE_KEYS.chatWidth) || '', 10) || 400,
+  );
+  const toggleChat = useCallback(() => {
+    setChatOpen((v) => {
+      writeJSON(STORAGE_KEYS.chatOpen, !v);
+      return !v;
+    });
+  }, []);
 
   // Keep the imperative highlight layer's context fresh every render (v2's
   // typed replacement for v1's reassigned `highlightAppContext` global).
@@ -319,7 +334,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   useEffect(() => {
     const timer = setTimeout(scaleIframes, 50);
     return () => clearTimeout(timer);
-  }, [viewMode, page, layoutMode, zoomMode, manualZoom, scaleIframes]);
+  }, [viewMode, page, layoutMode, zoomMode, manualZoom, chatOpen, chatWidth, scaleIframes]);
 
   // Reset wrapper scroll to top on page change (app.js:1196-1203).
   useEffect(() => {
@@ -430,7 +445,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         viewMode={viewMode}
         zoomMode={zoomMode}
         zoomLevel={displayedZoom}
-        chatOpen={false}
+        chatOpen={chatOpen}
         username={user?.username ?? ''}
         isAdmin={user?.is_admin ?? false}
         onHome={() => navigate('/')}
@@ -439,12 +454,12 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         onSetViewMode={setViewMode}
         onSelectZoomMode={selectZoomMode}
         onAdjustZoom={adjustReaderZoom}
-        onToggleChat={() => toast.show('Companion Agent sẽ có ở phase kế tiếp', 'info')}
+        onToggleChat={toggleChat}
         onOpenSettings={() => toast.show('Cấu hình sẽ có ở phase kế tiếp', 'info')}
         onLogout={logout}
       />
 
-      <div className="reader-workspace">
+      <div className={`reader-workspace ${chatOpen ? 'chat-open' : ''}`}>
         <div className={`reader-panes layout-${layoutMode}`}>
           {showEn && (
             <div className="reader-pane" id="en-pane">
@@ -483,6 +498,20 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
             </div>
           )}
         </div>
+
+        <ChatSidebar
+          book={book}
+          page={page}
+          highlights={highlights}
+          open={chatOpen}
+          chatWidth={chatWidth}
+          onClose={toggleChat}
+          onWidthChange={(w) => {
+            setChatWidth(w);
+            writeString(STORAGE_KEYS.chatWidth, String(w));
+          }}
+          onResizing={scaleIframes}
+        />
       </div>
     </div>
   );
