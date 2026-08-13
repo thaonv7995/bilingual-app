@@ -1,0 +1,394 @@
+/* Ported from reader.css lines 51-449 (header, dashboard grid, cards, pagination).
+ * v1 referenced an undefined `--text-main`; here it maps to `--text`. */
+
+.appContainer {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* Header */
+.header {
+  background: rgba(17, 24, 39, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 24px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.headerContainer {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 40px;
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.brand {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 700;
+  background: linear-gradient(120deg, #ffffff, #9ca3af, #00c6ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.5px;
+}
+
+.search {
+  flex: 1;
+  max-width: 460px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 0 24px;
+}
+
+.search svg {
+  position: absolute;
+  left: 12px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 8px 14px 8px 36px;
+  outline: none;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.search input::placeholder {
+  color: var(--text-muted);
+}
+
+.search input:focus {
+  border-color: rgba(0, 198, 255, 0.45);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 0 0 3px rgba(0, 198, 255, 0.08);
+}
+
+/* Dashboard */
+.dashboard {
+  max-width: 1600px;
+  margin: 20px auto;
+  padding: 0 40px;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+  flex: 1;
+}
+
+.noResults {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.noResults strong {
+  color: var(--text);
+}
+
+.emptyState {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  margin-top: 20px;
+  backdrop-filter: blur(10px);
+}
+
+.emptyIcon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+
+.emptyState h3 {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.emptyState p {
+  max-width: 480px;
+  margin: 0 auto;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.emptyState strong {
+  color: var(--primary);
+}
+
+/* Grid */
+.booksGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 24px 18px;
+}
+
+@media (min-width: 600px) {
+  .booksGrid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 28px 24px;
+  }
+}
+
+/* Card */
+.card {
+  background: transparent;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  color: inherit;
+  cursor: pointer;
+  animation: bookCardIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+}
+
+.card:active {
+  transform: translateY(-2px) scale(0.99);
+  transition-duration: 0.1s;
+}
+
+.coverWrapper {
+  width: 100%;
+  aspect-ratio: 0.76;
+  background: #f4f4f1;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  border-radius: 12px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.card:hover .coverWrapper {
+  border-color: rgba(147, 197, 253, 0.95);
+  box-shadow: 0 14px 28px rgba(0, 198, 255, 0.15);
+}
+
+.coverImg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.card:hover .coverImg {
+  transform: scale(1.06);
+}
+
+.coverFallback {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #0052d4, #4364f7, #6fb1fc);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  color: white;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  text-align: center;
+}
+
+.coverFallback h4 {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.coverFallback p {
+  font-size: 11px;
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.cardContent {
+  padding: 10px 2px 0;
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.3;
+  transition: color 0.3s ease;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.6em;
+}
+
+.card:hover .cardTitle {
+  color: #00c6ff;
+}
+
+.progressTrack {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #00c6ff, #0072ff);
+  border-radius: 0 2px 2px 0;
+  animation: progressFillIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s backwards;
+}
+
+.meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.langs {
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 40px;
+  margin-bottom: 20px;
+}
+
+.paginationInfo {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.paginationArrow {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.paginationArrow:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #00c6ff;
+  color: #00c6ff;
+}
+
+.paginationArrow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Footer */
+.footer {
+  padding: 40px 24px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+  background: rgba(17, 24, 39, 0.4);
+  position: relative;
+  z-index: 10;
+}
+
+.footer p {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+@keyframes bookCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes progressFillIn {
+  from {
+    width: 0;
+  }
+}
+
+@media (max-width: 599px) {
+  .cardTitle {
+    font-size: 14px;
+  }
+  .meta {
+    font-size: 11px;
+  }
+  .search {
+    order: 3;
+    min-width: 100%;
+    margin: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .coverImg,
+  .progressFill {
+    animation: none !important;
+    transition: none !important;
+  }
+}

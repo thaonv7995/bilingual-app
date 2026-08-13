@@ -25,13 +25,36 @@ class ChangePasswordRequest(BaseModel):
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
+class CredentialsRequest(BaseModel):
+    username: str
+    password: str
+
+def _resolve_credentials(
+    username: Optional[str],
+    password: Optional[str],
+    body: Optional[CredentialsRequest],
+) -> tuple[str, str]:
+    """Accept credentials from a JSON body (web v2) or query params (legacy v1).
+
+    v1 sends ``?username=&password=``; v2 sends them in the request body so they
+    never land in access logs / browser history. Both paths are supported until
+    v1 is retired at cutover.
+    """
+    if body is not None:
+        return body.username, body.password
+    if username is not None and password is not None:
+        return username, password
+    raise HTTPException(status_code=422, detail="Missing username or password")
+
 @router.post("/register")
 def register(
-    username: str,
-    password: str,
     admin: User = Depends(require_admin),
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    body_payload: Optional[CredentialsRequest] = Body(default=None),
     db: Session = Depends(get_db)
 ):
+    username, password = _resolve_credentials(username, password, body_payload)
     user_exists = db.query(User).filter(User.username == username).first()
     if user_exists:
         raise HTTPException(status_code=400, detail="Username already registered")
@@ -47,7 +70,14 @@ def register(
     return {"ok": True, "message": "User registered successfully"}
 
 @router.post("/login")
-def login(username: str, password: str, response: Response, db: Session = Depends(get_db)):
+def login(
+    response: Response,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    body_payload: Optional[CredentialsRequest] = Body(default=None),
+    db: Session = Depends(get_db)
+):
+    username, password = _resolve_credentials(username, password, body_payload)
     user = db.query(User).filter(User.username == username).first()
     if not user or not verify_password(password, user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect username or password")

@@ -1,0 +1,43 @@
+/*
+ * Unified design tokens — ported verbatim from v1 reader.css :root (lines 3-20)
+ * and merged with the admin.html :root block so the reader and admin share ONE
+ * source of truth (v1 had two divergent copies).
+ *
+ * The app shell is dark-only, matching v1. The reader iframes use a fixed light
+ * "paper" surface (--paper-*), injected into the iframe document, not the shell.
+ */
+:root {
+  /* Core surfaces & brand (from reader.css) */
+  --bg: #0b0f19;
+  --surface: #111827;
+  --surface-hover: #1f2937;
+  --primary: #0072ff;
+  --primary-gradient: linear-gradient(135deg, #00c6ff, #0072ff);
+  --accent-glow: radial-gradient(circle, rgba(0, 198, 255, 0.12) 0%, rgba(0, 0, 0, 0) 70%);
+  --text: #f3f4f6;
+  --text-muted: #9ca3af;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(0, 198, 255, 0.3);
+
+  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-hover: 0 10px 30px rgba(0, 198, 255, 0.12);
+
+  /* Semantic status colors (unified from admin.html + voca toasts) */
+  --success: #22c55e;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --info: #38bdf8;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  /* Reader paper theme (injected into book iframes) */
+  --paper-bg: #f9f7f1;
+  --paper-text: #1f2328;
+
+  /* Typography — TODO(Phase 10): self-host these to drop the Google Fonts leak */
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+}
