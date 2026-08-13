@@ -5,6 +5,7 @@ import { ToastProvider } from '@/components/Toast';
 import { ConfirmProvider } from '@/components/Modal';
 import { LoginView } from '@/features/auth/LoginView';
 import { LibraryView } from '@/features/library/LibraryView';
+import { ReaderView } from '@/features/reader/ReaderView';
 import { useAuthStore } from '@/features/auth/authStore';
 import { queryClient } from './queryClient';
 
@@ -44,12 +45,11 @@ function AuthGate() {
   if (status === 'loading') return <SplashScreen />;
   if (status !== 'authenticated') return <LoginView />;
 
-  // ReaderView lands here in Phase 3; placeholder keeps deep links working.
   return (
     <Routes>
       <Route path="/" element={<LibraryView />} />
-      <Route path="/read/:slug" element={<Placeholder title="Reader" />} />
-      <Route path="/read/:slug/page/:page" element={<Placeholder title="Reader" />} />
+      <Route path="/read/:slug" element={<ReaderView />} />
+      <Route path="/read/:slug/page/:page" element={<ReaderView />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -59,15 +59,6 @@ function SplashScreen() {
   return (
     <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}>
       <p style={{ color: 'var(--text-muted)' }}>Đang tải…</p>
-    </div>
-  );
-}
-
-function Placeholder({ title }: { title: string }) {
-  return (
-    <div style={{ display: 'grid', placeItems: 'center', height: '100%', gap: 8 }}>
-      <h1 style={{ font: '600 20px var(--font-sans)' }}>{title}</h1>
-      <p style={{ color: 'var(--text-muted)' }}>Bilingual Reader v2 — scaffold</p>
     </div>
   );
 }
