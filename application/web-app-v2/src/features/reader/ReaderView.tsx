@@ -7,9 +7,20 @@ import { STORAGE_KEYS } from '@/lib/storageKeys';
 import { useAuthStore } from '@/features/auth/authStore';
 import { useBooks } from '@/features/library/useBooks';
 import type { Book, ViewMode } from '@/types/api';
+import {
+  cleanWord,
+  getVocaLookupPanelCss,
+  lookupWord,
+  showVocaError,
+  showVocaLookupResults,
+  showVocaNotFoundPanel,
+} from '@/lib/voca';
 import { ReaderTopbar } from './ReaderTopbar';
-import { injectReaderStyles } from './iframe/readerStyles';
+import { injectReaderStyles, setVocaPanelCss } from './iframe/readerStyles';
 import { segmentDocSentences } from './iframe/segmentation';
+
+// Make the voca lookup-panel CSS part of the styles injected into each iframe.
+setVocaPanelCss(getVocaLookupPanelCss());
 import {
   applyStoredHighlights,
   clearAllHighlights,
@@ -105,10 +116,20 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       createHighlight,
       updateHighlight,
       deleteHighlight,
-      onLookup: () => toast.show('Tra cứu Voca sẽ có ở phase kế tiếp', 'info'),
+      onLookup: async (text, doc, anchorRect) => {
+        const word = cleanWord(text);
+        if (!word) return;
+        try {
+          const result = await lookupWord(word);
+          if (result.found) showVocaLookupResults(doc, anchorRect, word, result);
+          else showVocaNotFoundPanel(doc, anchorRect, word);
+        } catch (err) {
+          showVocaError(err instanceof Error ? err.message : 'Tra cứu thất bại.');
+        }
+      },
     });
     return () => setHighlightContext(null);
-  }, [book.slug, page, createHighlight, updateHighlight, deleteHighlight, toast]);
+  }, [book.slug, page, createHighlight, updateHighlight, deleteHighlight]);
 
   const enPageUrl = `/books/${encodeURIComponent(book.slug)}/output/en/page_${padPage(page)}.html`;
   const viPageUrl = `/books/${encodeURIComponent(book.slug)}/output/vi/page_${padPage(page)}.html`;
