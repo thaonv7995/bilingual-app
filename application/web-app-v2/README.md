@@ -59,3 +59,40 @@ src/
   React's declarative model.
 - **No secrets in the client.** Provider keys live in the backend env; users may
   override with their own key in Settings.
+
+## Deployment & cutover
+
+The build is served by the **same FastAPI backend**. Cutover is **opt-in** via an
+env var, so v1 stays the default until you flip it:
+
+```bash
+cd application/web-app-v2 && npm ci && npm run build   # produces dist/
+# then run the backend with:
+export FRONTEND_V2_DIST="$PWD/dist"                    # serve v2 (React SPA)
+#   unset  -> backend serves the legacy v1 files (default)
+```
+
+When `FRONTEND_V2_DIST` is set, `api/main.py` serves `dist/` with an SPA
+fallback (`/read/:slug/page/:n` → `index.html`), `/admin` → `admin.html`, and the
+service worker/manifest; `/api/*` and `/books/*` keep routing to the backend. CI
+(`.github/workflows/deploy.yml`) builds `dist/` and ships it in the release
+tarball.
+
+### Server env vars
+
+| Var | Purpose |
+| --- | --- |
+| `FRONTEND_V2_DIST` | Path to `dist/` to serve v2 (unset = legacy v1) |
+| `OPENAI_API_KEY` | Server fallback key for `/api/chat` + realtime (hybrid; users can still override in Settings) |
+| `VOCA_BRIDGE_TOKEN` | Voca-bridge token, server-side only (required for dictionary lookup) |
+| `VOCA_BRIDGE_ORIGIN` | Voca bridge base URL (default `https://voca-bridge.thaonv.online`) |
+| `JWT_SECRET_KEY` | Set a strong secret — don't ship the default |
+
+### Owner follow-ups (from the security review)
+
+- **Rotate the secrets exposed by v1**: the voca-bridge token (was hardcoded in
+  `voca-client.js`) and the Gemini key (was in `config.js`).
+- Change the default `admin` / `admin123` credentials.
+- Tighten backend CORS from `allow_origin_regex=".*"` to the deployed origin.
+- Add a CSRF token to the cookie-based `/api/auth/refresh` + `/logout`
+  (SameSite=lax already blocks most cross-site use).

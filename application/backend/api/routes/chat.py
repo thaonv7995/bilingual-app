@@ -23,8 +23,9 @@ async def chat_proxy(request: Request, current_user: User = Depends(get_current_
         raise HTTPException(status_code=400, detail="Invalid or disallowed base URL")
         
     target_url = f"{base_url}/chat/completions"
-    api_key = data.get("apiKey", "")
-    
+    # Hybrid key: use the client-provided key if present, else the server env.
+    api_key = data.get("apiKey", "") or os.environ.get("OPENAI_API_KEY", "")
+
     headers = {
         "Content-Type": "application/json",
         "Accept": "text/event-stream"

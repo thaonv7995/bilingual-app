@@ -95,57 +95,83 @@ def sync_books_directory_to_db(db: Session):
     db.commit()
 
 # --- Serve Web Frontend ---
-# Serve root files first (index.html, favicon.png, config.js, app.js, reader.css, sw.js, and libs/)
-app.mount("/libs", StaticFiles(directory=WEB_APP_DIR / "libs"), name="libs")
+# Opt-in cutover: set FRONTEND_V2_DIST to the v2 Vite build (application/web-app-v2/dist)
+# to serve the React SPA; otherwise the legacy v1 files are served (default).
+# /api/* and /books/* are matched by their routers (registered above) either way.
+import os as _os
 
-@app.get("/favicon.png")
-def get_favicon():
-    return FileResponse(WEB_APP_DIR / "favicon.png")
+_v2_dist_env = _os.environ.get("FRONTEND_V2_DIST", "").strip()
+_V2_DIST = Path(_v2_dist_env) if _v2_dist_env and Path(_v2_dist_env).is_dir() else None
 
-@app.get("/config.js")
-def get_config():
-    config_path = WEB_APP_DIR / "config.js"
-    if config_path.is_file():
-        return FileResponse(config_path)
-    
-    # Fallback to example if exists
-    example_path = WEB_APP_DIR / "config.example.js"
-    if example_path.is_file():
-        return FileResponse(example_path)
-        
-    # Ultimate fallback response
-    from fastapi.responses import Response
-    return Response(
-        content='const CONFIG = { OPENAI_API_KEY: "", GEMINI_API_KEY: "" };',
-        media_type="application/javascript"
-    )
+if _V2_DIST is not None:
+    if (_V2_DIST / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=_V2_DIST / "assets"), name="v2-assets")
 
-@app.get("/app.js")
-def get_app_js():
-    return FileResponse(WEB_APP_DIR / "app.js")
+    @app.get("/favicon.png")
+    def get_favicon_v2():
+        p = _V2_DIST / "favicon.png"
+        return FileResponse(p if p.is_file() else WEB_APP_DIR / "favicon.png")
 
-@app.get("/voca-client.js")
-def get_voca_client_js():
-    return FileResponse(WEB_APP_DIR / "voca-client.js")
+    @app.get("/admin")
+    def get_admin_v2():
+        return FileResponse(_V2_DIST / "admin.html")
 
-@app.get("/reader.css")
-def get_reader_css():
-    return FileResponse(WEB_APP_DIR / "reader.css")
+    @app.get("/{full_path:path}")
+    def serve_v2_spa(full_path: str = ""):
+        # Serve a real built file if it exists (sw.js, manifest, admin.html,
+        # hashed assets); otherwise fall back to index.html for client routes.
+        candidate = (_V2_DIST / full_path).resolve()
+        if full_path and candidate.is_file() and _V2_DIST.resolve() in candidate.parents:
+            return FileResponse(candidate)
+        return FileResponse(_V2_DIST / "index.html")
+else:
+    # Legacy v1: hand-wired per-file serving.
+    app.mount("/libs", StaticFiles(directory=WEB_APP_DIR / "libs"), name="libs")
 
-@app.get("/sw.js")
-def get_sw():
-    return FileResponse(WEB_APP_DIR / "sw.js")
+    @app.get("/favicon.png")
+    def get_favicon():
+        return FileResponse(WEB_APP_DIR / "favicon.png")
 
-@app.get("/admin.html")
-@app.get("/admin")
-def get_admin():
-    return FileResponse(WEB_APP_DIR / "admin.html")
+    @app.get("/config.js")
+    def get_config():
+        config_path = WEB_APP_DIR / "config.js"
+        if config_path.is_file():
+            return FileResponse(config_path)
+        example_path = WEB_APP_DIR / "config.example.js"
+        if example_path.is_file():
+            return FileResponse(example_path)
+        from fastapi.responses import Response
+        return Response(
+            content='const CONFIG = { OPENAI_API_KEY: "", GEMINI_API_KEY: "" };',
+            media_type="application/javascript"
+        )
 
-@app.get("/admin.js")
-def get_admin_js():
-    return FileResponse(WEB_APP_DIR / "admin.js")
+    @app.get("/app.js")
+    def get_app_js():
+        return FileResponse(WEB_APP_DIR / "app.js")
 
-@app.get("/")
-@app.get("/index.html")
-def get_index():
-    return FileResponse(WEB_APP_DIR / "index.html")
+    @app.get("/voca-client.js")
+    def get_voca_client_js():
+        return FileResponse(WEB_APP_DIR / "voca-client.js")
+
+    @app.get("/reader.css")
+    def get_reader_css():
+        return FileResponse(WEB_APP_DIR / "reader.css")
+
+    @app.get("/sw.js")
+    def get_sw():
+        return FileResponse(WEB_APP_DIR / "sw.js")
+
+    @app.get("/admin.html")
+    @app.get("/admin")
+    def get_admin():
+        return FileResponse(WEB_APP_DIR / "admin.html")
+
+    @app.get("/admin.js")
+    def get_admin_js():
+        return FileResponse(WEB_APP_DIR / "admin.js")
+
+    @app.get("/")
+    @app.get("/index.html")
+    def get_index():
+        return FileResponse(WEB_APP_DIR / "index.html")

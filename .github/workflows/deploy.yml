@@ -37,6 +37,17 @@ jobs:
           cd application/backend
           pytest
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build v2 frontend
+        run: |
+          cd application/web-app-v2
+          npm ci
+          npm run build
+
       - name: Package Application
         run: |
           # Create a clean tarball excluding venvs, databases, logs, and untracked configs
@@ -48,6 +59,8 @@ jobs:
               --exclude='application/data' \
               --exclude='bilingual_reader.db' \
               --exclude='application/web-app/config.js' \
+              --exclude='application/web-app-v2/node_modules' \
+              --exclude='application/web-app-v2/dev-dist' \
               --exclude='.git' \
               -czf ../release.tar.gz .
           mv ../release.tar.gz .
