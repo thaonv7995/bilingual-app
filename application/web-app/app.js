@@ -3167,7 +3167,7 @@ TOOLS:
         <form class="modal-content modal-content--settings" onSubmit=${saveSettings} onClick=${(e) => e.stopPropagation()}>
           <div class="modal-header">
             <h3>Cấu hình Companion Agent & Voca</h3>
-            <button class="nav-btn" type="button" onClick=${() => setSettingsOpen(false)}>✕</button>
+            <button class="modal-close-btn" type="button" onClick=${() => setSettingsOpen(false)}>✕</button>
           </div>
           <div class="modal-body">
             <section class="settings-section">
@@ -3315,12 +3315,12 @@ TOOLS:
 
     return html`
       <div class="modal-backdrop" onClick=${handleCancelClick}>
-        <div class="modal-content" style="max-width: 400px; animation: modalIn 0.2s ease-out;" onClick=${(e) => e.stopPropagation()}>
+        <div class="modal-content" style="max-width: 400px;" onClick=${(e) => e.stopPropagation()}>
           <div class="modal-header" style="padding: 16px 20px;">
             <h3>${title || (type === 'confirm' ? 'Xác nhận' : 'Thông báo')}</h3>
-            <button class="nav-btn" type="button" onClick=${handleCancelClick}>✕</button>
+            <button class="modal-close-btn" type="button" onClick=${handleCancelClick}>✕</button>
           </div>
-          <div class="modal-body" style="padding: 20px; font-size: 14px; line-height: 1.5; color: var(--text-color);">
+          <div class="modal-body" style="padding: 20px; font-size: 14px; line-height: 1.5; color: var(--text);">
             ${message}
           </div>
           <div class="modal-footer" style="padding: 12px 20px;">

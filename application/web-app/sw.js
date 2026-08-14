@@ -1,6 +1,6 @@
 // sw.js - Service Worker for Bilingual Reader Offline Caching
 
-const CORE_CACHE_NAME = 'bilingual-reader-core-v40';
+const CORE_CACHE_NAME = 'bilingual-reader-core-v41';
 const BOOK_CACHE_NAME = 'bilingual-reader-books-v2';
 
 // Core assets to pre-cache on install
