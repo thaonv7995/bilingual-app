@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AdminApp } from '@/features/admin/AdminApp';
+import '@/styles/fonts';
 import '@/styles/tokens.css';
 import '@/styles/reset.css';
 

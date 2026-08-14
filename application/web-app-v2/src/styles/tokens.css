@@ -37,7 +37,7 @@
   --paper-bg: #f9f7f1;
   --paper-text: #1f2328;
 
-  /* Typography — TODO(Phase 10): self-host these to drop the Google Fonts leak */
-  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Typography — self-hosted via @fontsource (see styles/fonts.ts), no CDN. */
+  --font-sans: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-serif: 'Playfair Display', Georgia, serif;
 }

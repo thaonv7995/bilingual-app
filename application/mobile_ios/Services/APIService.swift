@@ -343,4 +343,46 @@ class APIService: ObservableObject {
         
         throw NSError(domain: "APIService", code: 500, userInfo: [NSLocalizedDescriptionKey: "Malformed AI response"])
     }
+
+    // --- Per-user AI secrets (server-side) ---
+    // Secrets live on the backend (user_settings) and are attached by the /api/chat
+    // and /api/voca proxies. GET returns only booleans, never the raw secret.
+    struct ServerSecrets: Codable {
+        let hasLlmKey: Bool
+        let hasRealtimeKey: Bool
+        let vocaOrigin: String
+        let hasVocaToken: Bool
+    }
+
+    func fetchServerSecrets() async throws -> ServerSecrets {
+        guard let url = URL(string: "\(serverUrl)/api/user/settings") else { throw URLError(.badURL) }
+        let (data, response) = try await sendRequest(URLRequest(url: url))
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(ServerSecrets.self, from: data)
+    }
+
+    /// Upsert secrets on the server. Pass nil to leave a field unchanged, "" to clear.
+    func saveServerSecrets(
+        llmApiKey: String? = nil,
+        realtimeApiKey: String? = nil,
+        vocaOrigin: String? = nil,
+        vocaToken: String? = nil
+    ) async throws {
+        guard let url = URL(string: "\(serverUrl)/api/user/settings") else { throw URLError(.badURL) }
+        var body: [String: Any] = [:]
+        if let v = llmApiKey { body["llmApiKey"] = v }
+        if let v = realtimeApiKey { body["realtimeApiKey"] = v }
+        if let v = vocaOrigin { body["vocaOrigin"] = v }
+        if let v = vocaToken { body["vocaToken"] = v }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        let (_, response) = try await sendRequest(request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+    }
 }

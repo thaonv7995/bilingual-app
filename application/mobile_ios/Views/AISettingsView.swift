@@ -599,5 +599,20 @@ struct AISettingsView: View {
         UserDefaults.standard.set(companionAutoUpdateContext, forKey: "companionAutoUpdateContext")
         UserDefaults.standard.set(companionLanguage, forKey: "companionLanguage")
         UserDefaults.standard.set(companionAgentName.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "companionAgentName")
+
+        // Mirror secrets to the server so the backend can use its server-held keys
+        // (see /api/user/settings). Best-effort; UserDefaults stays for gating/offline.
+        let llm = aiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rt = realtimeApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let vo = vocaBridgeOrigin.trimmingCharacters(in: .whitespacesAndNewlines)
+        let vt = vocaBridgeToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            try? await APIService.shared.saveServerSecrets(
+                llmApiKey: llm.isEmpty ? nil : llm,
+                realtimeApiKey: rt.isEmpty ? nil : rt,
+                vocaOrigin: vo.isEmpty ? nil : vo,
+                vocaToken: vt.isEmpty ? nil : vt
+            )
+        }
     }
 }

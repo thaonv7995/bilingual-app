@@ -145,8 +145,15 @@ def _migrate_voca_config_to_user_settings():
     except Exception as e:  # pragma: no cover - defensive
         db.rollback()
         print(f"[Migration] user_voca_config -> user_settings skipped: {e}")
+        return
     finally:
         db.close()
+    # Copy succeeded — drop the now-redundant legacy table so it stops lingering.
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS user_voca_config"))
+    except Exception as e:  # pragma: no cover - defensive
+        print(f"[Migration] dropping user_voca_config skipped: {e}")
 
 def init_db():
     Base.metadata.create_all(bind=engine)
