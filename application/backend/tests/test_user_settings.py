@@ -8,9 +8,14 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
+
+# `api` is a path-based namespace package (no pip install); ensure the backend
+# root is importable even when pytest is run as the console script (see conftest).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # Point the app's engine at a throwaway DB and clear env keys BEFORE importing
 # api.* (the engine + ENV_* constants are read at import time).
