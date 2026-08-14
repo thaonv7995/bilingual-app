@@ -217,6 +217,34 @@ echo "Updating Python API dependencies..."
 .venv/bin/python3 -m pip install -r backend/requirements-api.txt
 cd "$TARGET_DIR"
 
+# 4.5. Build the v2 frontend (React + Vite) so the backend serves v2, not the
+# legacy v1 files. main.py only serves v2 when FRONTEND_V2_DIST points at a
+# built dist (set in the systemd unit below); dist is gitignored so we build it
+# here on every install/update.
+echo "Checking Node.js (required to build web-app-v2)..."
+NODE_OK=false
+if command -v node &> /dev/null; then
+    NODE_MAJOR=$(node -v | sed 's/v\([0-9]*\).*/\1/')
+    if [ "${NODE_MAJOR:-0}" -ge 18 ]; then NODE_OK=true; fi
+fi
+if [ "$NODE_OK" = "false" ]; then
+    echo "Installing Node.js 20 (NodeSource)..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+fi
+
+echo "Building v2 frontend (npm ci && npm run build)..."
+cd "$TARGET_DIR/application/web-app-v2"
+npm ci
+npm run build
+cd "$TARGET_DIR"
+
+V2_DIST_DIR="$TARGET_DIR/application/web-app-v2/dist"
+if [ ! -f "$V2_DIST_DIR/index.html" ]; then
+    echo "Error: v2 build did not produce $V2_DIST_DIR/index.html. Aborting."
+    exit 1
+fi
+
 # 5. Make launcher executable
 chmod +x "$TARGET_DIR/server.py"
 
@@ -245,6 +273,11 @@ ExecStart=$TARGET_DIR/application/.venv/bin/python3 server.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
+Environment=FRONTEND_V2_DIST=$TARGET_DIR/application/web-app-v2/dist
+# Optional secrets / overrides (VOCA_BRIDGE_TOKEN, VOCA_BRIDGE_ORIGIN,
+# DATABASE_URL, JWT secret, …). Create $TARGET_DIR/.env as KEY=VALUE lines;
+# the leading '-' makes the file optional.
+EnvironmentFile=-$TARGET_DIR/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -261,6 +294,7 @@ echo "Restarting $SERVICE_NAME service..."
 sudo systemctl restart "$SERVICE_NAME"
 
 echo "============================================="
-echo "Service is now running on port 27099."
+echo "Service is now running on port 27099 (serving v2 from $V2_DIST_DIR)."
 echo "You can check status using: sudo systemctl status $SERVICE_NAME"
+echo "Optional: add secrets to $TARGET_DIR/.env then 'sudo systemctl restart $SERVICE_NAME'."
 echo "============================================="

@@ -4,7 +4,7 @@ Guide to setting up automated deployment via GitHub Actions (CI/CD) and managing
 
 ## 1. Prerequisites on Debian Server
 
-Ensure the host server has standard git and python capabilities. The deployment script `deploy.sh` will auto-install missing packages on Debian/Ubuntu systems:
+Ensure the host server has standard git and python capabilities. The deployment script `deploy.sh` auto-installs missing packages on Debian/Ubuntu systems, including **Node.js 20** (via NodeSource) which is needed to build the v2 frontend:
 
 ```bash
 sudo apt-get update
@@ -13,17 +13,27 @@ sudo apt-get install -y python3 python3-venv python3-pip git curl
 
 ---
 
-## 2. GitHub CI/CD Action Secrets Setup
+## 2. Deployment model (pull-based)
 
-The automated workflow relies on SSH/SCP to push clean packages to the target server. Go to your repository settings on GitHub (**Settings > Secrets and variables > Actions**) and add the following repository secrets:
+Deployment is **pull-based**: the server itself pulls the code and builds. There is no CI push to the server, so **no SSH secrets are required**.
 
-| Secret Name | Description | Example Value |
-| :--- | :--- | :--- |
-| `SSH_HOST` | Server public IP address or domain | `192.168.1.50` or `my.server.com` |
-| `SSH_USERNAME` | SSH user authorized to deploy | `root` or `deploy-user` |
-| `SSH_KEY` | Plaintext SSH private key | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
-| `SSH_PORT` | SSH port (Optional, defaults to 22) | `22` or `2222` |
-| `DEPLOY_PATH` | Server path where the app should live | `/opt/bilingual-app` or `/home/ubuntu/bilingual-app` |
+- **CI (`.github/workflows/deploy.yml`)** runs on push to `main` and on tags. It runs the backend tests, builds the v2 frontend (`npm ci && npm run build`), packages a release tarball, uploads it as a build artifact, and — on tags — publishes a GitHub Release. It does **not** deploy to any server.
+- **Server deploy** happens via the `curl … | bash -s -- install|update` commands below. On install/update the script clones/pulls the repo, builds the v2 frontend, and (re)starts the systemd service with `FRONTEND_V2_DIST` set so the backend serves v2.
+
+> Want push-based CD instead? Add an SSH/rsync job to the workflow that ships the release tarball (it already contains the built `dist`) and restarts systemd. Not configured today.
+
+### Secrets / runtime config on the server
+
+Backend secrets are read from an **optional** `.env` file at the install root (e.g. `/opt/bilingual-app/.env`), wired into the service via `EnvironmentFile=-`. Create it as `KEY=VALUE` lines and restart the service:
+
+```bash
+sudo tee /opt/bilingual-app/.env >/dev/null <<'ENV'
+VOCA_BRIDGE_ORIGIN=https://voca-bridge.thaonv.online
+VOCA_BRIDGE_TOKEN=<server-default token, optional — users can also set their own>
+# DATABASE_URL=sqlite:////opt/bilingual-app/bilingual_reader.db
+ENV
+sudo systemctl restart bilingual-reader
+```
 
 ---
 
