@@ -22,7 +22,6 @@ export interface ToolCallUI {
 }
 
 export interface VoiceConfig {
-  apiKey: string;
   model: string;
   voice: string;
   instructions: string;
@@ -59,12 +58,12 @@ export async function startVoiceSession(
   let audioEl: HTMLAudioElement | null = null;
 
   try {
-    // 1. Ephemeral key via the backend proxy (may use a server env key).
+    // 1. Ephemeral key via the backend proxy, which attaches the server-held
+    //    per-user realtime key (the browser never sends it).
     const sessionRes = await apiFetch('/api/chat/realtime/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        apiKey: config.apiKey,
         session: { type: 'realtime', model: config.model, instructions: config.instructions },
       }),
     });

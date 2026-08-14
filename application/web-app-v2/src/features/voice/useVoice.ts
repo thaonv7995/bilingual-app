@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSettingsStore } from '@/features/settings/settingsStore';
+import { useServerSecrets } from '@/features/settings/serverSecrets';
 import { getIframePageText } from '@/features/reader/iframe/pageContext';
 import { executeWebTool, type VoiceControls } from './tools';
 import {
@@ -20,6 +21,7 @@ import {
  */
 export function useVoice(controls: VoiceControls) {
   const settings = useSettingsStore((s) => s.settings);
+  const { data: serverSecrets } = useServerSecrets();
   const controlsRef = useRef(controls);
   controlsRef.current = controls;
 
@@ -42,7 +44,12 @@ export function useVoice(controls: VoiceControls) {
   }, []);
 
   const start = useCallback(async () => {
-    const apiKey = settings.realtimeApiKey || settings.apiKey;
+    if (!serverSecrets?.hasRealtimeKey) {
+      setActive(true);
+      setState('error');
+      setError('Cấu hình API Key trong Settings để dùng trò chuyện giọng nói.');
+      return;
+    }
     const book = controlsRef.current.book;
     const page = controlsRef.current.page;
     setActive(true);
@@ -72,7 +79,6 @@ ${pageText || 'No visible page text.'}
     try {
       sessionRef.current = await startVoiceSession(
         {
-          apiKey,
           model: settings.realtimeModel || 'gpt-realtime-mini',
           voice: settings.realtimeVoice || 'alloy',
           instructions,
@@ -99,7 +105,7 @@ ${pageText || 'No visible page text.'}
       setState('error');
       setSpeakingState('idle');
     }
-  }, [settings, teardownConnection]);
+  }, [settings, serverSecrets, teardownConnection]);
 
   const stop = useCallback(() => {
     teardownConnection();

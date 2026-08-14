@@ -1,28 +1,51 @@
 import os
-import time
+import json
 import httpx
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse, Response, JSONResponse
 from sqlalchemy.orm import Session
 from api.auth import get_current_user_or_apikey
-from api.database import User, UserVocaConfig, get_db
+from api.database import User, UserSettings, get_db
 
 router = APIRouter(prefix="/api/voca", tags=["voca"])
 
 ENV_VOCA_ORIGIN = os.environ.get("VOCA_BRIDGE_ORIGIN", "https://voca-bridge.thaonv.online").rstrip("/")
 ENV_VOCA_TOKEN = os.environ.get("VOCA_BRIDGE_TOKEN", "")
+ENV_OPENAI = os.environ.get("OPENAI_API_KEY", "")
 
 
 def _resolve_bridge(db: Session, user: User):
-    """Resolve the voca-bridge (origin, auth headers) for a user. Prefers the
-    per-user config stored server-side (entered on the FE, kept out of the
-    browser), falling back to the VOCA_BRIDGE_* env defaults."""
-    cfg = db.query(UserVocaConfig).filter(UserVocaConfig.user_id == user.id).first()
-    origin = ((cfg.bridge_origin or "").strip() if cfg else "") or ENV_VOCA_ORIGIN
-    token = ((cfg.bridge_token or "").strip() if cfg else "") or ENV_VOCA_TOKEN
+    """Resolve the voca-bridge (origin, auth headers) for a user from the
+    server-held per-user settings (entered on the FE, kept out of the browser),
+    falling back to the VOCA_BRIDGE_* env defaults."""
+    s = db.query(UserSettings).filter(UserSettings.user_id == user.id).first()
+    origin = ((s.voca_bridge_origin or "").strip() if s else "") or ENV_VOCA_ORIGIN
+    token = ((s.voca_bridge_token or "").strip() if s else "") or ENV_VOCA_TOKEN
     if not token:
         raise HTTPException(status_code=503, detail="Voca bridge chưa được cấu hình (thiếu token).")
     return origin.rstrip("/"), {"Authorization": f"Bearer {token}"}
+
+
+def _resolve_llm_key(db: Session, user: User) -> str:
+    """The user's server-held LLM key (falls back to the OPENAI_API_KEY env)."""
+    s = db.query(UserSettings).filter(UserSettings.user_id == user.id).first()
+    return ((s.llm_api_key or "").strip() if s else "") or ENV_OPENAI
+
+
+def _inject_llm_key(body: bytes, key: str) -> bytes:
+    """Inject the server-held LLM key into the forwarded body's settings.apiKey so
+    the browser never sends it. Leaves the body untouched if it isn't the expected
+    JSON shape (the bridge then reports the missing key)."""
+    if not key:
+        return body
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except Exception:
+        return body
+    if isinstance(data.get("settings"), dict):
+        data["settings"]["apiKey"] = key
+        return json.dumps(data).encode("utf-8")
+    return body
 
 
 def _safe_json(resp: httpx.Response):
@@ -30,41 +53,6 @@ def _safe_json(resp: httpx.Response):
         return resp.json()
     except Exception:
         return {"error": {"message": resp.text[:300]}}
-
-
-@router.get("/config")
-def voca_config_get(
-    current_user: User = Depends(get_current_user_or_apikey), db: Session = Depends(get_db)
-):
-    """Return the user's voca-bridge config WITHOUT the raw token — the browser
-    only learns whether a token is set, never its value."""
-    cfg = db.query(UserVocaConfig).filter(UserVocaConfig.user_id == current_user.id).first()
-    return {
-        "origin": (cfg.bridge_origin if cfg and cfg.bridge_origin else ""),
-        "hasToken": bool((cfg and cfg.bridge_token) or ENV_VOCA_TOKEN),
-        "usingServerDefault": not (cfg and cfg.bridge_token),
-    }
-
-
-@router.put("/config")
-def voca_config_put(
-    payload: dict,
-    current_user: User = Depends(get_current_user_or_apikey),
-    db: Session = Depends(get_db),
-):
-    """Upsert the user's voca-bridge config. Conventions for `token`:
-    key absent -> keep existing; "" -> clear (use env default); non-empty -> set."""
-    origin = (payload.get("origin") or "").strip()
-    cfg = db.query(UserVocaConfig).filter(UserVocaConfig.user_id == current_user.id).first()
-    if not cfg:
-        cfg = UserVocaConfig(user_id=current_user.id, bridge_origin="", bridge_token="")
-        db.add(cfg)
-    cfg.bridge_origin = origin
-    if "token" in payload and payload.get("token") is not None:
-        cfg.bridge_token = str(payload["token"]).strip()
-    cfg.updated_at = int(time.time())
-    db.commit()
-    return {"ok": True, "origin": cfg.bridge_origin, "hasToken": bool(cfg.bridge_token or ENV_VOCA_TOKEN)}
 
 
 @router.get("/lookup")
@@ -90,11 +78,11 @@ async def voca_create(
     current_user: User = Depends(get_current_user_or_apikey),
     db: Session = Depends(get_db),
 ):
-    """Forward card creation, streaming the NDJSON progress back to the client.
-    The client body carries the user's own LLM settings; we add the bridge token."""
+    """Forward card creation, streaming the NDJSON progress back to the client. The
+    server attaches both the bridge token and the user's server-held LLM key."""
     origin, bridge_headers = _resolve_bridge(db, current_user)
     headers = {**bridge_headers, "Content-Type": "application/json"}
-    body = await request.body()
+    body = _inject_llm_key(await request.body(), _resolve_llm_key(db, current_user))
     client = httpx.AsyncClient(timeout=120.0)
     try:
         upstream = await client.send(
@@ -149,7 +137,7 @@ async def voca_audio_generate(
 ):
     origin, bridge_headers = _resolve_bridge(db, current_user)
     headers = {**bridge_headers, "Content-Type": "application/json"}
-    body = await request.body()
+    body = _inject_llm_key(await request.body(), _resolve_llm_key(db, current_user))
     async with httpx.AsyncClient(timeout=120.0) as client:
         try:
             resp = await client.post(f"{origin}/v1/audio/{card_id}", content=body, headers=headers)

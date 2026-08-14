@@ -32,17 +32,19 @@ export interface VocaLookupResult {
 
 const getSettings = () => useSettingsStore.getState().settings;
 
+// The LLM apiKey is NOT included here — the backend voca proxy injects the
+// user's server-held key into settings.apiKey before forwarding to the bridge.
 function llmSettingsPayload(s: Settings) {
-  if (!s.apiKey || !s.baseURL || !s.model) return null;
-  return { apiKey: s.apiKey, baseURL: s.baseURL, model: s.model };
+  if (!s.baseURL || !s.model) return null;
+  return { baseURL: s.baseURL, model: s.model };
 }
 
 function ttsSettingsPayload(s: Settings) {
-  if (s.useApiTts === false || !s.apiKey) return null;
+  if (s.useApiTts === false) return null;
   const baseURL = String(s.baseURL || '').trim();
   const ttsEndpoint = String(s.ttsEndpoint || '').trim();
   if (!ttsEndpoint && !baseURL) return null;
-  return { apiKey: s.apiKey, baseURL, ttsEndpoint, ttsModel: s.ttsModel || DEFAULT_TTS_MODEL };
+  return { baseURL, ttsEndpoint, ttsModel: s.ttsModel || DEFAULT_TTS_MODEL };
 }
 
 export function cleanWord(value: unknown): string {

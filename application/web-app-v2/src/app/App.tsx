@@ -7,6 +7,7 @@ import { LoginView } from '@/features/auth/LoginView';
 import { LibraryView } from '@/features/library/LibraryView';
 import { ReaderView } from '@/features/reader/ReaderView';
 import { useAuthStore } from '@/features/auth/authStore';
+import { migrateLegacySecrets, USER_SETTINGS_KEY } from '@/features/settings/serverSecrets';
 import { queryClient } from './queryClient';
 
 /**
@@ -41,6 +42,15 @@ function AuthGate() {
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
+
+  // Once authenticated, migrate any legacy localStorage API keys to the server
+  // (one-shot) so users don't have to re-enter after the secrets moved server-side.
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    void migrateLegacySecrets().then((migrated) => {
+      if (migrated) void queryClient.invalidateQueries({ queryKey: USER_SETTINGS_KEY });
+    });
+  }, [status]);
 
   if (status === 'loading') return <SplashScreen />;
   if (status !== 'authenticated') return <LoginView />;

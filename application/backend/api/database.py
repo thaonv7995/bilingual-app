@@ -98,20 +98,59 @@ class UserRefreshToken(Base):
     token = Column(String, unique=True, index=True, nullable=False)
     expires_at = Column(Integer, nullable=False)
 
-class UserVocaConfig(Base):
-    """Per-user voca-bridge config. The token is entered on the FE but stored here
-    server-side (never shipped back to the browser) — the /api/voca proxy attaches
-    it. Empty values fall back to the VOCA_BRIDGE_* env defaults."""
-    __tablename__ = "user_voca_config"
+class UserSettings(Base):
+    """Per-user server-held secrets & config. Secrets (LLM / realtime API keys,
+    voca-bridge token) are entered on the FE but stored here server-side and NEVER
+    returned to the browser — the /api/chat, /api/voca proxies attach them. Empty
+    values fall back to the relevant env defaults (OPENAI_API_KEY, VOCA_BRIDGE_*)."""
+    __tablename__ = "user_settings"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
-    bridge_origin = Column(String, nullable=True, default="")
-    bridge_token = Column(String, nullable=True, default="")
+    llm_api_key = Column(String, nullable=True, default="")
+    realtime_api_key = Column(String, nullable=True, default="")
+    voca_bridge_origin = Column(String, nullable=True, default="")
+    voca_bridge_token = Column(String, nullable=True, default="")
     updated_at = Column(Integer, default=lambda: int(time.time()))
+
+def get_or_create_user_settings(db, user_id: int) -> "UserSettings":
+    row = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+    if not row:
+        row = UserSettings(user_id=user_id)
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+def _migrate_voca_config_to_user_settings():
+    """One-time, idempotent copy of the older user_voca_config rows (added earlier
+    in the v2 work) into the consolidated user_settings table."""
+    from sqlalchemy import inspect, text
+    if "user_voca_config" not in inspect(engine).get_table_names():
+        return
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text("SELECT user_id, bridge_origin, bridge_token FROM user_voca_config")
+        ).fetchall()
+        for user_id, origin, token in rows:
+            if db.query(UserSettings).filter(UserSettings.user_id == user_id).first():
+                continue
+            db.add(UserSettings(
+                user_id=user_id,
+                voca_bridge_origin=origin or "",
+                voca_bridge_token=token or "",
+            ))
+        db.commit()
+    except Exception as e:  # pragma: no cover - defensive
+        db.rollback()
+        print(f"[Migration] user_voca_config -> user_settings skipped: {e}")
+    finally:
+        db.close()
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _migrate_voca_config_to_user_settings()
 
 def get_db():
     db = SessionLocal()

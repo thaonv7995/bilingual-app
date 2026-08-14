@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/Toast';
 import type { LayoutMode } from '@/features/reader/readerConstants';
-import { apiFetch, apiJson } from '@/lib/api-client';
+import { apiJson } from '@/lib/api-client';
 import { useSettingsStore, type Settings } from './settingsStore';
+import { saveServerSecrets, USER_SETTINGS_KEY, type ServerSecrets } from './serverSecrets';
 import styles from './settings.module.css';
 
 const PROVIDERS: { value: string; label: string; baseURL?: string; model?: string }[] = [
@@ -27,13 +29,6 @@ const VOICES: { value: string; label: string }[] = [
   { value: 'verse', label: 'Verse' },
 ];
 
-/** Voca-bridge config lives server-side (GET never returns the raw token). */
-interface VocaConfig {
-  origin: string;
-  hasToken: boolean;
-  usingServerDefault: boolean;
-}
-
 const LAYOUTS: { mode: LayoutMode; title: string; dir: 'row' | 'col'; order: [string, string] }[] = [
   { mode: 'en-vi', title: 'EN · VI (Trái–Phải)', dir: 'row', order: ['EN', 'VI'] },
   { mode: 'vi-en', title: 'VI · EN (Trái–Phải)', dir: 'row', order: ['VI', 'EN'] },
@@ -43,24 +38,34 @@ const LAYOUTS: { mode: LayoutMode; title: string; dir: 'row' | 'col'; order: [st
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const toast = useToast();
+  const queryClient = useQueryClient();
   const settings = useSettingsStore((s) => s.settings);
   const setSettings = useSettingsStore((s) => s.setSettings);
   const [form, setForm] = useState<Settings>(settings);
 
-  // Voca-bridge origin/token are stored server-side, not in the zustand settings
-  // (the token never lands in localStorage). Load current state on open.
+  // Secrets (LLM key, realtime key, voca token) live server-side and never come
+  // back to the browser — the modal only learns whether each is set, and inputs
+  // are write-only (blank = keep existing). Loaded from /api/user/settings on open.
+  const [llmKey, setLlmKey] = useState('');
+  const [llmDirty, setLlmDirty] = useState(false);
+  const [hasLlmKey, setHasLlmKey] = useState(false);
+  const [realtimeKey, setRealtimeKey] = useState('');
+  const [realtimeDirty, setRealtimeDirty] = useState(false);
+  const [hasRealtimeKey, setHasRealtimeKey] = useState(false);
   const [vocaOrigin, setVocaOrigin] = useState('');
   const [vocaToken, setVocaToken] = useState('');
-  const [vocaHasToken, setVocaHasToken] = useState(false);
+  const [hasVocaToken, setHasVocaToken] = useState(false);
   const [vocaTokenDirty, setVocaTokenDirty] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    apiJson<VocaConfig>('/api/voca/config')
-      .then((cfg) => {
+    apiJson<ServerSecrets>('/api/user/settings')
+      .then((s) => {
         if (cancelled) return;
-        setVocaOrigin(cfg.origin || '');
-        setVocaHasToken(cfg.hasToken);
+        setHasLlmKey(s.hasLlmKey);
+        setHasRealtimeKey(s.hasRealtimeKey);
+        setVocaOrigin(s.vocaOrigin || '');
+        setHasVocaToken(s.hasVocaToken);
       })
       .catch(() => {
         /* not configured yet / offline — leave fields empty */
@@ -84,23 +89,24 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const onSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSettings({ ...form, useApiTts: true });
-    // Persist voca-bridge config to the backend. Only send `token` when the user
-    // actually typed one, so leaving it blank keeps the existing server value.
+    // Persist secrets/config to the backend. Only send a secret field when the
+    // user actually typed one, so a blank field keeps the existing server value.
     try {
-      await apiFetch('/api/voca/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          origin: vocaOrigin.trim(),
-          ...(vocaTokenDirty ? { token: vocaToken.trim() } : {}),
-        }),
+      await saveServerSecrets({
+        vocaOrigin: vocaOrigin.trim(),
+        ...(llmDirty ? { llmApiKey: llmKey.trim() } : {}),
+        ...(realtimeDirty ? { realtimeApiKey: realtimeKey.trim() } : {}),
+        ...(vocaTokenDirty ? { vocaToken: vocaToken.trim() } : {}),
       });
+      await queryClient.invalidateQueries({ queryKey: USER_SETTINGS_KEY });
     } catch {
-      /* non-fatal: LLM/layout settings still saved locally */
+      /* non-fatal: local (non-secret) settings are still saved */
     }
     toast.show('Đã lưu cấu hình', 'success');
     onClose();
   };
+
+  const savedPlaceholder = '•••••••••••• (đã lưu ở server — để trống nếu giữ nguyên)';
 
   return (
     <div className={styles.backdrop} onMouseDown={onClose}>
@@ -127,7 +133,16 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <input className={styles.input} type="text" required value={form.baseURL} onChange={(e) => patch({ baseURL: e.target.value })} />
             </Field>
             <Field label="API Key">
-              <input className={styles.input} type="password" placeholder="Nhập API Key của bạn" value={form.apiKey} onChange={(e) => patch({ apiKey: e.target.value })} />
+              <input
+                className={styles.input}
+                type="password"
+                placeholder={hasLlmKey ? savedPlaceholder : 'Nhập API Key của bạn'}
+                value={llmKey}
+                onChange={(e) => {
+                  setLlmKey(e.target.value);
+                  setLlmDirty(true);
+                }}
+              />
             </Field>
             <Field label="Model Name">
               <input className={styles.input} type="text" required value={form.model} onChange={(e) => patch({ model: e.target.value })} />
@@ -136,7 +151,16 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
           <Section title="Companion Voice (Realtime)" hint="Cấu hình cuộc gọi giọng nói trực tiếp (WebRTC).">
             <Field label="Realtime API Key" full>
-              <input className={styles.input} type="password" placeholder="Mặc định dùng chung API Key chính ở trên" value={form.realtimeApiKey} onChange={(e) => patch({ realtimeApiKey: e.target.value })} />
+              <input
+                className={styles.input}
+                type="password"
+                placeholder={hasRealtimeKey ? savedPlaceholder : 'Mặc định dùng chung API Key chính ở trên'}
+                value={realtimeKey}
+                onChange={(e) => {
+                  setRealtimeKey(e.target.value);
+                  setRealtimeDirty(true);
+                }}
+              />
             </Field>
             <Field label="Realtime Model Name">
               <input className={styles.input} type="text" placeholder="gpt-realtime-mini" value={form.realtimeModel} onChange={(e) => patch({ realtimeModel: e.target.value })} />
@@ -160,7 +184,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <input
                 className={styles.input}
                 type="password"
-                placeholder={vocaHasToken ? '•••••••••••• (đã lưu ở server — để trống nếu giữ nguyên)' : 'Bearer token'}
+                placeholder={hasVocaToken ? savedPlaceholder : 'Bearer token'}
                 value={vocaToken}
                 onChange={(e) => {
                   setVocaToken(e.target.value);

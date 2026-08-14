@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '@/components/Toast';
 import { apiFetch } from '@/lib/api-client';
 import { useSettingsStore } from '@/features/settings/settingsStore';
+import { useServerSecrets } from '@/features/settings/serverSecrets';
 import { getIframePageText, getSelectedReaderText } from '@/features/reader/iframe/pageContext';
 import type { Book, Highlight } from '@/types/api';
 import { cleanupOldChatHistories, loadChatHistory, saveChatHistory } from './chatHistory';
@@ -23,6 +24,8 @@ interface UseChatArgs {
 export function useChat({ book, page, highlights, open }: UseChatArgs) {
   const toast = useToast();
   const settings = useSettingsStore((s) => s.settings);
+  const { data: serverSecrets } = useServerSecrets();
+  const hasLlmKey = serverSecrets?.hasLlmKey ?? false;
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadChatHistory(book.slug));
   const messagesRef = useRef(messages);
@@ -71,7 +74,7 @@ export function useChat({ book, page, highlights, open }: UseChatArgs) {
 
   // Page-specific suggested prompts (debounced), only while the panel is open.
   useEffect(() => {
-    if (!open || !settings.apiKey) return;
+    if (!open || !hasLlmKey) return;
     const key = `${book.slug}:${page}:${settings.baseURL}:${settings.model}`;
     if (suggestionsKeyRef.current === key) return;
     setSuggestedPrompts([]);
@@ -96,7 +99,6 @@ Return ONLY the JSON array, no other text.`;
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             baseURL: settings.baseURL,
-            apiKey: settings.apiKey,
             model: settings.model,
             messages: [
               { role: 'system', content: systemPrompt },
@@ -119,7 +121,7 @@ Return ONLY the JSON array, no other text.`;
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [open, book.slug, book.title, page, settings.apiKey, settings.baseURL, settings.model]);
+  }, [open, book.slug, book.title, page, hasLlmKey, settings.baseURL, settings.model]);
 
   const streamCompletion = useCallback(
     async (history: ChatMessage[]) => {
@@ -185,7 +187,6 @@ Instructions:
           signal: abortRef.current.signal,
           body: JSON.stringify({
             baseURL: settings.baseURL,
-            apiKey: settings.apiKey,
             model: settings.model,
             messages: [
               { role: 'system', content: systemPrompt },
@@ -275,7 +276,7 @@ Instructions:
     (text?: string) => {
       const toSend = (text ?? chatInput).trim();
       if (!toSend || chatPending) return;
-      if (!settings.apiKey) {
+      if (!hasLlmKey) {
         toast.show('Cấu hình API Key trong Settings để chat với Companion Agent', 'warning');
         return;
       }
@@ -284,7 +285,7 @@ Instructions:
       setChatInput('');
       void streamCompletion(next);
     },
-    [chatInput, chatPending, settings.apiKey, toast, commit, streamCompletion],
+    [chatInput, chatPending, hasLlmKey, toast, commit, streamCompletion],
   );
 
   const cancel = useCallback(() => {
