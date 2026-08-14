@@ -98,6 +98,18 @@ class UserRefreshToken(Base):
     token = Column(String, unique=True, index=True, nullable=False)
     expires_at = Column(Integer, nullable=False)
 
+class UserVocaConfig(Base):
+    """Per-user voca-bridge config. The token is entered on the FE but stored here
+    server-side (never shipped back to the browser) — the /api/voca proxy attaches
+    it. Empty values fall back to the VOCA_BRIDGE_* env defaults."""
+    __tablename__ = "user_voca_config"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    bridge_origin = Column(String, nullable=True, default="")
+    bridge_token = Column(String, nullable=True, default="")
+    updated_at = Column(Integer, default=lambda: int(time.time()))
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 

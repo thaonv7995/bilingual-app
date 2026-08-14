@@ -108,41 +108,64 @@
 .layoutGrid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  gap: 8px;
+  margin-top: 6px;
 }
 .layoutCard {
-  padding: 10px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
   background: rgba(255, 255, 255, 0.02);
   cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    background 0.15s ease;
+  user-select: none;
+  transition: all 0.2s ease;
 }
 .layoutCard:hover {
-  border-color: var(--border-hover);
+  border-color: rgba(0, 198, 255, 0.4);
+  background: rgba(255, 255, 255, 0.04);
+  transform: translateY(-2px);
 }
 .layoutActive {
   border-color: #00c6ff;
   background: rgba(0, 198, 255, 0.08);
+  box-shadow: 0 0 10px rgba(0, 198, 255, 0.12);
 }
 .layoutPreview {
+  width: 100%;
+  height: 32px;
+  box-sizing: border-box;
   display: flex;
   gap: 4px;
-  height: 56px;
+  padding: 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
 }
 .previewBadge {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
-  background: linear-gradient(135deg, #1f2937, #111827);
-  border: 1px solid var(--border);
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-muted);
+  border-radius: 2px;
+  font-size: 8px;
+  font-weight: 800;
+  color: #fff;
+  opacity: 0.5;
+}
+.layoutActive .previewBadge {
+  opacity: 1;
+}
+.badgeEn {
+  background: rgba(37, 99, 235, 0.35);
+  border: 1px solid rgba(37, 99, 235, 0.5);
+}
+.badgeVi {
+  background: rgba(220, 38, 38, 0.3);
+  border: 1px solid rgba(220, 38, 38, 0.45);
 }
 
 .footer {
