@@ -76,23 +76,38 @@ python3 server.py
 
 Ứng dụng hỗ trợ tập lệnh triển khai thông minh chạy dưới dạng Background Process (dịch vụ `systemd`) trên Debian/Ubuntu.
 
-#### 🚀 Cài đặt tự động bằng 1 dòng lệnh (Curl bootstrap)
-Chạy lệnh sau trên máy chủ Debian trống để tự động tải code từ GitHub của bạn, cấu hình các thư viện Python, và khởi chạy dịch vụ:
+#### ⚡ Cài đặt từ GitHub Release — chỉ 1 lệnh (khuyến nghị)
+Tải bản Release mới nhất (đã build sẵn frontend v2 — **không cần Node**), cấu hình Python + systemd và chạy dịch vụ trên cổng `27099`:
 ```bash
-curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- install /opt/bilingual-app https://github.com/thaonv7995/bilingual-app.git
+curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- install-release /opt/bilingual-app
 ```
-
-#### 🔄 Cập nhật phiên bản mới (Update)
-Tự động kéo mã nguồn mới nhất từ GitHub, cập nhật các dependencies và khởi động lại dịch vụ bằng một câu lệnh:
-```bash
-curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- update /opt/bilingual-app
-```
-
-#### 🗑️ Gỡ cài đặt hoàn toàn (Delete / Uninstall)
-Dừng dịch vụ chạy ngầm, gỡ cấu hình systemd và xóa sạch thư mục cài đặt từ xa:
+Cập nhật lên bản Release mới hơn: chạy lại đúng lệnh trên. Gỡ cài đặt:
 ```bash
 curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- delete /opt/bilingual-app
 ```
+
+**Hỗ trợ OS** (script tự nhận diện trình quản lý gói):
+
+| OS | Lệnh 1 dòng ở trên | Ghi chú |
+| :--- | :---: | :--- |
+| Debian / Ubuntu (`apt`) | ✅ | Mặc định, tự cài đủ dependency |
+| Fedora / RHEL / CentOS (`dnf`/`yum`) | ✅ | Tự cài qua dnf/yum + NodeSource |
+| Arch (`pacman`), openSUSE (`zypper`) | ✅ | Tự cài python/node qua pacman/zypper |
+| **macOS / Windows** | ❌ | Không có `systemd` → chạy trực tiếp (mục **Local Launch** ở trên) hoặc dùng **WSL** / Docker |
+
+> Yêu cầu chung: có `curl`, `tar`, và quyền `sudo` (để đăng ký systemd). Bản `install-release` **không cần Node** (đã build sẵn `dist/`); bản build-from-source cần Node ≥18 (script tự cài).
+
+<details>
+<summary>Phương án khác: build từ source (git clone)</summary>
+
+Tự clone repo và **build v2 tại chỗ** (cần Node ≥18 — script tự cài) — dùng khi muốn code mới nhất trên `main` thay vì bản Release:
+```bash
+# Cài đặt
+curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- install /opt/bilingual-app https://github.com/thaonv7995/bilingual-app.git
+# Cập nhật (git pull + rebuild + restart)
+curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- update /opt/bilingual-app
+```
+</details>
 
 *Xem thêm tài liệu cấu hình CI/CD tự động bằng GitHub Actions tại [DEPLOYMENT.md](file:///Users/thaonv/Projects/Personal/bilingual-app/application/backend/docs/DEPLOYMENT.md).*
 

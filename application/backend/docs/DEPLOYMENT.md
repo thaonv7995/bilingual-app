@@ -39,13 +39,28 @@ sudo systemctl restart bilingual-reader
 
 ## 3. Deployment & Lifecycle Commands
 
-### 🚀 Cài đặt (Installation via single command)
-You can install and bootstrap the application on a fresh Debian server using a single `curl` command (this clones the repository into the specified directory, sets up python virtualenv, installs dependencies, and runs it as a systemd process):
+The installer auto-detects the package manager (`apt` / `dnf` / `yum` / `zypper` /
+`pacman` / `brew`), so a single command works across the major systemd Linux
+distros. It needs `curl`, `tar`, and `sudo`. macOS/Windows have no systemd — run
+the app directly (see the README "Local Launch") or use WSL/Docker.
+
+### ⚡ Cài đặt từ GitHub Release — 1 lệnh, không cần Node (khuyến nghị)
+Downloads the latest published Release tarball (ships a **prebuilt v2 `dist/`**, so
+no Node/npm is installed), sets up the venv, and registers the systemd service:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- install-release /opt/bilingual-app
+```
+Re-run the same command to update to a newer Release.
+
+### 🛠️ Cài đặt build-from-source (git clone)
+Clones the repo and **builds v2 in place** (needs Node ≥18 — auto-installed). Use
+when you want the latest `main` instead of a tagged Release:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/thaonv7995/bilingual-app/main/deploy.sh | bash -s -- install /opt/bilingual-app https://github.com/thaonv7995/bilingual-app.git
 ```
-*Hãy chắc chắn máy chủ Debian đã cấu hình SSH key để truy cập hoặc sử dụng Personal Access Token trong HTTPS URL nếu repository là private.*
+*Với repo private, dùng SSH key hoặc Personal Access Token trong HTTPS URL.*
 
 ### 🔄 Cập nhật (Update to latest version)
 To update the source code to the latest commit on GitHub, update python virtualenv dependencies, and restart the background systemd service using a single command:
