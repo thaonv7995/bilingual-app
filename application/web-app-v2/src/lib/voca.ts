@@ -1,51 +1,61 @@
 /**
- * Voca vocabulary client — typed port of v1's voca-client.js.
+ * Voca vocabulary feature — lookup/create/audio plus the in-iframe panels.
  *
  * v2 change: all calls go through the same-origin backend proxy (/api/voca/*)
- * via apiFetch, so the voca-bridge token is server-side, never in the client
- * (v1 shipped a hardcoded token). The user's own LLM/TTS settings still travel
- * in the request body for card/audio generation (hybrid model).
+ * via apiFetch, so the Voca API key is server-side, never in the client (v1
+ * shipped a hardcoded key). The proxy is a pass-through, so this module owns
+ * the Voca 2.0 envelope — see `vocaClient.ts` for `unwrapVoca`/`VocaError`.
  *
- * Fixes vs v1: the NDJSON stream now parses its final line (v1 dropped it and
- * reported truncated streams as success), audio object-URLs are revoked on
- * error/close (not only on `ended`), and JSON parses are guarded.
+ * Voca 2.0 moved the LLM and TTS server-side, so nothing here forwards the
+ * user's own LLM/TTS settings any more (the old "configure your key first"
+ * gate blocked a feature that now works without one). Card creation answers
+ * with plain JSON instead of NDJSON progress, and audio is keyed by the card
+ * SLUG — `id` is a number in 2.0 and points at nothing.
+ *
+ * Audio has one more wrinkle: 2.0 synthesises with the Voca SERVER's TTS, and a
+ * server without one answers 503 TTS_NOT_CONFIGURED for every uncached word. The
+ * client can no longer send a key to fix that, so `playCardAudio` falls back to
+ * the device's own speech synthesis (see `speech.ts`).
+ *
+ * Fixes kept from v1: audio object-URLs are revoked on error/close (not only on
+ * `ended`) and every JSON parse is guarded.
  */
-import { apiFetch } from '@/lib/api-client';
 import { escapeHtml } from '@/lib/escape';
-import { useSettingsStore, type Settings } from '@/features/settings/settingsStore';
+import { useSettingsStore, type AudioSource } from '@/features/settings/settingsStore';
+import { deviceSpeechAvailable, speakWithDevice } from '@/lib/speech';
+import { lookupCachedWord, rememberVocaCard } from '@/lib/vocaCards';
+import {
+  VocaError,
+  audioKeyFromRef,
+  cardAudioKey,
+  createVocaCard,
+  fetchVocaAudio,
+  generateVocaAudio,
+  getVocaCard,
+  lookupVocaCard,
+  type VocaCard,
+  type VocaLevel,
+  type VocaLookupResult,
+} from '@/lib/vocaClient';
 
-const DEFAULT_TTS_MODEL = 'edge-tts/en-US-SteffanNeural';
-
-export interface VocaCard {
-  id?: string;
-  word: string;
-  ipa?: string;
-  pronunciation?: string;
-  meaningVi?: string;
-}
-export interface VocaLookupResult {
-  found?: boolean;
-  word?: string;
-  card?: VocaCard;
-  cards?: VocaCard[];
-}
+export { VocaError, unwrapVoca } from '@/lib/vocaClient';
+export type { VocaCard, VocaEnvelope, VocaLevel, VocaLookupResult } from '@/lib/vocaClient';
+export { syncVocaCards } from '@/lib/vocaCards';
 
 const getSettings = () => useSettingsStore.getState().settings;
 
-// The LLM apiKey is NOT included here — the backend voca proxy injects the
-// user's server-held key into settings.apiKey before forwarding to the bridge.
-function llmSettingsPayload(s: Settings) {
-  if (!s.baseURL || !s.model) return null;
-  return { baseURL: s.baseURL, model: s.model };
+/** A settings blob written before this preference existed carries no value. */
+function audioSource(): AudioSource {
+  const value = getSettings().audioSource;
+  return value === 'voca' || value === 'device' ? value : 'auto';
 }
 
-function ttsSettingsPayload(s: Settings) {
-  if (s.useApiTts === false) return null;
-  const baseURL = String(s.baseURL || '').trim();
-  const ttsEndpoint = String(s.ttsEndpoint || '').trim();
-  if (!ttsEndpoint && !baseURL) return null;
-  return { baseURL, ttsEndpoint, ttsModel: s.ttsModel || DEFAULT_TTS_MODEL };
-}
+const LEVEL_LABELS: Record<VocaLevel, string> = {
+  new: 'Mới',
+  learning: 'Đang học',
+  known: 'Đã biết',
+  mastered: 'Thành thạo',
+};
 
 export function cleanWord(value: unknown): string {
   return String(value || '')
@@ -55,68 +65,32 @@ export function cleanWord(value: unknown): string {
     .slice(0, 120);
 }
 
+/** Cache-first: an exact hit in the local mirror skips the network entirely. */
 export async function lookupWord(word: string): Promise<VocaLookupResult> {
   const query = cleanWord(word);
   if (!query) return { found: false, word: '' };
-  const res = await apiFetch(`/api/voca/lookup?word=${encodeURIComponent(query)}`);
-  if (!res.ok) {
-    const payload = await res.json().catch(() => ({}));
-    throw new Error(payload?.error?.message || `Lookup failed (${res.status})`);
-  }
-  return res.json() as Promise<VocaLookupResult>;
+  const cached = lookupCachedWord(query);
+  if (cached) return cached;
+  return lookupVocaCard(query);
 }
 
-async function consumeCreateStream(response: Response): Promise<{ ok: boolean; message?: string }> {
-  if (!response.body) return { ok: true };
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let lastError = '';
-  for (;;) {
-    const { value, done } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done });
-    const lines = buffer.split(/\r?\n/);
-    // When done, keep ALL lines (incl. the last without a trailing newline).
-    buffer = done ? '' : (lines.pop() ?? '');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      let event: { type?: string; message?: string };
-      try {
-        event = JSON.parse(trimmed);
-      } catch {
-        continue;
-      }
-      if (event.type === 'error') lastError = event.message || 'Không tạo được thẻ.';
-      if (event.type === 'done') return { ok: true, message: event.message };
-    }
-    if (done) break;
-  }
-  if (lastError) throw new Error(lastError);
-  return { ok: true };
-}
-
-export async function addWordToVoca(word: string): Promise<{ ok: boolean }> {
+/**
+ * Create a card and hand the caller the finished Card. 2.0 does the LLM work
+ * itself, so the body is just the word — and since the response already IS the
+ * card, callers render it directly instead of doing a second lookup round-trip.
+ * The progress toast stays: generation still takes seconds.
+ */
+export async function addWordToVoca(word: string): Promise<VocaCard> {
   const normalized = cleanWord(word);
-  if (!normalized) throw new Error('Hãy chọn một từ trước.');
-  const llm = llmSettingsPayload(getSettings());
-  if (!llm) throw new Error('Cấu hình API Key, Base URL và Model trong Cài đặt trước.');
+  if (!normalized) throw new VocaError('MISSING_WORD', 'Hãy chọn một từ trước.');
 
   const jobId = createJobId();
   showVocaProgressToast(jobId, normalized);
   try {
-    const res = await apiFetch('/api/voca/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ word: normalized, settings: llm }),
-    });
-    if (!res.ok) {
-      const payload = await res.json().catch(() => ({}));
-      throw new Error(payload?.error?.message || `Create failed (${res.status})`);
-    }
-    await consumeCreateStream(res);
+    const card = await createVocaCard(normalized);
+    rememberVocaCard(card);
     removeVocaProgressToast(jobId);
-    return { ok: true };
+    return card;
   } catch (err) {
     removeVocaProgressToast(jobId);
     showVocaToast(err instanceof Error ? err.message : 'Không thêm được từ.', { error: true });
@@ -124,29 +98,20 @@ export async function addWordToVoca(word: string): Promise<{ ok: boolean }> {
   }
 }
 
-export async function playCardAudio(card: VocaCard | string): Promise<void> {
-  const cardId = typeof card === 'string' ? card : card?.id;
-  if (!cardId) throw new Error('Thiếu card id.');
-  const path = `/api/voca/audio/${encodeURIComponent(cardId)}`;
+/** Play a card's pronunciation from Voca, generating it there the first time. */
+async function playVocaAudio(card: VocaCard | string): Promise<void> {
+  const key = cardAudioKey(card);
+  if (!key) throw new VocaError('MISSING_WORD', 'Thiếu slug của thẻ.');
 
-  let res = await apiFetch(path);
-  if (res.status === 404) {
-    const tts = ttsSettingsPayload(getSettings());
-    if (!tts) throw new Error('Cấu hình TTS trong Cài đặt, hoặc tạo audio trong app Voca trước.');
-    const gen = await apiFetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ settings: tts }),
-    });
-    if (!gen.ok) {
-      const payload = await gen.json().catch(() => ({}));
-      throw new Error(payload?.error?.message || `Audio generation failed (${gen.status})`);
-    }
-    res = await apiFetch(path);
+  let blob = await fetchVocaAudio(key);
+  if (!blob) {
+    const ref = await generateVocaAudio(key, { voiceModel: getSettings().ttsModel });
+    // Fetch what Voca says it stored, not the key we asked with.
+    blob = await fetchVocaAudio(audioKeyFromRef(ref, key));
   }
-  if (!res.ok) throw new Error(`Audio request failed (${res.status})`);
+  if (!blob) throw new VocaError('AUDIO_NOT_FOUND', 'Không tải được audio của thẻ này.');
 
-  const objectUrl = URL.createObjectURL(await res.blob());
+  const objectUrl = URL.createObjectURL(blob);
   const audio = new Audio(objectUrl);
   const cleanup = () => URL.revokeObjectURL(objectUrl);
   audio.addEventListener('ended', cleanup, { once: true });
@@ -156,6 +121,66 @@ export async function playCardAudio(card: VocaCard | string): Promise<void> {
   } catch (err) {
     cleanup();
     throw err;
+  }
+}
+
+/** What the device says: the English headword, never the Vietnamese meaning. */
+function spokenText(card: VocaCard | string): string {
+  return String((typeof card === 'string' ? card : card?.word) || '').trim();
+}
+
+/**
+ * Every Voca audio failure may fall back to the device EXCEPT `UNAUTHORIZED`: a
+ * bad API key is the user's to fix, and quietly speaking the word anyway would
+ * hide a real misconfiguration behind working-sounding audio. Everything else —
+ * TTS_NOT_CONFIGURED, AUDIO_NOT_FOUND after a generate attempt, RATE_LIMITED, an
+ * unreachable proxy, a decode/autoplay rejection from <audio> — all mean the same
+ * thing to the user ("no mp3"), which is exactly what the device voice is for.
+ */
+function canFallBackToDevice(err: unknown): boolean {
+  return !(err instanceof VocaError && err.code === 'UNAUTHORIZED');
+}
+
+let deviceVoiceNoticed = false;
+
+/** Once per page load — repeating it on every word would be noise, not news. */
+function noticeDeviceVoiceOnce(): void {
+  if (deviceVoiceNoticed) return;
+  deviceVoiceNoticed = true;
+  showVocaToast('Voca chưa bật TTS — đang đọc bằng giọng thiết bị.', { info: true });
+}
+
+/**
+ * Play a card's pronunciation, honouring the user's audio-source preference:
+ * `voca` behaves exactly as before, `device` never touches the network, and
+ * `auto` tries Voca first and falls back to the device voice.
+ */
+export async function playCardAudio(card: VocaCard | string): Promise<void> {
+  const source = audioSource();
+
+  // `device`: nothing is awaited before `speak()`, so the click that got us here
+  // is still the user gesture Safari demands. (`auto` spends that gesture on the
+  // Voca round-trip before it can know it failed — which is half the reason this
+  // preference exists.)
+  if (source === 'device') {
+    const text = spokenText(card);
+    if (!text) throw new VocaError('MISSING_WORD', 'Thẻ này không có từ để đọc.');
+    return speakWithDevice(text);
+  }
+
+  try {
+    await playVocaAudio(card);
+  } catch (err) {
+    const text = spokenText(card);
+    if (source === 'voca' || !canFallBackToDevice(err) || !text || !deviceSpeechAvailable()) throw err;
+    noticeDeviceVoiceOnce();
+    try {
+      await speakWithDevice(text);
+    } catch {
+      // Surface the Voca failure, not the speech one: Voca's message is the
+      // actionable half ("chưa cấu hình TTS"), a speech-engine error is a dead end.
+      throw err;
+    }
   }
 }
 
@@ -175,6 +200,7 @@ function ensureVocaToastStyles(): void {
     .voca-toast-progress { min-width: 120px; }
     .voca-toast.voca-show { opacity: 1; transform: translateY(0); }
     .voca-toast-success { background: rgba(21, 128, 61, 0.95); }
+    .voca-toast-info { background: rgba(29, 78, 216, 0.95); }
     .voca-toast-error { background: rgba(185, 28, 28, 0.95); }
     .voca-toast-icon { width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,0.2);
       display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 11px; }
@@ -227,11 +253,18 @@ export function showVocaError(message: string): void {
   showVocaToast(message, { error: true });
 }
 
-function showVocaToast(message: string, { error = false }: { error?: boolean } = {}): void {
+/**
+ * `info` exists for notices that are neither a win nor a failure — the device
+ * voice fallback is the first: a green ✓ would claim success the user didn't ask
+ * for, and red would call a working fallback an error.
+ */
+function showVocaToast(message: string, { error = false, info = false }: { error?: boolean; info?: boolean } = {}): void {
   ensureVocaToastStyles();
+  const variant = error ? 'error' : info ? 'info' : 'success';
   const toast = document.createElement('div');
-  toast.className = `voca-toast ${error ? 'voca-toast-error' : 'voca-toast-success'}`;
-  toast.innerHTML = `<span class="voca-toast-icon">${error ? '!' : '✓'}</span><span class="voca-toast-text">${escapeHtml(message)}</span>`;
+  toast.className = `voca-toast voca-toast-${variant}`;
+  const icon = error ? '!' : info ? 'i' : '✓';
+  toast.innerHTML = `<span class="voca-toast-icon">${icon}</span><span class="voca-toast-text">${escapeHtml(message)}</span>`;
   document.documentElement.appendChild(toast);
   requestAnimationFrame(() => toast.classList.add('voca-show'));
   layoutVocaToasts();
@@ -241,7 +274,7 @@ function showVocaToast(message: string, { error = false }: { error?: boolean } =
       toast.remove();
       layoutVocaToasts();
     }, 300);
-  }, error ? 4500 : 3000);
+  }, error ? 4500 : info ? 4000 : 3000);
 }
 
 // -- lookup panels (injected into the book iframe document) ------------------
@@ -294,6 +327,9 @@ export function showVocaLookupResults(
   query: string,
   result: VocaLookupResult,
 ): void {
+  // 2.0 says whether the hit is exact, so we no longer make the user pick from
+  // a list when Voca already knows which card they meant.
+  if (result?.matchType === 'exact' && result.card) return showVocaLookupPanel(doc, anchorRect, result.card);
   const cards = Array.isArray(result?.cards) && result.cards.length
     ? result.cards
     : result?.card
@@ -304,11 +340,46 @@ export function showVocaLookupResults(
   showVocaLookupMultiPanel(doc, anchorRect, query, cards);
 }
 
+/** Lookup lists carry a trimmed card; the detail endpoint has the rest. */
+function hasRichDetail(card: VocaCard): boolean {
+  return Boolean(card.meaningEn || card.partOfSpeech || card.examples?.length);
+}
+
+function renderCardDetail(doc: Document, body: HTMLElement, card: VocaCard): void {
+  body.textContent = '';
+  const add = (className: string, text: string) => {
+    const el = doc.createElement('div');
+    el.className = className;
+    el.textContent = text;
+    body.appendChild(el);
+  };
+
+  const ipa = card.ipa || card.pronunciation || '';
+  if (ipa) add('voca-lookup-panel__ipa', ipa.startsWith('/') ? ipa : `/${ipa}/`);
+
+  const chips = [card.partOfSpeech, card.level ? LEVEL_LABELS[card.level] : ''].filter(Boolean) as string[];
+  if (chips.length) {
+    const meta = doc.createElement('div');
+    meta.className = 'voca-lookup-panel__meta';
+    chips.forEach((text) => {
+      const chip = doc.createElement('span');
+      chip.className = 'voca-lookup-panel__chip';
+      chip.textContent = text;
+      meta.appendChild(chip);
+    });
+    body.appendChild(meta);
+  }
+
+  if (card.meaningVi) add('voca-lookup-panel__meaning', card.meaningVi);
+  if (card.meaningEn) add('voca-lookup-panel__gloss', card.meaningEn);
+  const example = card.examples?.[0];
+  if (example) add('voca-lookup-panel__example', example);
+}
+
 export function showVocaLookupPanel(doc: Document, anchorRect: DOMRect, card: VocaCard): void {
   removeVocaLookupPanel(doc);
   const panel = doc.createElement('div');
   panel.className = 'voca-lookup-panel';
-  const ipa = card.ipa || card.pronunciation || '';
 
   const head = doc.createElement('div');
   head.className = 'voca-lookup-panel__head';
@@ -319,34 +390,44 @@ export function showVocaLookupPanel(doc: Document, anchorRect: DOMRect, card: Vo
   voiceBtn.type = 'button';
   voiceBtn.className = 'voca-lookup-panel__voice';
   voiceBtn.title = 'Phát âm';
+  voiceBtn.setAttribute('aria-label', 'Phát âm');
   voiceBtn.innerHTML = speakerSvg();
   voiceBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
+    // Nothing may await before `playCardAudio` — on the device-voice path this
+    // click IS the user gesture Safari requires (see `speech.ts`).
     voiceBtn.disabled = true;
+    voiceBtn.setAttribute('aria-busy', 'true');
     voiceBtn.textContent = '…';
     try {
       await playCardAudio(card);
     } catch (err) {
       showVocaToast(err instanceof Error ? err.message : 'Không phát được audio.', { error: true });
     } finally {
+      // Always re-enable: a failed word must stay replayable after the user
+      // fixes the cause (and the fallback can succeed on the next tap).
       voiceBtn.disabled = false;
+      voiceBtn.removeAttribute('aria-busy');
       voiceBtn.innerHTML = speakerSvg();
     }
   });
   head.append(wordEl, voiceBtn);
   panel.appendChild(head);
 
-  if (ipa) {
-    const ipaEl = doc.createElement('div');
-    ipaEl.className = 'voca-lookup-panel__ipa';
-    ipaEl.textContent = ipa.startsWith('/') ? ipa : `/${ipa}/`;
-    panel.appendChild(ipaEl);
-  }
-  if (card.meaningVi) {
-    const meaningEl = doc.createElement('div');
-    meaningEl.className = 'voca-lookup-panel__meaning';
-    meaningEl.textContent = card.meaningVi;
-    panel.appendChild(meaningEl);
+  const body = doc.createElement('div');
+  body.className = 'voca-lookup-panel__body';
+  renderCardDetail(doc, body, card);
+  panel.appendChild(body);
+
+  // Enrich in the background when we only have the trimmed card (a list hit).
+  if (!hasRichDetail(card) && card.slug) {
+    void getVocaCard(card.slug)
+      .then((full) => {
+        if (panel.isConnected) renderCardDetail(doc, body, full);
+      })
+      .catch(() => {
+        /* the trimmed card is still useful — leave it as is */
+      });
   }
 
   panel.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -382,7 +463,7 @@ function showVocaLookupMultiPanel(
     w.textContent = card.word;
     const m = doc.createElement('span');
     m.className = 'voca-lookup-panel__item-meaning';
-    m.textContent = card.meaningVi || '';
+    m.textContent = card.meaningVi || card.meaningEn || '';
     item.append(w, m);
     item.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -416,9 +497,8 @@ export function showVocaNotFoundPanel(doc: Document, anchorRect: DOMRect, word: 
     e.stopPropagation();
     panel.remove();
     try {
-      await addWordToVoca(word);
-      const result = await lookupWord(word);
-      if (result.found) showVocaLookupResults(doc, anchorRect, word, result);
+      // The create response IS the card — no second lookup round-trip.
+      showVocaLookupPanel(doc, anchorRect, await addWordToVoca(word));
     } catch {
       showVocaNotFoundPanel(doc, anchorRect, word);
     }
@@ -466,6 +546,13 @@ export function getVocaLookupPanelCss(): string {
     .voca-lookup-panel__voice svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .voca-lookup-panel__voice:disabled { opacity: 0.5; cursor: wait; }
     .voca-lookup-panel__ipa { margin-top: 4px; color: #475569; font-size: 12px; }
+    .voca-lookup-panel__meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+    .voca-lookup-panel__chip { border-radius: 999px; padding: 2px 8px; background: #f1f5f9;
+      border: 1px solid rgba(15, 23, 42, 0.08); color: #475569; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.02em; }
     .voca-lookup-panel__meaning { margin-top: 6px; color: #1e293b; line-height: 1.45; }
+    .voca-lookup-panel__gloss { margin-top: 4px; color: #475569; font-size: 12px; line-height: 1.45; }
+    .voca-lookup-panel__example { margin-top: 6px; padding-left: 8px; border-left: 2px solid rgba(37, 99, 235, 0.25);
+      color: #334155; font-size: 12px; font-style: italic; line-height: 1.45; }
   `;
 }

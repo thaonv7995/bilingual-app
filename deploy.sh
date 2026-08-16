@@ -358,9 +358,9 @@ Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
 Environment=FRONTEND_V2_DIST=$TARGET_DIR/application/web-app-v2/dist
-# Optional secrets / overrides (VOCA_BRIDGE_TOKEN, VOCA_BRIDGE_ORIGIN,
-# DATABASE_URL, JWT secret, …). Create $TARGET_DIR/.env as KEY=VALUE lines;
-# the leading '-' makes the file optional.
+# Optional secrets / overrides (VOCA_API_ORIGIN — legacy VOCA_BRIDGE_ORIGIN is
+# still read —, VOCA_BRIDGE_TOKEN, DATABASE_URL, JWT secret, …). Create
+# $TARGET_DIR/.env as KEY=VALUE lines; the leading '-' makes the file optional.
 EnvironmentFile=-$TARGET_DIR/.env
 
 [Install]

@@ -26,9 +26,9 @@ graph TD
 ```
 
 ### 1. Web Frontend (Library & Reader App)
-- **Library (`application/web-app/index.html`, `application/web-app/app.js`)**: Trang chủ chứa tủ sách công cộng. Hiển thị sách được tải lên, tìm kiếm, lưu tiến trình đọc tự động.
+- **Library (`application/legacy/web-app-v1/index.html`, `application/legacy/web-app-v1/app.js`)**: Trang chủ chứa tủ sách công cộng. Hiển thị sách được tải lên, tìm kiếm, lưu tiến trình đọc tự động.
 - **Reader (Side-by-Side Split View)**: Hiển thị song song bản gốc tiếng Anh và bản dịch tiếng Việt chuẩn A4. Đồng bộ cuộn (scroll sync) mượt mà cho cả 2 ngôn ngữ.
-- **Admin Portal (`application/web-app/admin.html`, `application/web-app/admin.js`)**: Giao diện kéo thả file `.bkb`, tự động giải nén và nạp sách vào DB, cấp quyền cho user, tạo API Key và quản lý thành viên.
+- **Admin Portal (`application/legacy/web-app-v1/admin.html`, `application/legacy/web-app-v1/admin.js`)**: Giao diện kéo thả file `.bkb`, tự động giải nén và nạp sách vào DB, cấp quyền cho user, tạo API Key và quản lý thành viên.
 
 ### 2. Backend Server (FastAPI)
 - **Tập tin chạy**: `server.py` (Chạy trình bao tự động định tuyến môi trường ảo `.venv`).
@@ -37,6 +37,7 @@ graph TD
   - **Book Ingest**: API `@app.post("/api/books/upload")` nhận file `.bkb`, tự động unpack bằng thư viện zip, ghi thông tin sách vào database và di chuyển thư mục sách vào `books/`.
   - **Secure Serve**: Chặn truy cập tĩnh vào thư mục `books/*` nếu người dùng chưa có quyền (`UserPermission`).
   - **AI Chat Proxy**: Ủy nhiệm request chat đến Ollama/LLM API từ cổng an toàn `/api/chat` để tránh lỗi CORS.
+  - **Voca API Proxy**: Ủy nhiệm tra từ / tạo thẻ / audio / practice đến dịch vụ Voca qua `/api/voca/*`, đính kèm origin + API key lấy từ cấu hình lưu server-side nên trình duyệt không bao giờ thấy khóa. Xem [Voca 2.0 integration](application/docs/voca-integration.md).
 
 ### 3. iOS SwiftUI App (`application/mobile_ios`)
 - Ứng dụng gốc (Native Swift) viết hoàn toàn bằng SwiftUI được tối ưu hóa cho iPad và iPhone.
@@ -131,3 +132,10 @@ Hệ thống sử dụng cơ sở dữ liệu SQLite (`bilingual_reader.db`) ch�
 - **User Access Token**: Thời hạn ngắn (e.g. 15 phút), truyền qua header `Authorization: Bearer <token>` hoặc lưu trong cookie an toàn `jwt_token`.
 - **Refresh Token**: Thời hạn dài (e.g. 7 ngày), lưu an toàn trong DB và tự động gửi qua cookie `refresh_token` để refresh Access Token tự động khi hết hạn.
 - **API Key**: Cung cấp mã tĩnh `X-API-Key` cho các tool ngoài để tương tác tự động với API của thư viện (ví dụ như tự động đẩy sách sau khi build).
+- **Voca API Key**: Khóa `voca_...` của dịch vụ Voca. Người dùng tự nhập trong Settings; web-v2 lưu server-side (`user_settings`), iOS lưu trên máy. Backend có thể đặt khóa mặc định qua env `VOCA_BRIDGE_TOKEN`.
+
+### ⚠️ Bắt buộc: thu hồi (rotate) Voca API key đã lộ
+
+Khóa Voca API từng bị hardcode trong `VocaService.swift` (và trong file legacy `legacy/web-app-v1/voca-client.js` mà backend phục vụ **công khai**) đã được commit vào repo này. Xóa nó khỏi HEAD **không** xóa nó khỏi lịch sử git — ai clone repo cũng đọc lại được.
+
+Cần làm ngay: vào **Voca → Settings → API Keys**, thu hồi khóa cũ, tạo khóa mới, rồi nhập khóa mới ở màn hình Settings (iOS / web-v2) hoặc đặt vào `.env` trên server. Không commit khóa mới vào repo.

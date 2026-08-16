@@ -28,12 +28,22 @@ Backend secrets are read from an **optional** `.env` file at the install root (e
 
 ```bash
 sudo tee /opt/bilingual-app/.env >/dev/null <<'ENV'
-VOCA_BRIDGE_ORIGIN=https://voca-bridge.thaonv.online
-VOCA_BRIDGE_TOKEN=<server-default token, optional — users can also set their own>
+VOCA_API_ORIGIN=https://voca.thaonv.online
+VOCA_BRIDGE_TOKEN=voca_<server-default key, optional — users can also set their own>
 # DATABASE_URL=sqlite:////opt/bilingual-app/bilingual_reader.db
 ENV
 sudo systemctl restart bilingual-reader
 ```
+
+| Var | Purpose |
+| :--- | :--- |
+| `VOCA_API_ORIGIN` | Voca base host. **New name, preferred.** Default `https://voca.thaonv.online`; forced to `https` (the host also answers plain `http` with no redirect, which would leak the key) |
+| `VOCA_BRIDGE_ORIGIN` | Legacy alias, still read when `VOCA_API_ORIGIN` is unset |
+| `VOCA_BRIDGE_TOKEN` | Server-default Voca API key, used when a user hasn't set their own. Must include the `voca_` prefix. Name unchanged for backwards compatibility |
+
+> The old `voca-bridge.thaonv.online` host is **dead** (Cloudflare 502). If an existing
+> `/opt/bilingual-app/.env` still points there, fix it — Voca calls fail until you do.
+> Full contract: [voca-integration.md](../../docs/voca-integration.md).
 
 ---
 

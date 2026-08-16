@@ -16,6 +16,10 @@ class APIService: ObservableObject {
     static let shared = APIService()
     
     private init() {
+        // First run after the Voca-through-the-proxy switch: drop the API key the old build
+        // kept on the device, so a stale local copy cannot linger. No-op afterwards.
+        VocaService.purgeDeviceCredentialsIfNeeded()
+
         // Load saved session
         if let savedToken = UserDefaults.standard.string(forKey: "token") {
             self.token = savedToken
@@ -143,7 +147,12 @@ class APIService: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "refreshToken")
         UserDefaults.standard.removeObject(forKey: "username")
         UserDefaults.standard.removeObject(forKey: "isAdmin")
-        
+
+        // Voca is server-configured per user now, so both its "is a key stored?" answer and
+        // the synced dictionary belong to the account that just left.
+        VocaService.invalidateConfiguration()
+        VocaService.clearCardsCache()
+
         // Notify server with the saved (valid) token
         if !savedToken.isEmpty, let url = URL(string: "\(serverUrl)/api/auth/logout") {
             var request = URLRequest(url: url)
@@ -197,22 +206,45 @@ class APIService: ObservableObject {
     
     // Custom URLSession request helper supporting retries with token refreshes
     private func sendRequest(_ request: URLRequest, retryCount: Int = 0) async throws -> (Data, URLResponse) {
-        var mutableRequest = request
-        mutableRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        
-        let (data, response) = try await URLSession.shared.data(for: mutableRequest)
-        
-        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 401 && retryCount < 1 {
-            // Token expired, attempt refresh
-            let newToken = try await performTokenRefresh()
-            var retryRequest = request
-            retryRequest.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
-            return try await sendRequest(retryRequest, retryCount: retryCount + 1)
-        }
-        
-        return (data, response)
+        try await authorized(request, retryCount: retryCount) { try await URLSession.shared.data(for: $0) }
     }
-    
+
+    /// The "sign it, and on a 401 refresh once and try again" rule, in ONE place, for any
+    /// transport: `data(for:)` for ordinary calls, `bytes(for:)` for the streamed ones.
+    /// The *original* request is re-signed on the retry, so the refreshed token is the one
+    /// that actually goes out.
+    private func authorized<Body>(
+        _ request: URLRequest,
+        retryCount: Int = 0,
+        transport: (URLRequest) async throws -> (Body, URLResponse)
+    ) async throws -> (Body, URLResponse) {
+        var signedRequest = request
+        signedRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (body, response) = try await transport(signedRequest)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 401, retryCount < 1 else {
+            return (body, response)
+        }
+        // Token expired, attempt refresh
+        _ = try await performTokenRefresh()
+        return try await authorized(request, retryCount: retryCount + 1, transport: transport)
+    }
+
+    /// The authenticated transport, for services that live outside this class (`VocaService`
+    /// calls the `/api/voca/*` proxy). Exposed rather than reimplemented so the 401 → refresh
+    /// → retry, and the Bearer header itself, are never duplicated.
+    func authorizedData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try await sendRequest(request)
+    }
+
+    /// Streaming twin of `authorizedData`: the Voca practice endpoints answer with SSE, whose
+    /// body has to be consumed chunk by chunk and so cannot go through `data(for:)`.
+    func authorizedBytes(for request: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) {
+        try await authorized(request) { try await URLSession.shared.bytes(for: $0) }
+    }
+
     func fetchBooks() async throws -> [Book] {
         guard let url = URL(string: "\(serverUrl)/api/books") else {
             throw URLError(.badURL)

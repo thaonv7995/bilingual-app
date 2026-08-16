@@ -3,7 +3,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/Toast';
 import type { LayoutMode } from '@/features/reader/readerConstants';
 import { apiJson } from '@/lib/api-client';
-import { useSettingsStore, type Settings } from './settingsStore';
+import { deviceSpeechAvailable } from '@/lib/speech';
+import { syncVocaCards } from '@/lib/vocaCards';
+import { checkVocaHealth } from '@/lib/vocaClient';
+import { useSettingsStore, type AudioSource, type Settings } from './settingsStore';
 import { saveServerSecrets, USER_SETTINGS_KEY, type ServerSecrets } from './serverSecrets';
 import styles from './settings.module.css';
 
@@ -29,6 +32,12 @@ const VOICES: { value: string; label: string }[] = [
   { value: 'verse', label: 'Verse' },
 ];
 
+const AUDIO_SOURCES: { value: AudioSource; label: string }[] = [
+  { value: 'auto', label: 'Tự động — Voca trước, lỗi thì dùng giọng thiết bị' },
+  { value: 'voca', label: 'Chỉ Voca — báo lỗi nếu không tạo được audio' },
+  { value: 'device', label: 'Chỉ giọng thiết bị — nhanh, chạy ngoại tuyến' },
+];
+
 const LAYOUTS: { mode: LayoutMode; title: string; dir: 'row' | 'col'; order: [string, string] }[] = [
   { mode: 'en-vi', title: 'EN · VI (Trái–Phải)', dir: 'row', order: ['EN', 'VI'] },
   { mode: 'vi-en', title: 'VI · EN (Trái–Phải)', dir: 'row', order: ['VI', 'EN'] },
@@ -36,14 +45,32 @@ const LAYOUTS: { mode: LayoutMode; title: string; dir: 'row' | 'col'; order: [st
   { mode: 'vi-over-en', title: 'VI / EN (Trên–Dưới)', dir: 'col', order: ['VI', 'EN'] },
 ];
 
+/** Voca 2.0 keys are prefixed; catching a paste mistake here beats a 401 later. */
+const VOCA_KEY_PREFIX = 'voca_';
+
+/**
+ * The Voca host answers on BOTH http and https with no redirect, so an http://
+ * origin would ship the API key in cleartext — force https, except on a local
+ * Voca where there's no certificate to speak of.
+ */
+function normalizeVocaOrigin(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, '');
+  if (!/^http:\/\//i.test(trimmed)) return trimmed;
+  if (/^http:\/\/(localhost|127\.0\.0\.1)([:/]|$)/i.test(trimmed)) return trimmed;
+  return trimmed.replace(/^http:\/\//i, 'https://');
+}
+
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const settings = useSettingsStore((s) => s.settings);
   const setSettings = useSettingsStore((s) => s.setSettings);
   const [form, setForm] = useState<Settings>(settings);
+  // Some embedded WebViews ship no Web Speech API at all — say so here instead of
+  // letting the fallback fail silently on the first word.
+  const deviceVoiceReady = deviceSpeechAvailable();
 
-  // Secrets (LLM key, realtime key, voca token) live server-side and never come
+  // Secrets (LLM key, realtime key, Voca API key) live server-side and never come
   // back to the browser — the modal only learns whether each is set, and inputs
   // are write-only (blank = keep existing). Loaded from /api/user/settings on open.
   const [llmKey, setLlmKey] = useState('');
@@ -53,9 +80,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [realtimeDirty, setRealtimeDirty] = useState(false);
   const [hasRealtimeKey, setHasRealtimeKey] = useState(false);
   const [vocaOrigin, setVocaOrigin] = useState('');
+  const [vocaOriginDirty, setVocaOriginDirty] = useState(false);
   const [vocaToken, setVocaToken] = useState('');
   const [hasVocaToken, setHasVocaToken] = useState(false);
   const [vocaTokenDirty, setVocaTokenDirty] = useState(false);
+  // The non-secret Voca origin is the one field we READ back, so a failed load
+  // must not let a save write the empty box over it (that wiped the origin).
+  const [secretsLoaded, setSecretsLoaded] = useState(false);
+  const [vocaTesting, setVocaTesting] = useState(false);
+  const [vocaTestResult, setVocaTestResult] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +99,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         setHasRealtimeKey(s.hasRealtimeKey);
         setVocaOrigin(s.vocaOrigin || '');
         setHasVocaToken(s.hasVocaToken);
+        setSecretsLoaded(true);
       })
       .catch(() => {
         /* not configured yet / offline — leave fields empty */
@@ -86,14 +120,42 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     });
   };
 
+  const vocaTokenError =
+    vocaTokenDirty && vocaToken.trim() && !vocaToken.trim().startsWith(VOCA_KEY_PREFIX)
+      ? `API key Voca phải bắt đầu bằng "${VOCA_KEY_PREFIX}".`
+      : '';
+
+  // /health needs no key, so it only proves the URL is a live Voca; the card sync
+  // right after is what actually exercises the saved API key (and warms the cache).
+  const onTestVoca = async () => {
+    setVocaTesting(true);
+    setVocaTestResult('');
+    try {
+      const health = await checkVocaHealth();
+      const cards = await syncVocaCards({ force: true });
+      setVocaTestResult(
+        `Kết nối OK — ${health.service || 'voca'} ${health.version || ''} · ${cards.cards.length} thẻ.`,
+      );
+    } catch (err) {
+      setVocaTestResult(err instanceof Error ? err.message : 'Không kết nối được Voca.');
+    } finally {
+      setVocaTesting(false);
+    }
+  };
+
   const onSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSettings({ ...form, useApiTts: true });
+    if (vocaTokenError) {
+      toast.show(vocaTokenError, 'danger');
+      return;
+    }
+    setSettings(form);
     // Persist secrets/config to the backend. Only send a secret field when the
-    // user actually typed one, so a blank field keeps the existing server value.
+    // user actually typed one, so a blank field keeps the existing server value —
+    // and only send the origin once we know what the server currently holds.
     try {
       await saveServerSecrets({
-        vocaOrigin: vocaOrigin.trim(),
+        ...(secretsLoaded || vocaOriginDirty ? { vocaOrigin: normalizeVocaOrigin(vocaOrigin) } : {}),
         ...(llmDirty ? { llmApiKey: llmKey.trim() } : {}),
         ...(realtimeDirty ? { realtimeApiKey: realtimeKey.trim() } : {}),
         ...(vocaTokenDirty ? { vocaToken: vocaToken.trim() } : {}),
@@ -176,28 +238,61 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             </Field>
           </Section>
 
-          <Section title="Voca Dictionary Bridge" hint="Token nhập ở đây được lưu an toàn phía server (không lưu trên trình duyệt). Dùng chung API Key / Model phía trên để tạo thẻ từ vựng và TTS phát âm.">
-            <Field label="Voca Bridge URL" full>
-              <input className={styles.input} type="url" placeholder="https://voca-bridge.thaonv.online" value={vocaOrigin} onChange={(e) => setVocaOrigin(e.target.value)} />
+          <Section title="Voca API" hint="API key nhập ở đây được lưu an toàn phía server (không lưu trên trình duyệt). Voca tự chạy LLM và TTS, nên phần này không dùng API Key phía trên.">
+            <Field label="Voca API URL" full>
+              <input
+                className={styles.input}
+                type="url"
+                placeholder="https://voca.thaonv.online"
+                value={vocaOrigin}
+                onChange={(e) => {
+                  setVocaOrigin(e.target.value);
+                  setVocaOriginDirty(true);
+                }}
+              />
             </Field>
-            <Field label="Voca API Token" full>
+            <Field label="Voca API Key" full>
               <input
                 className={styles.input}
                 type="password"
-                placeholder={hasVocaToken ? savedPlaceholder : 'Bearer token'}
+                placeholder={hasVocaToken ? savedPlaceholder : 'voca_...'}
                 value={vocaToken}
                 onChange={(e) => {
                   setVocaToken(e.target.value);
                   setVocaTokenDirty(true);
                 }}
               />
+              {vocaTokenError && <p className={styles.sectionHint}>{vocaTokenError}</p>}
             </Field>
-            <Field label="TTS Endpoint (tùy chọn)">
-              <input className={styles.input} type="url" placeholder="https://api.openai.com/v1/audio/speech" value={form.ttsEndpoint} onChange={(e) => patch({ ttsEndpoint: e.target.value })} />
+            <Field label="Nguồn phát âm" full>
+              <select
+                className={styles.input}
+                value={form.audioSource}
+                onChange={(e) => patch({ audioSource: e.target.value as AudioSource })}
+              >
+                {AUDIO_SOURCES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <p className={styles.sectionHint}>
+                {deviceVoiceReady
+                  ? 'Giọng thiết bị chất lượng thấp hơn Voca nhưng miễn phí, chạy ngoại tuyến và luôn dùng được.'
+                  : 'Trình duyệt này không có giọng thiết bị — chỉ dùng được nguồn Voca.'}
+              </p>
             </Field>
             <Field label="TTS Voice Model">
               <input className={styles.input} type="text" value={form.ttsModel} onChange={(e) => patch({ ttsModel: e.target.value })} />
             </Field>
+            <div className={`${styles.group} ${styles.groupFull}`}>
+              <button type="button" className={styles.btnGhost} onClick={onTestVoca} disabled={vocaTesting}>
+                {vocaTesting ? 'Đang kiểm tra…' : 'Kiểm tra kết nối'}
+              </button>
+              <p className={styles.sectionHint}>
+                {vocaTestResult || 'Kiểm tra dùng cấu hình đã lưu ở server — hãy lưu trước khi thử.'}
+              </p>
+            </div>
           </Section>
 
           <Section title="Bố cục song ngữ">

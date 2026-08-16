@@ -534,11 +534,13 @@ struct ReaderView: View {
     }
 
     private func vocaCardPayload(_ card: VocaCard) -> [String: Any] {
+        // `slug` is what the panel posts back for audio — the numeric `id` is display-only.
         var dict: [String: Any] = [
             "id": card.id,
+            "slug": card.slug,
             "word": card.word,
-            "meaningVi": card.meaningVi,
         ]
+        if let meaningVi = card.meaningVi { dict["meaningVi"] = meaningVi }
         if let ipa = card.ipa { dict["ipa"] = ipa }
         if let pronunciation = card.pronunciation { dict["pronunciation"] = pronunciation }
         if let audioUrl = card.audioUrl { dict["audioUrl"] = audioUrl }
@@ -625,20 +627,8 @@ struct ReaderView: View {
         case .addWord(let word):
             vocaPanelMode = .notFound(query: word)
             addSelectionToVoca()
-        case .playAudio(let cardId):
-            if case .single(let card) = vocaPanelMode, card.id == cardId {
-                playVocaAudio(card)
-            } else {
-                playVocaAudio(VocaCard(
-                    id: cardId,
-                    word: cardId,
-                    meaningVi: "",
-                    ipa: nil,
-                    pronunciation: nil,
-                    audioUrl: nil,
-                    level: nil
-                ))
-            }
+        case .playAudio(let slug):
+            playVocaAudio(slug: slug)
         case .selectCard(let card):
             vocaPanelMode = .single(card)
             presentVocaPanelInWebView()
@@ -755,25 +745,21 @@ struct ReaderView: View {
 
         Task {
             do {
-                try await VocaService.addWordToVoca(query)
-                let result = try await VocaService.lookupWord(query)
+                // 2.0 returns the finished card from the create call — no follow-up lookup.
+                let card = try await VocaService.addWordToVoca(query)
                 await MainActor.run {
                     withAnimation { vocaProgressWord = nil }
-                    if result.found, let card = result.resolvedCards.first {
-                        vocaPanelRect = savedRect
-                        vocaPanelLang = savedLang
-                        vocaPanelPage = savedPage
-                        vocaPanelContainerMode = savedContainerMode
-                        if let savedWebView {
-                            vocaPanelWebView = savedWebView
-                        } else if let savedPage, !savedContainerMode.isEmpty {
-                            vocaPanelWebView = webViews[webViewKey(lang: savedLang, page: savedPage, containerMode: savedContainerMode)]
-                        }
-                        vocaPanelMode = .single(card)
-                        presentVocaPanelInWebView()
-                    } else {
-                        dismissVocaPanel()
+                    vocaPanelRect = savedRect
+                    vocaPanelLang = savedLang
+                    vocaPanelPage = savedPage
+                    vocaPanelContainerMode = savedContainerMode
+                    if let savedWebView {
+                        vocaPanelWebView = savedWebView
+                    } else if let savedPage, !savedContainerMode.isEmpty {
+                        vocaPanelWebView = webViews[webViewKey(lang: savedLang, page: savedPage, containerMode: savedContainerMode)]
                     }
+                    vocaPanelMode = .single(card)
+                    presentVocaPanelInWebView()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                         vocaLookupInProgress = false
                     }
@@ -801,11 +787,23 @@ struct ReaderView: View {
         }
     }
     
-    private func playVocaAudio(_ card: VocaCard) {
+    private func playVocaAudio(slug: String) {
         vocaIsPlayingAudio = true
+        // The panel calls back with a slug only, but the device voice needs the word itself
+        // when Voca cannot produce audio (see VocaService.playCardAudio).
+        let word = vocaWord(forSlug: slug)
         Task {
             do {
-                try await VocaService.playCardAudio(card)
+                let outcome = try await VocaService.playCardAudio(slug: slug, word: word)
+                await MainActor.run {
+                    vocaIsPlayingAudio = false
+                    // Informational, once per session: the device voice stood in for Voca.
+                    if case .device(let notice) = outcome, let notice {
+                        showVocaToast(notice)
+                    }
+                }
+            } catch is CancellationError {
+                // A newer tap took over this utterance — nothing to tell the user.
                 await MainActor.run { vocaIsPlayingAudio = false }
             } catch {
                 await MainActor.run {
@@ -813,6 +811,19 @@ struct ReaderView: View {
                     showVocaToast(error.localizedDescription)
                 }
             }
+        }
+    }
+
+    /// The word behind an audio tap, from whichever panel is open.
+    private func vocaWord(forSlug slug: String) -> String {
+        guard let mode = vocaPanelMode else { return "" }
+        switch mode {
+        case .single(let card):
+            return card.slug == slug ? card.word : ""
+        case .multi(_, let cards):
+            return cards.first(where: { $0.slug == slug })?.word ?? ""
+        case .notFound:
+            return ""
         }
     }
     
@@ -1263,7 +1274,8 @@ struct ReaderView: View {
             // Build a concise definition string for the AI to read back
             var parts: [String] = [card.word]
             if let ipa = card.ipa, !ipa.isEmpty { parts.append(ipa) }
-            parts.append(card.meaningVi)
+            let meaning = card.displayMeaning
+            if !meaning.isEmpty { parts.append(meaning) }
             if let level = card.level, !level.isEmpty { parts.append("(\(level))") }
             return parts.joined(separator: " — ")
         } catch {
@@ -1275,7 +1287,7 @@ struct ReaderView: View {
         let query = VocaService.cleanWord(word)
         guard !query.isEmpty else { return false }
         do {
-            try await VocaService.addWordToVoca(query)
+            _ = try await VocaService.addWordToVoca(query)
             return true
         } catch {
             return false
@@ -1923,8 +1935,14 @@ struct ReaderChatPanelView: View {
     @AppStorage("aiBaseURL") private var aiBaseURL: String = "https://api.openai.com/v1"
     @AppStorage("aiApiKey") private var aiApiKey: String = ""
     @AppStorage("aiModel") private var aiModel: String = "gpt-4o-mini"
-    @AppStorage("vocaBridgeOrigin") private var vocaBridgeOrigin: String = VocaService.defaultBridgeOrigin
-    @AppStorage("vocaBridgeToken") private var vocaBridgeToken: String = VocaService.defaultBridgeToken
+    // Voca is configured on the SERVER (shared with the web app), so these mirror
+    // /api/user/settings — nothing about Voca is stored on the device any more.
+    @State private var vocaApiOrigin: String = VocaService.defaultOrigin
+    @State private var vocaApiKey: String = ""
+    @State private var vocaConfiguredOnServer: Bool = false
+    @State private var isSavingVoca: Bool = false
+    @State private var vocaSectionNote: String? = nil
+    @State private var vocaNoteIsError: Bool = true
     
     // Drag resizing states
     @State private var chatWidth: CGFloat = 350
@@ -2524,17 +2542,36 @@ struct ReaderChatPanelView: View {
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
                 
-                // Section: Voca Dictionary Bridge
+                // Section: Voca Dictionary API — stored on the server, per user.
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Voca Dictionary Bridge")
+                    Text("Voca Dictionary API")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(.white.opacity(0.9))
-                    
+
+                    Text("Dùng chung với bản web — cấu hình một lần là cả hai nơi cùng dùng. Key lưu trên server, không lưu trên máy.")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "94a3b8"))
+                        .lineSpacing(3)
+
+                    if !api.isAuthenticated {
+                        Label("Đăng nhập vào server sách trước, rồi mới cấu hình Voca.", systemImage: "lock.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(hex: "fbbf24"))
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Label(
+                            vocaConfiguredOnServer ? "Đã cấu hình trên server" : "Chưa cấu hình trên server",
+                            systemImage: vocaConfiguredOnServer ? "checkmark.seal.fill" : "exclamationmark.circle"
+                        )
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(vocaConfiguredOnServer ? Color(hex: "34d399") : Color(hex: "fbbf24"))
+                    }
+
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Voca Bridge URL")
+                        Text("Voca API URL")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.gray)
-                        TextField("https://voca-bridge.thaonv.online", text: $vocaBridgeOrigin)
+                        TextField("https://voca.thaonv.online", text: $vocaApiOrigin)
                             .font(.system(size: 14))
                             .foregroundColor(.white)
                             .autocorrectionDisabled()
@@ -2544,12 +2581,20 @@ struct ReaderChatPanelView: View {
                             .cornerRadius(10)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
                     }
-                    
+
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Voca API Token")
+                        Text("Voca API Key")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.gray)
-                        SecureField("Bearer token", text: $vocaBridgeToken)
+                        // Blank on purpose: the server never returns the key. Typing replaces
+                        // it, leaving it empty keeps whatever is stored.
+                        SecureField(
+                            "voca_...",
+                            text: $vocaApiKey,
+                            prompt: Text(
+                                vocaConfiguredOnServer ? "Đã lưu trên server — nhập key mới để thay" : "voca_..."
+                            ).foregroundColor(.gray.opacity(0.5))
+                        )
                             .font(.system(size: 14))
                             .foregroundColor(.white)
                             .autocorrectionDisabled()
@@ -2558,8 +2603,43 @@ struct ReaderChatPanelView: View {
                             .background(Color.white.opacity(0.05))
                             .cornerRadius(10)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                        if !vocaApiKey.isEmpty && !VocaService.isValidAPIKeyFormat(vocaApiKey) {
+                            Text("API key phải bắt đầu bằng voca_")
+                                .font(.system(size: 10))
+                                .foregroundColor(Color(hex: "f87171"))
+                        }
+                    }
+
+                    // Unlike the fields above, this one is not a local preference — it has to
+                    // be pushed to the server explicitly.
+                    Button(action: { saveVocaSettings() }) {
+                        HStack(spacing: 6) {
+                            if isSavingVoca {
+                                ProgressView().scaleEffect(0.7).tint(.white)
+                            } else {
+                                Image(systemName: "arrow.up.to.line")
+                                    .font(.system(size: 12))
+                            }
+                            Text(isSavingVoca ? "Đang lưu..." : "Lưu cấu hình Voca")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.vertical, 9)
+                        .padding(.horizontal, 14)
+                        .background(Color(hex: "14b8a6").opacity(0.25))
+                        .cornerRadius(10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "14b8a6").opacity(0.5), lineWidth: 1))
+                    }
+                    .disabled(isSavingVoca || !api.isAuthenticated)
+
+                    if let note = vocaSectionNote {
+                        Text(note)
+                            .font(.system(size: 11))
+                            .foregroundColor(vocaNoteIsError ? Color(hex: "f87171") : Color(hex: "34d399"))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .task { await loadVocaSettings() }
                 .padding()
                 .background(Color.white.opacity(0.04))
                 .cornerRadius(16)
@@ -2617,6 +2697,58 @@ struct ReaderChatPanelView: View {
         .background(Color(hex: "0b0f19"))
     }
     
+    /// Reads the Voca state from `GET /api/user/settings`: the origin comes back as stored,
+    /// the key only as a boolean — which is why the key field is never populated.
+    @MainActor
+    private func loadVocaSettings() async {
+        guard api.isAuthenticated else {
+            vocaConfiguredOnServer = false
+            return
+        }
+        guard let secrets = try? await api.fetchServerSecrets() else { return }
+        vocaConfiguredOnServer = secrets.hasVocaToken
+        vocaApiOrigin = secrets.vocaOrigin.isEmpty ? VocaService.defaultOrigin : secrets.vocaOrigin
+        vocaApiKey = ""
+        VocaService.noteConfiguration(hasVocaToken: secrets.hasVocaToken)
+    }
+
+    /// Pushes origin (+ a newly typed key) to the server; an empty key field means "keep".
+    private func saveVocaSettings() {
+        let typedKey = vocaApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !typedKey.isEmpty && !VocaService.isValidAPIKeyFormat(typedKey) {
+            vocaNoteIsError = true
+            vocaSectionNote = "API key Voca phải bắt đầu bằng voca_. Sửa lại, hoặc để trống để giữ key đang lưu."
+            return
+        }
+        let origin = VocaService.normalizedOrigin(vocaApiOrigin)
+        let originToSend = origin.isEmpty ? VocaService.defaultOrigin : origin
+
+        isSavingVoca = true
+        vocaSectionNote = nil
+        Task {
+            do {
+                try await api.saveServerSecrets(
+                    vocaOrigin: originToSend,
+                    vocaToken: typedKey.isEmpty ? nil : typedKey
+                )
+                vocaApiOrigin = originToSend
+                vocaApiKey = ""
+                if !typedKey.isEmpty {
+                    vocaConfiguredOnServer = true
+                    VocaService.noteConfiguration(hasVocaToken: true)
+                }
+                // A new key/origin can mean a different Voca account — drop the synced deck.
+                VocaService.clearCardsCache()
+                vocaNoteIsError = false
+                vocaSectionNote = "Đã lưu lên server. Bản web cũng dùng cấu hình này."
+            } catch {
+                vocaNoteIsError = true
+                vocaSectionNote = "Không lưu được lên server. Kiểm tra kết nối rồi thử lại."
+            }
+            isSavingVoca = false
+        }
+    }
+
     private func loadChatHistory() {
         if let data = UserDefaults.standard.data(forKey: "chatHistory_\(book.slug)"),
            let decoded = try? JSONDecoder().decode([ChatMessage].self, from: data) {

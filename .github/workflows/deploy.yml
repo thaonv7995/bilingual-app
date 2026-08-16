@@ -58,7 +58,7 @@ jobs:
               --exclude='**/.pytest_cache' \
               --exclude='application/data' \
               --exclude='bilingual_reader.db' \
-              --exclude='application/web-app/config.js' \
+              --exclude='application/legacy/web-app-v1/config.js' \
               --exclude='application/web-app-v2/node_modules' \
               --exclude='application/web-app-v2/dev-dist' \
               --exclude='.git' \

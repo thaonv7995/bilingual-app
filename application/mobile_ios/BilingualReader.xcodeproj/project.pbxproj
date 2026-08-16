@@ -19,11 +19,11 @@
 		45013FC446C2D70BCB2CD11E /* BilingualWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57B156C7DBCD09A96394153 /* BilingualWebView.swift */; };
 		46E6F6DD0BC8E058BC652705 /* BilingualReaderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */; };
 		6BB60AE66CC4E8F4A88C555A /* BookCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AF811F0CC00281EC4C8B04 /* BookCacheManager.swift */; };
+		71C38063963D067D63AF059B /* DeviceSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40877450721082DC886E1E1 /* DeviceSpeech.swift */; };
 		83039E648CE6CD6CFEEBAA03 /* LayoutOptionButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = F25A14856419E8E55800C330 /* LayoutOptionButton.swift */; };
 		88CBC4EE202827D2947AE3C3 /* AISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D97E70A5694862660AFD0E6 /* AISettingsView.swift */; };
 		8CBD3ECD5460D98952AEEDCF /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AD4860B8B690109EFB9878A /* LoginView.swift */; };
 		A0827BBC64B63C39E54883D2 /* Book.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD24421EAA5774ABB6536580 /* Book.swift */; };
-		A1BA470D62BF9898AC198718 /* VocaLookupOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B57B29C65DC5F4921F24F9 /* VocaLookupOverlay.swift */; };
 		A80052D358A61956D1231899 /* BookPagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */; };
 		B73ADA8B14F6A58D0A2C0728 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB39B254369C911E5008B8A0 /* APIService.swift */; };
 /* End PBXBuildFile section */
@@ -43,7 +43,7 @@
 		9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPagerView.swift; sourceTree = "<group>"; };
 		99AF811F0CC00281EC4C8B04 /* BookCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCacheManager.swift; sourceTree = "<group>"; };
 		AB39B254369C911E5008B8A0 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
-		B2B57B29C65DC5F4921F24F9 /* VocaLookupOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaLookupOverlay.swift; sourceTree = "<group>"; };
+		C40877450721082DC886E1E1 /* DeviceSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSpeech.swift; sourceTree = "<group>"; };
 		CD187585ACF36B2446D4B9C2 /* CompanionVoiceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionVoiceViewModel.swift; sourceTree = "<group>"; };
 		CD24421EAA5774ABB6536580 /* Book.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Book.swift; sourceTree = "<group>"; };
 		D57B156C7DBCD09A96394153 /* BilingualWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualWebView.swift; sourceTree = "<group>"; };
@@ -60,6 +60,7 @@
 				99AF811F0CC00281EC4C8B04 /* BookCacheManager.swift */,
 				5B06E32B69C6455CD7DD73EA /* CompanionToolHandler.swift */,
 				CD187585ACF36B2446D4B9C2 /* CompanionVoiceViewModel.swift */,
+				C40877450721082DC886E1E1 /* DeviceSpeech.swift */,
 				6D9000B187782F546998E2BF /* KeychainHelper.swift */,
 				7647FCD3D310CF55FDE7B947 /* RealtimeVoiceEngine.swift */,
 				62D6D2E8A59E1377CCAAFF3F /* VocaService.swift */,
@@ -114,7 +115,6 @@
 				F25A14856419E8E55800C330 /* LayoutOptionButton.swift */,
 				6AD4860B8B690109EFB9878A /* LoginView.swift */,
 				FB921731167CE40A439D7728 /* ReaderView.swift */,
-				B2B57B29C65DC5F4921F24F9 /* VocaLookupOverlay.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -195,12 +195,12 @@
 				3DA094D67BA2E7AE2EBEBECA /* BookshelfView.swift in Sources */,
 				1265977D40EE6A20BDEA984F /* CompanionToolHandler.swift in Sources */,
 				12B21918FFBB93D8179A8CD0 /* CompanionVoiceViewModel.swift in Sources */,
+				71C38063963D067D63AF059B /* DeviceSpeech.swift in Sources */,
 				097E87C8B3B90780DA137B8D /* KeychainHelper.swift in Sources */,
 				83039E648CE6CD6CFEEBAA03 /* LayoutOptionButton.swift in Sources */,
 				8CBD3ECD5460D98952AEEDCF /* LoginView.swift in Sources */,
 				04D65506177CC1C5E2EEC4D6 /* ReaderView.swift in Sources */,
 				3C4D11C51133DA736E21CACF /* RealtimeVoiceEngine.swift in Sources */,
-				A1BA470D62BF9898AC198718 /* VocaLookupOverlay.swift in Sources */,
 				1690126573FBE98AC4C4EDA9 /* VocaService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

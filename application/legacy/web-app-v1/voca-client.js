@@ -1,5 +1,11 @@
-const DEFAULT_VOCA_BRIDGE_ORIGIN = 'https://voca-bridge.thaonv.online';
-const DEFAULT_VOCA_API_TOKEN = 'voca_55c2ac41266be58e43d0ef2b5817b4c9053a2ed7410fcefd';
+// DEPRECATED (see ../DEPRECATED.md). This v1 client still speaks the pre-2.0
+// Voca protocol (no {status,code,message,data} envelope) and points at a host
+// that is gone. It is only reachable when FRONTEND_V2_DIST is unset.
+//
+// The API token that used to be hardcoded here was served publicly by the
+// backend on /voca-client.js. It has been removed; there is no default token.
+const DEFAULT_VOCA_BRIDGE_ORIGIN = 'https://voca.thaonv.online';
+const DEFAULT_VOCA_API_TOKEN = '';
 const DEFAULT_TTS_MODEL = 'edge-tts/en-US-SteffanNeural';
 
 let getSettings = () => ({});

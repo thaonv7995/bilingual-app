@@ -6,7 +6,7 @@
  * closures, review #7): ReaderView rebuilds it every render and useVoice reads
  * it through a ref, so tools always act on the CURRENT page/viewMode/highlights.
  */
-import { addWordToVoca, lookupWord, showVocaLookupResults } from '@/lib/voca';
+import { VocaError, addWordToVoca, lookupWord, showVocaLookupResults } from '@/lib/voca';
 import { colorMap } from '@/features/reader/highlightColors';
 import { getParagraphs } from '@/features/reader/iframe/segmentation';
 import type { SelectionInfo } from '@/features/reader/iframe/highlightDom';
@@ -56,6 +56,12 @@ function findOccurrencesInDoc(doc: Document, searchText: string): Omit<Occurrenc
   scan((s) => s); // exact
   if (out.length === 0) scan((s) => s.toLowerCase()); // case-insensitive fallback
   return out;
+}
+
+/** Voca failures carry a machine-readable code — give the model both. */
+function vocaToolError(err: unknown, fallback: string): ToolResult {
+  if (err instanceof VocaError) return { success: false, error: err.code, message: err.message };
+  return { success: false, error: err instanceof Error ? err.message : fallback };
 }
 
 export async function executeWebTool(
@@ -118,20 +124,23 @@ export async function executeWebTool(
         if (result.found) {
           const doc = iframeDoc('en');
           if (doc) showVocaLookupResults(doc, { left: 150, top: 150, width: 0, height: 0 } as DOMRect, String(args.word), result);
-          return { success: true, definition: result.cards || result.card };
+          // Voca 2.0 tells us when the hit is exact — hand the model that one
+          // rich card rather than the ambiguous list.
+          return { success: true, matchType: result.matchType, definition: result.card ?? result.cards };
         }
         return { success: false, error: 'word_not_found_in_dictionary' };
       } catch (err) {
-        return { success: false, error: err instanceof Error ? err.message : 'lookup_failed' };
+        return vocaToolError(err, 'lookup_failed');
       }
     }
 
     case 'add_word_to_voca': {
       try {
-        await addWordToVoca(String(args.word ?? ''));
-        return { success: true };
+        // 2.0 returns the finished card, so the model can read it straight back.
+        const card = await addWordToVoca(String(args.word ?? ''));
+        return { success: true, word: card.word, meaningVi: card.meaningVi, meaningEn: card.meaningEn };
       } catch (err) {
-        return { success: false, error: err instanceof Error ? err.message : 'add_failed' };
+        return vocaToolError(err, 'add_failed');
       }
     }
 

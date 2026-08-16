@@ -53,7 +53,8 @@ enum HighlightMessage {
 
 enum VocaWebAction {
     case addWord(String)
-    case playAudio(cardId: String)
+    /// Audio is keyed by the card slug, never the numeric Voca id.
+    case playAudio(slug: String)
     case selectCard(VocaCard)
     case dismiss
 }
@@ -709,7 +710,7 @@ struct BilingualWebView: UIViewRepresentable {
                     if (voiceBtn.disabled) return;
                     voiceBtn.disabled = true;
                     voiceBtn.textContent = '…';
-                    postIOSVocaMessage({ type: 'vocaPlayAudio', cardId: card.id || '' });
+                    postIOSVocaMessage({ type: 'vocaPlayAudio', slug: card.slug || '' });
                     setTimeout(() => {
                         voiceBtn.disabled = false;
                         voiceBtn.textContent = '🔊';
@@ -1097,22 +1098,12 @@ struct BilingualWebView: UIViewRepresentable {
                                 parent.onVocaAction(.addWord(word))
                             }
                         } else if type == "vocaPlayAudio" {
-                            if let cardId = json["cardId"] as? String, !cardId.isEmpty {
-                                parent.onVocaAction(.playAudio(cardId: cardId))
+                            if let slug = json["slug"] as? String, !slug.isEmpty {
+                                parent.onVocaAction(.playAudio(slug: slug))
                             }
                         } else if type == "vocaSelectCard" {
                             if let cardDict = json["card"] as? [String: Any],
-                               let id = cardDict["id"] as? String,
-                               let word = cardDict["word"] as? String {
-                                let card = VocaCard(
-                                    id: id,
-                                    word: word,
-                                    meaningVi: cardDict["meaningVi"] as? String ?? "",
-                                    ipa: cardDict["ipa"] as? String,
-                                    pronunciation: cardDict["pronunciation"] as? String,
-                                    audioUrl: cardDict["audioUrl"] as? String,
-                                    level: cardDict["level"] as? String
-                                )
+                               let card = VocaCard(webPayload: cardDict) {
                                 parent.onVocaAction(.selectCard(card))
                             }
                         } else if type == "vocaDismiss" {
