@@ -18,6 +18,7 @@ import {
   showVocaError,
   showVocaLookupResults,
   showVocaNotFoundPanel,
+  syncVocaCards,
 } from '@/lib/voca';
 import { ReaderTopbar } from './ReaderTopbar';
 import { injectReaderStyles, setVocaPanelCss } from './iframe/readerStyles';
@@ -122,6 +123,14 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     });
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Refresh the local Voca mirror once per open so lookups answer from cache.
+  // Incremental + throttled: costs one tiny request when nothing changed.
+  useEffect(() => {
+    void syncVocaCards().catch(() => {
+      /* offline / Voca not configured — lookups fall back to the network */
+    });
+  }, []);
 
   // Keep the imperative highlight layer's context fresh every render (v2's
   // typed replacement for v1's reassigned `highlightAppContext` global).

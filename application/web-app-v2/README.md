@@ -84,14 +84,22 @@ tarball.
 | --- | --- |
 | `FRONTEND_V2_DIST` | Path to `dist/` to serve v2 (unset = legacy v1) |
 | `OPENAI_API_KEY` | Server fallback key for `/api/chat` + realtime (hybrid; users can still override in Settings) |
-| `VOCA_BRIDGE_TOKEN` | Voca-bridge token, server-side only (required for dictionary lookup) |
-| `VOCA_BRIDGE_ORIGIN` | Voca bridge base URL (default `https://voca-bridge.thaonv.online`) |
+| `VOCA_API_ORIGIN` | Voca API base URL (new name, preferred). Default `https://voca.thaonv.online`; forced to `https` |
+| `VOCA_BRIDGE_ORIGIN` | Legacy alias for the above, still read when `VOCA_API_ORIGIN` is unset |
+| `VOCA_BRIDGE_TOKEN` | Server-default Voca API key (`voca_…` prefix required), server-side only. Users can set their own in Settings |
 | `JWT_SECRET_KEY` | Set a strong secret — don't ship the default |
+
+v2 has **no** client-side Voca origin — every Voca call goes through the backend
+`/api/voca/*` proxy, which is a verbatim pass-through of Voca's envelope (unwrapped
+here in `lib/voca.ts`). See [voca-integration.md](../docs/voca-integration.md).
 
 ### Owner follow-ups (from the security review)
 
-- **Rotate the secrets exposed by v1**: the voca-bridge token (was hardcoded in
-  `voca-client.js`) and the Gemini key (was in `config.js`).
+- **Rotate the Voca API key** — the key previously hardcoded in
+  `VocaService.swift` (and in the legacy, publicly served `web-app/voca-client.js`) is in
+  git history; removing it from HEAD does **not** remove it from history. Revoke it in
+  Voca → Settings → API Keys and issue a new one.
+- **Rotate the Gemini key** exposed by v1 (was in `config.js`).
 - Change the default `admin` / `admin123` credentials.
 - Tighten backend CORS from `allow_origin_regex=".*"` to the deployed origin.
 - Add a CSRF token to the cookie-based `/api/auth/refresh` + `/logout`

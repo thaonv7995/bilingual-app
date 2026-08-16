@@ -12,4 +12,5 @@ export const STORAGE_KEYS = {
   chatWidth: 'bilingual.reader.chatWidth',
   layoutMode: 'bilingual.reader.layoutMode',
   bookCachePrefix: 'bilingual.reader.bookCache.',
+  vocaCards: 'bilingual.reader.vocaCards',
 } as const;

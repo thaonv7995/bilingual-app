@@ -9,7 +9,8 @@ application/mobile_ios/
 ├── Models/
 │   └── Book.swift                  # Các struct dữ liệu (Book, Highlight, User)
 ├── Services/
-│   └── APIService.swift            # Lớp mạng kết nối API (async/await URLSession)
+│   ├── APIService.swift            # Lớp mạng kết nối API (async/await URLSession)
+│   └── VocaService.swift           # Voca qua proxy backend (tra từ, tạo thẻ, audio, practice)
 └── Views/
     ├── LoginView.swift             # Màn hình đăng nhập gradient cao cấp
     ├── BookshelfView.swift         # Lưới hiển thị danh sách sách được phân quyền
@@ -46,6 +47,28 @@ Vì máy chủ của bạn mặc định chạy trên giao thức `http` (HTTP t
 1. Chọn máy ảo kiểm thử (ví dụ: **iPhone 15 Pro** hoặc **iPad Pro**).
 2. Nhấn nút **Run** (phím tắt `Cmd + R`) để biên dịch và chạy ứng dụng.
 3. Nhập địa chỉ IP máy chủ của bạn (ví dụ: `http://192.168.1.5:27099`) và đăng nhập để bắt đầu trải nghiệm!
+
+## Cấu hình Voca API
+
+Giống web-v2, iOS đi qua proxy `/api/voca/*` của backend — **không gọi thẳng Voca**. Khóa nằm trên server (bảng `user_settings`), không bao giờ lưu trên máy và không bao giờ được trả về cho app.
+
+Người dùng nhập ở màn hình **Settings** của app (hoặc ở bản web — dùng chung):
+
+- **Base URL**: `https://voca.thaonv.online` — bắt buộc `https`. Host cũng trả lời `http` mà **không** redirect, nên một URL `http://` sẽ gửi API key ở dạng thô. Host cũ `voca-bridge.thaonv.online` đã **chết** (Cloudflare 502).
+- **API Key**: chuỗi dạng `voca_...` (phải giữ tiền tố `voca_`). Chỉ backend gắn header `X-API-Key`; app không giữ khóa.
+
+Hệ quả cần biết:
+
+- **Cấu hình một lần dùng cả hai nơi** — nhập ở web thì iPad khỏi nhập, và ngược lại.
+- **Ô API key luôn trống** kể cả khi đã cấu hình (server không trả khóa về). Để trống = giữ khóa cũ; gõ giá trị mới = thay.
+- **Tính năng Voca cần đăng nhập server sách.** Từ đã đồng bộ sẵn vẫn tra được từ bộ nhớ máy.
+- Lần đầu chạy bản này, bản sao khóa cũ trên máy (Keychain `vocaApiKey`, UserDefaults `vocaBridgeToken`/`vocaBridgeOrigin`) sẽ bị xóa.
+
+Envelope trả về được bóc ngay trong app. Chi tiết endpoint, mã lỗi và giới hạn 120 request/phút: [voca-integration.md](../docs/voca-integration.md).
+
+### ⚠️ Thu hồi khóa đã lộ
+
+Khóa Voca API từng bị hardcode trong `VocaService.swift` đã được commit vào repo. Xóa khỏi HEAD **không** xóa khỏi lịch sử git. Vào **Voca → Settings → API Keys**, thu hồi khóa cũ, tạo khóa mới rồi nhập lại trong Settings của app.
 
 ## Cơ chế đồng bộ cuộn (Scroll Synchronization) bằng Swift
 - **BilingualWebView**: Bọc thành phần `WKWebView` của Apple và nhúng mã Javascript lắng nghe cuộn. Khi người dùng kéo trang sách, tọa độ cuộn được đẩy ngược lại luồng Swift qua `WKScriptMessageHandler` cục bộ của iOS với độ trễ gần như bằng 0.

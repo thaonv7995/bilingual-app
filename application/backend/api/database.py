@@ -100,9 +100,13 @@ class UserRefreshToken(Base):
 
 class UserSettings(Base):
     """Per-user server-held secrets & config. Secrets (LLM / realtime API keys,
-    voca-bridge token) are entered on the FE but stored here server-side and NEVER
+    Voca API token) are entered on the FE but stored here server-side and NEVER
     returned to the browser — the /api/chat, /api/voca proxies attach them. Empty
-    values fall back to the relevant env defaults (OPENAI_API_KEY, VOCA_BRIDGE_*)."""
+    values fall back to the relevant env defaults (OPENAI_API_KEY,
+    VOCA_API_ORIGIN / VOCA_BRIDGE_ORIGIN, VOCA_BRIDGE_TOKEN).
+
+    The `voca_bridge_*` column names predate the Voca 2.0 rename and are kept
+    deliberately — renaming them buys nothing and costs a migration."""
     __tablename__ = "user_settings"
 
     id = Column(Integer, primary_key=True, index=True)

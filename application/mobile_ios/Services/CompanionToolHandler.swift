@@ -321,15 +321,14 @@ final class CompanionToolHandler {
         guard let handler = onAddWordToVoca else {
             return ["success": false, "error": "Voca add not available"]
         }
-        // Fire-and-forget
-        let feedback = onToolFeedback
-        Task { @MainActor in
-            let success = await handler(word)
-            if success {
-                feedback?("📚 Đã thêm '\(word)' vào Voca")
-            }
+        // Card creation runs an LLM at Voca and takes seconds — await it so the AI reports
+        // what actually happened instead of announcing success before the call finishes.
+        let success = await handler(word)
+        guard success else {
+            return ["success": false, "error": "Cannot add '\(word)' to Voca"]
         }
-        return ["success": true, "message": "Adding '\(word)' to Voca collection"]
+        onToolFeedback?("📚 Đã thêm '\(word)' vào Voca")
+        return ["success": true, "message": "Added '\(word)' to Voca collection"]
     }
 
     private func handleGoToPage(_ args: [String: Any]) -> [String: Any] {

@@ -1,8 +1,9 @@
-"""Tests for the server-side per-user secrets: /api/user/settings logic, the voca
-LLM-key injection, and the user_voca_config -> user_settings migration.
+"""Tests for the server-side per-user secrets: /api/user/settings logic, the Voca
+2.0 write-time validation, and the user_voca_config -> user_settings migration.
 
 These call the route functions directly (no TestClient/lifespan) against a
 temporary SQLite DB, so they don't touch the real DB or need a live server.
+(The Voca proxy itself is covered by test_voca_proxy.py.)
 """
 from __future__ import annotations
 
@@ -18,13 +19,15 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # Point the app's engine at a throwaway DB and clear env keys BEFORE importing
-# api.* (the engine + ENV_* constants are read at import time).
+# api.* (the engine + ENV_* constants are read at import time). tests/conftest.py
+# has already done this authoritatively (a `setdefault` here loses to an ambient
+# DATABASE_URL); these lines remain only as a fallback for a non-pytest import.
 _TMP_DB = Path(tempfile.gettempdir()) / "bilingual_test_user_settings.db"
 for _suffix in ("", "-wal", "-shm"):
     p = Path(str(_TMP_DB) + _suffix)
     if p.exists():
         p.unlink()
-os.environ["DATABASE_URL"] = f"sqlite:///{_TMP_DB}"
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{_TMP_DB}")
 os.environ.pop("OPENAI_API_KEY", None)
 os.environ.pop("VOCA_BRIDGE_TOKEN", None)
 
@@ -37,8 +40,9 @@ from api.database import (  # noqa: E402
     init_db,
     _migrate_voca_config_to_user_settings,
 )
+import pytest  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 from api.routes.settings import get_user_settings, put_user_settings  # noqa: E402
-from api.routes.voca import _inject_llm_key  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 init_db()
@@ -118,12 +122,44 @@ def test_voca_token_and_origin_roundtrip():
     db = SessionLocal()
     try:
         put_user_settings(
-            {"vocaOrigin": "https://voca", "vocaToken": "brg-tok"}, current_user=user, db=db
+            {"vocaOrigin": "https://voca.example.com/", "vocaToken": "voca_tok"},
+            current_user=user, db=db,
         )
         view = get_user_settings(current_user=user, db=db)
-        assert view["vocaOrigin"] == "https://voca"
+        # Normalised on write: the trailing slash is gone.
+        assert view["vocaOrigin"] == "https://voca.example.com"
         assert view["hasVocaToken"] is True
-        assert "brg-tok" not in json.dumps(view)
+        assert "voca_tok" not in json.dumps(view)
+    finally:
+        db.close()
+
+
+def test_put_rejects_voca_token_without_prefix():
+    uid = _make_user("voca_prefix")
+    user = SimpleNamespace(id=uid)
+    db = SessionLocal()
+    try:
+        with pytest.raises(HTTPException) as exc:
+            put_user_settings({"vocaToken": "brg-tok"}, current_user=user, db=db)
+        assert exc.value.status_code == 400
+        assert "voca_" in exc.value.detail
+        # Clearing (empty string) is still allowed.
+        put_user_settings({"vocaToken": ""}, current_user=user, db=db)
+        assert get_user_settings(current_user=user, db=db)["hasVocaToken"] is False
+    finally:
+        db.close()
+
+
+def test_put_upgrades_http_voca_origin_to_https():
+    uid = _make_user("voca_https")
+    user = SimpleNamespace(id=uid)
+    db = SessionLocal()
+    try:
+        put_user_settings({"vocaOrigin": "http://voca.example.com"}, current_user=user, db=db)
+        assert get_user_settings(current_user=user, db=db)["vocaOrigin"] == "https://voca.example.com"
+        with pytest.raises(HTTPException) as exc:
+            put_user_settings({"vocaOrigin": "ftp://voca.example.com"}, current_user=user, db=db)
+        assert exc.value.status_code == 400
     finally:
         db.close()
 
@@ -138,26 +174,6 @@ def test_get_or_create_user_settings_is_idempotent():
         assert db.query(UserSettings).filter(UserSettings.user_id == uid).count() == 1
     finally:
         db.close()
-
-
-# ---- voca _inject_llm_key ----------------------------------------------------
-
-def test_inject_llm_key_sets_settings_apikey():
-    body = json.dumps({"word": "cat", "settings": {"baseURL": "u", "model": "m"}}).encode()
-    out = json.loads(_inject_llm_key(body, "sk-key"))
-    assert out["settings"]["apiKey"] == "sk-key"
-    assert out["word"] == "cat"
-
-
-def test_inject_llm_key_noops_without_key_or_shape():
-    body = json.dumps({"settings": {"model": "m"}}).encode()
-    # no key -> unchanged
-    assert _inject_llm_key(body, "") == body
-    # non-JSON -> unchanged
-    assert _inject_llm_key(b"not json", "k") == b"not json"
-    # no settings dict -> unchanged
-    b2 = json.dumps({"word": "x"}).encode()
-    assert _inject_llm_key(b2, "k") == b2
 
 
 # ---- migration user_voca_config -> user_settings -----------------------------
