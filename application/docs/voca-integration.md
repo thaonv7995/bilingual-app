@@ -9,6 +9,13 @@ API key in cleartext; the origin is normalised to `https` before every call. The
 `voca-bridge.thaonv.online` host is **dead** (Cloudflare 502, plain-text body — not JSON),
 so any config still pointing there fails in a way that looks like a Voca outage.
 
+**The settings field wants the ORIGIN, not the base URL.** Voca's own docs label
+`https://voca.thaonv.online/v1` the "Base URL", so it is the natural thing to paste — but
+every call here appends its own `/v1`. In v0.5.0 that produced `/v1/v1/cards/lookup` and a
+404 that looked like a missing backend route. Both forms are now accepted: a trailing `/v1`
+is stripped during normalisation, on the backend and on iOS. Any *other* path is preserved,
+in case a deployment genuinely lives under one.
+
 Auth: header `X-API-Key: voca_…` on every request. Bearer is also accepted upstream, but we
 standardise on `X-API-Key`. The key must keep its `voca_` prefix — a key pasted without it
 is rejected as `UNAUTHORIZED`.

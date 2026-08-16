@@ -316,6 +316,25 @@ def test_http_origin_is_upgraded_to_https(monkeypatch):
     assert str(seen[0].url).startswith("https://voca.example.com/v1/")
 
 
+@pytest.mark.parametrize("stored", [
+    "https://voca.example.com/v1",
+    "https://voca.example.com/v1/",
+    "http://voca.example.com/v1",
+    "https://voca.example.com/V1",
+])
+def test_origin_with_trailing_v1_does_not_double_the_path(monkeypatch, stored):
+    """The Voca docs call `https://host/v1` the "Base URL", so users paste it in
+    verbatim. Every call appends its own `/v1`, so without stripping we request
+    `/v1/v1/cards/lookup` and Voca 404s — which is exactly what shipped in v0.5.0."""
+    user = _user("voca_v1_suffix", origin=stored)
+    seen = _mock_upstream(monkeypatch, _always(_env(200)))
+
+    _db_call(lambda db: voca.voca_lookup(word="cat", current_user=user, db=db))
+
+    assert str(seen[0].url) == "https://voca.example.com/v1/cards/lookup?word=cat"
+    assert "/v1/v1/" not in str(seen[0].url)
+
+
 @pytest.mark.parametrize("origin", [
     "http://127.0.0.1:9000",
     "https://localhost:8787",
@@ -351,6 +370,11 @@ def test_non_http_origins_are_rejected(monkeypatch, origin):
 def test_normalize_origin_strips_slashes_and_rejects_junk():
     assert voca._normalize_origin("  https://voca.example.com///  ") == "https://voca.example.com"
     assert voca._normalize_origin("http://voca.example.com/") == "https://voca.example.com"
+    assert voca._normalize_origin("https://voca.example.com/v1") == "https://voca.example.com"
+    assert voca._normalize_origin("https://voca.example.com/v1//") == "https://voca.example.com"
+    # Only a trailing `/v1` is a docs artefact; a host that genuinely lives under
+    # a path must keep it.
+    assert voca._normalize_origin("https://voca.example.com/api") == "https://voca.example.com/api"
     assert voca._normalize_origin("") == ""
     with pytest.raises(ValueError):
         voca._normalize_origin("ftp://voca.example.com")

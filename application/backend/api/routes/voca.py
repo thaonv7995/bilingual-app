@@ -54,7 +54,13 @@ def _normalize_origin(raw: str) -> str:
         raise ValueError(f"Voca API origin phải là URL http(s) đầy đủ: {origin}")
     if parts.scheme == "http":
         origin = "https://" + origin[len("http://"):]
-    return origin.rstrip("/")
+    origin = origin.rstrip("/")
+    # The Voca docs label `https://host/v1` the "Base URL", so users paste it here
+    # verbatim — but every call below appends its own `/v1`, which would request
+    # `/v1/v1/...` and 404. Strip it so both forms work. iOS normalises the same way.
+    if origin.lower().endswith("/v1"):
+        origin = origin[: -len("/v1")].rstrip("/")
+    return origin
 
 
 def _assert_public_origin(origin: str) -> None:
