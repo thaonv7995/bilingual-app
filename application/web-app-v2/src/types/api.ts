@@ -14,14 +14,22 @@ export interface AuthResponse {
   is_admin: boolean;
 }
 
-/** GET /api/books item. */
+/** GET /api/books item. `createdAt` (import time) and `lastRead` (this user's
+ * last read of this book) are unix SECONDS, or null when unknown / never read —
+ * they drive the shelf order, see features/library/bookOrder.ts. Optional so the
+ * client still typechecks against a backend that predates them. */
 export interface Book {
+  /** Autoincrement row id == import order. Optional: a backend that predates the
+   * shelf order omits it, and the comparator then falls through to slug. */
+  id?: number | null;
   slug: string;
   title: string;
   author: string;
   pageCount: number;
   cover: string | null;
   isPublished: boolean;
+  createdAt?: number | null;
+  lastRead?: number | null;
 }
 
 export type HighlightLang = 'en' | 'vi';
@@ -43,11 +51,12 @@ export interface Highlight {
 
 export type ViewMode = 'en' | 'vi' | 'split';
 
-/** GET/POST /api/books/:slug/progress. */
+/** GET/POST /api/books/:slug/progress. `lastRead` is unix SECONDS (the backend
+ * stores `int(time.time())`), absent when the book was never read. */
 export interface ReadingProgress {
   page: number;
   viewMode: ViewMode;
-  lastRead?: string;
+  lastRead?: number | null;
 }
 
 /** GET /api/books/:slug/manifest. */

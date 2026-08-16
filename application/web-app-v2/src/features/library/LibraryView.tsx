@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { ProfileMenu } from '@/components/ProfileMenu';
 import { SettingsModal } from '@/features/settings/SettingsModal';
 import { useAuthStore } from '@/features/auth/authStore';
+import { getLocalProgress } from '@/features/reader/localProgress';
 import { BookCard } from './BookCard';
+import { sortBooks } from './bookOrder';
 import { useBooks } from './useBooks';
 import styles from './library.module.css';
 
@@ -45,13 +47,25 @@ export function LibraryView() {
   const cols = useColumnCount();
   const pageSize = Math.max(1, cols * 3);
 
+  // Shelf order FIRST — before search and before pagination, otherwise page 1
+  // would show whichever books the filter happened to keep, not the top of the
+  // shelf. The server already sorts, but we re-apply the same comparator with
+  // the local progress cache folded in (effectiveLastRead), so a book the user
+  // just finished jumps to position 1 immediately — no refetch, works offline.
+  // Recomputed per mount, which is exactly when we come back from the reader.
+  const ordered = useMemo(
+    () => sortBooks(books, (b) => getLocalProgress(b.slug)?.lastRead),
+    [books],
+  );
+
+  // Filtering preserves relative order, so the shelf order survives search.
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return books;
-    return books.filter(
+    if (!q) return ordered;
+    return ordered.filter(
       (b) => b.title.toLowerCase().includes(q) || (b.author ?? '').toLowerCase().includes(q),
     );
-  }, [books, searchQuery]);
+  }, [ordered, searchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const clampedPage = Math.min(currentPage, totalPages);
