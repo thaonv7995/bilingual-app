@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiJson } from '@/lib/api-client';
+import { invalidateBooks } from '@/features/library/useBooks';
 import type { ReadingProgress, ViewMode } from '@/types/api';
 import { saveLocalProgress } from './localProgress';
 
@@ -22,9 +23,15 @@ export function useServerProgress(slug: string | undefined) {
  * Write-through progress saver: updates localStorage immediately and POSTs to the
  * server debounced, so rapid page turns don't spam the API. Fire-and-forget; a
  * failed POST keeps the local copy (offline-friendly).
+ *
+ * A successful POST also moves the book to the top of the server's shelf order
+ * (it sets last_read), so the cached book list is now out of date — invalidate
+ * it. Failure needs no invalidation: nothing changed server-side, and the local
+ * timestamp already reorders the shelf on its own.
  */
 export function useSaveProgress(slug: string | undefined) {
   const timer = useRef<number | undefined>(undefined);
+  const queryClient = useQueryClient();
 
   return useCallback(
     (page: number, viewMode: ViewMode) => {
@@ -37,11 +44,13 @@ export function useSaveProgress(slug: string | undefined) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ page, viewMode }),
-        }).catch(() => {
-          /* offline / transient — local copy is the source of truth */
-        });
+        })
+          .then(() => invalidateBooks(queryClient))
+          .catch(() => {
+            /* offline / transient — local copy is the source of truth */
+          });
       }, 400);
     },
-    [slug],
+    [slug, queryClient],
   );
 }

@@ -14,40 +14,72 @@ struct BookshelfView: View {
         GridItem(.adaptive(minimum: 160, maximum: 220), spacing: 20)
     ]
     
-    /// Sort books so that the most recently read or most recently added appear first.
-    /// Logic mirrors the web app: each book gets a virtual "added time" based on its
-    /// array index (later index = added later = higher base time). The effective sort
-    /// key is max(virtualAddedTime, lastReadTimestamp). This ensures newly added books
-    /// appear at the top, and reading any book bumps it to position 1.
+    /// The library ordering rule, shared by the web app and this shelf:
+    ///
+    ///   Tier 1 — books the user has read (`effectiveLastRead > 0`), most recently read first.
+    ///   Tier 2 — books never read, most recently imported first (`createdAt` descending).
+    ///
+    /// Tier 1 always sits above tier 2, so opening any book moves it to position 1. Reading
+    /// activity beats import recency outright; the two are deliberately *not* blended with a
+    /// `max()`, which would let a book imported a minute ago outrank one read five minutes ago.
+    ///
+    /// Ties break on `createdAt` DESC, then `bookId` DESC (autoincrement = import order), then
+    /// `slug` ASC — the exact tuple the backend sorts by (`_shelf_key` in api/routes/books.py)
+    /// and the web app's `compareBooks` (features/library/bookOrder.ts). The order is total, so
+    /// it never depends on what the server or the database happened to hand back.
     private var sortedBooks: [Book] {
-        guard !books.isEmpty else { return [] }
-        // Force SwiftUI to re-evaluate when progress updates
+        // Dependency on the re-render trigger. Mutating the @State is what actually invalidates
+        // the body; this keeps the relationship visible at the point it matters.
         _ = progressUpdateCounter
-        
-        let n = books.count
-        let now = Date().timeIntervalSince1970
-        
+        guard !books.isEmpty else { return [] }
+
         return books
-            .enumerated()
-            .map { (i, book) -> (Book, TimeInterval) in
-                // Virtual "added time": later books get a time closer to now
-                let addedTime = now - Double(n - 1 - i)
-                
-                // Last read timestamp from local progress cache
-                var lastRead: TimeInterval = 0
-                if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
-                   let progress = try? JSONDecoder().decode(ReadingProgress.self, from: data),
-                   let lr = progress.lastRead {
-                    lastRead = TimeInterval(lr)
+            .map { book in (book: book, lastRead: effectiveLastRead(for: book)) }
+            .sorted { lhs, rhs in
+                let lhsHasBeenRead = lhs.lastRead > 0
+                let rhsHasBeenRead = rhs.lastRead > 0
+                if lhsHasBeenRead != rhsHasBeenRead {
+                    return lhsHasBeenRead  // tier 1 above tier 2
                 }
-                
-                let sortKey = max(addedTime, lastRead)
-                return (book, sortKey)
+                // Tier 1: most recently read first. Both are 0 inside tier 2, so this is a no-op there.
+                if lhs.lastRead != rhs.lastRead {
+                    return lhs.lastRead > rhs.lastRead
+                }
+                // Tier 2 (and read-at-the-same-second ties): newest import first. Applied in BOTH
+                // tiers, matching the backend tuple and the web comparator — restricting it to
+                // unread books would order tier-1 ties by slug while the other two used createdAt.
+                let lhsCreatedAt = lhs.book.createdAt ?? 0
+                let rhsCreatedAt = rhs.book.createdAt ?? 0
+                if lhsCreatedAt != rhsCreatedAt {
+                    return lhsCreatedAt > rhsCreatedAt
+                }
+                // Import order. This is what carries rows whose `createdAt` is NULL (imported
+                // before the backend had the column) — without it they would collapse to
+                // alphabetical, losing the newest-import-first rule on any pre-existing library.
+                let lhsId = lhs.book.bookId ?? 0
+                let rhsId = rhs.book.bookId ?? 0
+                if lhsId != rhsId {
+                    return lhsId > rhsId
+                }
+                return lhs.book.slug < rhs.book.slug
             }
-            .sorted { $0.1 > $1.1 }
-            .map { $0.0 }
+            .map(\.book)
     }
-    
+
+    /// Newest known read time for a book: the server's value, or the locally cached
+    /// `progress_<slug>` entry when that is fresher. The local cache is what makes a
+    /// just-finished book jump to the top before the next fetch lands; the server value wins
+    /// whenever it is newer, e.g. after reading the same book on another device.
+    private func effectiveLastRead(for book: Book) -> Int64 {
+        var lastRead = book.lastRead ?? 0
+        if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
+           let progress = try? JSONDecoder().decode(ReadingProgress.self, from: data),
+           let cachedLastRead = progress.lastRead {
+            lastRead = max(lastRead, cachedLastRead)
+        }
+        return lastRead
+    }
+
     var body: some View {
         NavigationView {
             ZStack {

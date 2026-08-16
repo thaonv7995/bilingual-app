@@ -27,6 +27,11 @@ targets:
           NSAllowsArbitraryLoads: true
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "AI Companion cần quyền truy cập microphone để hội thoại bằng giọng nói với bạn về cuốn sách đang đọc."
         CODE_SIGNING_ALLOWED: true
+        # Kept here, not just in the generated .xcodeproj: `xcodegen generate`
+        # rewrites project.pbxproj from this file, so a team set only in Xcode's
+        # UI is silently dropped on the next regeneration and device builds then
+        # fail to sign.
+        DEVELOPMENT_TEAM: MPB66BJ242
 
 schemes:
   BilingualReader:

@@ -45,6 +45,11 @@ class Book(Base):
     page_count = Column(Integer, default=0)
     cover_path = Column(String, nullable=True)
     is_published = Column(Boolean, default=True)
+    # Import time (unix seconds). NULLABLE on purpose: rows that predate this
+    # column keep NULL, and the shelf ordering falls back to `id` for them —
+    # id is autoincrement, i.e. import order, so the fallback is exact. New
+    # uploads get a real timestamp and therefore outrank every legacy row.
+    created_at = Column(Integer, nullable=True, default=lambda: int(time.time()))
 
 class UserPermission(Base):
     __tablename__ = "user_permissions"
@@ -159,9 +164,30 @@ def _migrate_voca_config_to_user_settings():
     except Exception as e:  # pragma: no cover - defensive
         print(f"[Migration] dropping user_voca_config skipped: {e}")
 
+def _migrate_add_book_created_at():
+    """Idempotent: add books.created_at when an older database lacks it.
+
+    Existing rows are deliberately left NULL rather than back-filled with an
+    invented timestamp — list_books falls back to `books.id` (autoincrement =
+    import order) for them, which reproduces the true import order exactly,
+    while any fabricated value would only look precise. Runs on every start;
+    after the first one it inspects, sees the column and returns."""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    if "books" not in insp.get_table_names():
+        return
+    if any(col["name"] == "created_at" for col in insp.get_columns("books")):
+        return
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE books ADD COLUMN created_at INTEGER"))
+    except Exception as e:  # pragma: no cover - defensive
+        print(f"[Migration] books.created_at skipped: {e}")
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_voca_config_to_user_settings()
+    _migrate_add_book_created_at()
 
 def get_db():
     db = SessionLocal()

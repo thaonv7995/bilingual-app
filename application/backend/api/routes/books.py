@@ -110,23 +110,66 @@ def serve_secure_book_static(slug: str, path: str, request: Request, db: Session
 @router.get("")
 @router.get("/")
 def list_books(current_user: User = Depends(get_current_user_or_apikey), db: Session = Depends(get_db)):
-    """List books available to the logged-in user."""
+    """List books available to the logged-in user, already in shelf order.
+
+    The order is server-authoritative so an unmodified client renders it right:
+
+      tier 1 - books THIS user has read, most recently read first
+      tier 2 - books never read, most recently imported first (created_at DESC)
+
+    Tier 1 always sits above tier 2, so reading a book moves it to position 1 —
+    reading activity beats import recency, this is not a max(created, read) blend.
+    Ties break on id DESC (autoincrement, i.e. import order) then slug, which is
+    also what carries rows whose created_at is NULL (imported before the column
+    existed) into their correct place.
+    """
     if current_user.is_admin:
         # Admin sees all books
-        books = db.query(Book).all()
+        books = db.query(Book).order_by(Book.id.desc()).all()
     else:
         # Regular user sees only allowed books
         allowed_slugs = [p.book_slug for p in current_user.permissions]
-        books = db.query(Book).filter(Book.slug.in_(allowed_slugs)).all()
-        
+        books = db.query(Book).filter(Book.slug.in_(allowed_slugs)).order_by(Book.id.desc()).all()
+
+    # One query for the whole shelf, joined in Python by slug. Per-book queries
+    # would be dozens of round-trips on an endpoint hit at every app launch.
+    # `id is None` covers the virtual admin minted for API keys: it is not a
+    # persisted user and therefore owns no progress.
+    last_read_by_slug = {}
+    if books and current_user.id is not None:
+        rows = db.query(ReadingProgress.book_slug, ReadingProgress.last_read).filter(
+            ReadingProgress.user_id == current_user.id
+        ).all()
+        last_read_by_slug = {slug: last_read for slug, last_read in rows if last_read}
+
+    def _shelf_key(b: Book):
+        last_read = last_read_by_slug.get(b.slug)
+        return (
+            0 if last_read else 1,      # tier: read books first
+            -(last_read or 0),          # tier 1: most recently read first
+            -(b.created_at or 0),       # tier 2: newest import first
+            -b.id,                      # NULL created_at -> id DESC (import order)
+            b.slug,                     # total order, never database-arbitrary
+        )
+
+    books.sort(key=_shelf_key)
+
     return [
         {
+            # Autoincrement row id == import order. Sent because the clients
+            # re-sort with this same key: without it their tie-break degenerates
+            # to slug (alphabetical), which silently loses the import order for
+            # every row whose created_at is NULL — i.e. the whole shelf of any
+            # library that predates the created_at column.
+            "id": b.id,
             "slug": b.slug,
             "title": b.title,
             "author": b.author,
             "pageCount": b.page_count,
             "cover": f"books/{b.slug}/output/{b.cover_path}" if b.cover_path else None,
-            "isPublished": b.is_published
+            "isPublished": b.is_published,
+            "createdAt": b.created_at,
+            "lastRead": last_read_by_slug.get(b.slug)
         }
         for b in books
     ]
@@ -169,7 +212,8 @@ def upload_bkb(
                 author=metadata.get("author", "Unknown"),
                 page_count=book_paths.estimate_page_count(),
                 cover_path=cover_val,
-                is_published=True
+                is_published=True,
+                created_at=int(time.time())
             )
             db.add(db_book)
         else:
