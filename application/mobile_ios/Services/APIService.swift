@@ -260,19 +260,26 @@ class APIService: ObservableObject {
         return try JSONDecoder().decode([Book].self, from: data)
     }
     
-    func saveProgress(slug: String, page: Int, viewMode: String) async {
+    /// `lastRead` is the unix-seconds moment the reading action happened; the
+    /// server keeps whichever copy is newest, so a delayed save can no longer
+    /// overwrite fresher progress from another device. Nil lets the server
+    /// stamp its own clock (legacy behaviour).
+    func saveProgress(slug: String, page: Int, viewMode: String, lastRead: Int64? = nil) async {
         guard let url = URL(string: "\(serverUrl)/api/books/\(slug)/progress") else { return }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let body: [String: Any] = [
+
+        var body: [String: Any] = [
             "page": page,
             "viewMode": viewMode
         ]
+        if let lastRead = lastRead {
+            body["lastRead"] = lastRead
+        }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        
+
         _ = try? await sendRequest(request)
     }
     

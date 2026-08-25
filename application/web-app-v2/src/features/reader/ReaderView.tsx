@@ -34,7 +34,8 @@ import {
   setHighlightContext,
 } from './iframe/highlightDom';
 import { useHighlights } from './useHighlights';
-import { getLocalProgress } from './localProgress';
+import { getLocalProgress, saveLocalProgress } from './localProgress';
+import { resolveProgressOnOpen } from './progressSync';
 import { useSaveProgress, useServerProgress } from './useReaderProgress';
 import {
   READER_PAGE_HEIGHT,
@@ -70,7 +71,11 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   const logout = useAuthStore((s) => s.logout);
 
   const local = useMemo(() => getLocalProgress(book.slug), [book.slug]);
-  const hadExplicitPage = initialPageParam != null;
+  // Captured at mount: the URL-sync effect rewrites the URL to /page/:page
+  // right away, which would otherwise flip this to true before the server
+  // reconcile effect ever ran. Only a page the user ARRIVED with counts.
+  const hadExplicitPageRef = useRef(initialPageParam != null);
+  const hadExplicitPage = hadExplicitPageRef.current;
 
   const [page, setPage] = useState(() => {
     const fromUrl = initialPageParam ? parseInt(initialPageParam, 10) : NaN;
@@ -104,7 +109,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   const userNavigatedRef = useRef(false);
 
   const saveProgress = useSaveProgress(book.slug);
-  const { data: serverProgress } = useServerProgress(book.slug);
+  const { data: serverProgress, isFetching: progressFetching } = useServerProgress(book.slug);
   const appliedServerRef = useRef(false);
 
   const { highlights, createHighlight, updateHighlight, deleteHighlight } = useHighlights(
@@ -442,23 +447,45 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     if (window.location.pathname !== target) navigate(target, { replace: true });
   }, [book.slug, page, navigate]);
 
-  // Persist + sync progress whenever the page changes.
+  // Persist + sync progress whenever the user turns a page. Guarded on
+  // userNavigatedRef so neither the mount (which would stamp a fresh lastRead
+  // on a passive open and could outrank real progress from another device) nor
+  // the server-adopt effect below triggers a save — only reading actions do.
   useEffect(() => {
+    if (!userNavigatedRef.current) return;
     saveProgress(page, viewMode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  // Apply server progress once, only if the user opened at the resume position
-  // (no explicit page in the URL) and hasn't navigated — race-safe (review #4).
+  // Reconcile with the backend once its (fresh — see useServerProgress) answer
+  // arrives: newer lastRead wins, server wins ties, same rule as iOS. Runs once,
+  // and never against a deep-linked page or after the user already navigated —
+  // race-safe (review #4).
   useEffect(() => {
-    if (appliedServerRef.current || !serverProgress) return;
+    if (appliedServerRef.current || !serverProgress || progressFetching) return;
     appliedServerRef.current = true;
-    if (!hadExplicitPage && !userNavigatedRef.current && serverProgress.page > requestedPageRef.current) {
-      requestedPageRef.current = serverProgress.page;
-      setPage(serverProgress.page);
-      if (serverProgress.viewMode) setViewModeState(serverProgress.viewMode);
+    if (hadExplicitPage || userNavigatedRef.current) return;
+
+    const resolution = resolveProgressOnOpen(local, serverProgress);
+    if (resolution.action === 'adopt') {
+      const target = Math.max(1, Math.min(book.pageCount || 1, resolution.progress.page));
+      requestedPageRef.current = target;
+      setPage(target);
+      if (resolution.progress.viewMode) setViewModeState(resolution.progress.viewMode);
+      // Cache the adopted copy under the SERVER's timestamp — adopting is not
+      // a reading action, so it must not gain freshness over other devices.
+      saveLocalProgress(book.slug, {
+        page: target,
+        viewMode: resolution.progress.viewMode ?? viewMode,
+        lastRead: resolution.lastReadMs,
+      });
+    } else if (resolution.action === 'pushLocal') {
+      // Local is strictly newer (a save the server never got): re-send it with
+      // its original timestamp.
+      saveProgress(resolution.progress.page, resolution.progress.viewMode, resolution.lastReadMs);
     }
-  }, [serverProgress, hadExplicitPage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverProgress, progressFetching, hadExplicitPage]);
 
   const showEn = viewMode === 'en' || viewMode === 'split';
   const showVi = viewMode === 'vi' || viewMode === 'split';

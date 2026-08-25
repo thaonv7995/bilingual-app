@@ -13,9 +13,11 @@ export function BookCard({ book, index }: { book: Book; index: number }) {
     ? Math.min(100, Math.round((progress!.page / book.pageCount) * 100))
     : 0;
 
+  // Resume route (no explicit page): the reader seeds from local progress
+  // instantly, then reconciles with the backend copy. A page in the URL would
+  // read as a deep link and pin the reader to the local page.
   const open = () => {
-    const page = progress?.page ?? 1;
-    navigate(`/read/${encodeURIComponent(book.slug)}/page/${page}`);
+    navigate(`/read/${encodeURIComponent(book.slug)}`);
   };
 
   return (
