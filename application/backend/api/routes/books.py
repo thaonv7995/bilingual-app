@@ -455,28 +455,60 @@ def save_reading_progress(
     current_user: User = Depends(get_current_user_or_apikey),
     db: Session = Depends(get_db)
 ):
-    """Save or update the logged-in user's reading progress."""
+    """Save the logged-in user's reading progress — newest `lastRead` wins.
+
+    Clients send `lastRead` (unix seconds: when the page turn actually happened)
+    so a delayed or offline-replayed POST from one device cannot overwrite newer
+    progress already saved from another. Requests without `lastRead` (older
+    clients) are stamped with the server clock, which reproduces their previous
+    always-overwrite behaviour. The response always carries the authoritative
+    stored progress so a rejected (stale) writer can reconcile.
+    """
     page = progress_data.get("page", 1)
     view_mode = progress_data.get("viewMode", "en")
-    
+
+    now = int(time.time())
+    last_read = progress_data.get("lastRead")
+    if isinstance(last_read, (int, float)) and not isinstance(last_read, bool) and last_read > 0:
+        # Clamp to the server clock so a device with a fast clock can't publish
+        # progress "from the future" that would win every later conflict.
+        last_read = min(int(last_read), now)
+    else:
+        last_read = now
+
     progress = db.query(ReadingProgress).filter(
         ReadingProgress.user_id == current_user.id,
         ReadingProgress.book_slug == slug
     ).first()
-    
+
+    if progress and progress.last_read and progress.last_read > last_read:
+        return {
+            "ok": True,
+            "stored": False,
+            "progress": {
+                "page": progress.page,
+                "viewMode": progress.view_mode,
+                "lastRead": progress.last_read,
+            },
+        }
+
     if not progress:
         progress = ReadingProgress(
             user_id=current_user.id,
             book_slug=slug,
             page=page,
             view_mode=view_mode,
-            last_read=int(time.time())
+            last_read=last_read
         )
         db.add(progress)
     else:
         progress.page = page
         progress.view_mode = view_mode
-        progress.last_read = int(time.time())
-        
+        progress.last_read = last_read
+
     db.commit()
-    return {"ok": True}
+    return {
+        "ok": True,
+        "stored": True,
+        "progress": {"page": page, "viewMode": view_mode, "lastRead": last_read},
+    }

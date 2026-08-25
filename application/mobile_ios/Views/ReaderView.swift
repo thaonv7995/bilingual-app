@@ -1298,75 +1298,68 @@ struct ReaderView: View {
     private func saveProgress() {
         let now = Int64(Date().timeIntervalSince1970)
         let localProgress = ReadingProgress(page: page, viewMode: viewMode, lastRead: now)
-        
+
         if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
            let cached = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
             if cached.page == page && cached.viewMode == viewMode {
                 return
             }
         }
-        
+
         if let data = try? JSONEncoder().encode(localProgress) {
             UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
             NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
         }
-        
+
         Task {
-            await api.saveProgress(slug: book.slug, page: page, viewMode: viewMode)
+            await api.saveProgress(slug: book.slug, page: page, viewMode: viewMode, lastRead: now)
         }
     }
-    
+
+    /// Open-a-book reconcile, same rule as the web reader: the backend is the
+    /// source of trust — its copy wins whenever its lastRead is at least as new
+    /// as the local one (server wins ties). Local survives only when STRICTLY
+    /// newer (a save the server never received) and is then pushed up with its
+    /// ORIGINAL timestamp. Opening a book is not a reading action, so nothing
+    /// here ever stamps a fresh lastRead.
     private func loadProgress() {
         if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
            let localProgress = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
             self.page = localProgress.page
             self.viewMode = localProgress.viewMode
         }
-        
+
         Task {
             do {
                 let progress = try await api.fetchProgress(slug: book.slug)
                 await MainActor.run {
-                    var finalPage = self.page
-                    var finalViewMode = self.viewMode
-                    
+                    var local: ReadingProgress? = nil
                     if let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
-                       let localProgress = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
-                        let localTime = localProgress.lastRead ?? 0
-                        let serverTime = progress.lastRead ?? 0
-                        if serverTime >= localTime {
-                            finalPage = progress.page
-                            finalViewMode = progress.viewMode
+                       let cached = try? JSONDecoder().decode(ReadingProgress.self, from: data) {
+                        local = cached
+                    }
+
+                    let localTime = local?.lastRead ?? 0
+                    let serverTime = progress.lastRead ?? 0
+
+                    if serverTime > 0 && serverTime >= localTime {
+                        // Adopt the server copy, keeping the SERVER's timestamp.
+                        self.page = progress.page
+                        self.viewMode = progress.viewMode
+                        if let data = try? JSONEncoder().encode(progress) {
+                            UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
+                            NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
                         }
-                    } else {
-                        finalPage = progress.page
-                        finalViewMode = progress.viewMode
-                    }
-                    
-                    self.page = finalPage
-                    self.viewMode = finalViewMode
-                    
-                    let now = Int64(Date().timeIntervalSince1970)
-                    let progressToSave = ReadingProgress(page: finalPage, viewMode: finalViewMode, lastRead: now)
-                    if let data = try? JSONEncoder().encode(progressToSave) {
-                        UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
-                        NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
-                    }
-                    
-                    Task {
-                        await api.saveProgress(slug: book.slug, page: finalPage, viewMode: finalViewMode)
+                    } else if let local = local, localTime > serverTime {
+                        // Local is strictly newer: re-send it as it was saved.
+                        Task {
+                            await api.saveProgress(slug: book.slug, page: local.page, viewMode: local.viewMode, lastRead: local.lastRead)
+                        }
                     }
                 }
             } catch {
+                // Offline / transient: keep the local copy untouched.
                 print("Failed to fetch progress from server: \(error)")
-                await MainActor.run {
-                    let now = Int64(Date().timeIntervalSince1970)
-                    let progressToSave = ReadingProgress(page: self.page, viewMode: self.viewMode, lastRead: now)
-                    if let data = try? JSONEncoder().encode(progressToSave) {
-                        UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
-                        NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
-                    }
-                }
             }
         }
     }
