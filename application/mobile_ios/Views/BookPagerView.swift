@@ -118,14 +118,19 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
             
             if needsUpdate {
                 let dir: UIPageViewController.NavigationDirection = (currentPage >= context.coordinator.lastPage) ? .forward : .reverse
+                // Phone: slide programmatic jumps (jump-to-page, sync catch-up)
+                // instead of snapping. Not on the very first presentation
+                // (lastSinglePage == -1), and left untouched on iPad.
+                let animateJump = UIDevice.current.userInterfaceIdiom == .phone
+                    && context.coordinator.lastSinglePage != -1
                 context.coordinator.lastPage = currentPage
                 context.coordinator.lastSinglePage = currentPage
                 context.coordinator.lastOverlayRevision = overlayRevision
                 context.coordinator.lastPencilModeActive = isPencilModeActive
                 let vc = context.coordinator.createVC(page: currentPage)
-                
+
                 if uiViewController.spineLocation == .min || uiViewController.spineLocation == .max || uiViewController.spineLocation == .none {
-                    uiViewController.setViewControllers([vc], direction: dir, animated: false)
+                    uiViewController.setViewControllers([vc], direction: dir, animated: animateJump)
                 }
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
