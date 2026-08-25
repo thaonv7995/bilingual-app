@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import WebKit
 
 struct ChatMessage: Identifiable, Codable {
@@ -10,11 +11,48 @@ struct ChatMessage: Identifiable, Codable {
 struct ReaderView: View {
     let book: Book
     @Environment(\.dismiss) var dismiss
+    /// Master gate for every iPhone-specific adaptation. Gated on idiom, NOT
+    /// on width/size class, so iPad keeps its existing behaviour everywhere —
+    /// including narrow Split View windows.
+    private let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+
+    /// Real safe-area insets (notch / Dynamic Island / home indicator). Read
+    /// from the key window because the reader ignores the safe area wholesale,
+    /// which zeroes out what GeometryReader would report.
+    private var keyWindowSafeAreaInsets: UIEdgeInsets {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }?.safeAreaInsets ?? .zero
+    }
+
+    private var phoneTopInset: CGFloat { keyWindowSafeAreaInsets.top }
+
+    /// Phone landscape margin: the notch sits on the left or right depending on
+    /// rotation direction; use the larger inset on BOTH sides so the page keeps
+    /// symmetric margins instead of one notch-shaped bite.
+    private var phoneHorizontalInset: CGFloat {
+        max(keyWindowSafeAreaInsets.left, keyWindowSafeAreaInsets.right)
+    }
+
+    /// Hairline between the stacked EN/VI panes in phone split mode — the
+    /// side-by-side layout already separates them with a dark 4px seam.
+    private var splitPaneDivider: some View {
+        Rectangle()
+            .fill(Color.black.opacity(0.15))
+            .frame(height: 1)
+    }
     @StateObject private var api = APIService.shared
     
     @State private var page: Int
     @State private var viewMode: String // "en" | "vi" | "split"
     @State private var isFullScreen = false
+    /// Phone reader text scale, persisted. 1.0 == 13pt base; 0 in defaults
+    /// means "never set".
+    @State private var phoneFontScale: Double = {
+        let saved = UserDefaults.standard.double(forKey: "phoneFontScale")
+        return saved == 0 ? 1.0 : min(1.6, max(0.8, saved))
+    }()
     
     // Jump to page dialog
     @State private var showJumpToPageDialog = false
@@ -86,7 +124,11 @@ struct ReaderView: View {
     
     var body: some View {
         GeometryReader { geometry in
-            let isLargeScreen = geometry.size.width > 700
+            // A Pro Max in landscape is ~932pt wide, so the raw width test alone
+            // would drag the iPad layout (double-sided pages, chat sidebar)
+            // onto a phone. Phones are never "large"; iPad is decided exactly
+            // as before.
+            let isLargeScreen = !isPhone && geometry.size.width > 700
             let isLandscape = geometry.size.width > geometry.size.height
             let isLargeAndLandscape = isLargeScreen && isLandscape
             let useDoubleSided = isLargeAndLandscape && !isChatOpen && viewMode != "split"
@@ -132,7 +174,9 @@ struct ReaderView: View {
                                         overlayRevision: selectionOverlayRevision,
                                         isPencilModeActive: isPencilModeActive
                                     ) { p in
-                                        let isHorizontal = (bilingualLayoutMode == "en-over-vi" || bilingualLayoutMode == "vi-over-en") ? false : isReadingPaneLarge
+                                        // Phone split mode: side-by-side in landscape (stacked
+                                        // panes would be ~150pt tall), stacked in portrait.
+                                        let isHorizontal = (bilingualLayoutMode == "en-over-vi" || bilingualLayoutMode == "vi-over-en") ? false : (isReadingPaneLarge || (isPhone && isLandscape))
                                         let isEnFirst = bilingualLayoutMode.hasPrefix("en")
                                         let layout = isHorizontal ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
                                         layout {
@@ -141,6 +185,9 @@ struct ReaderView: View {
                                                     .padding(.leading, 0)
                                                     .padding(.trailing, isHorizontal ? 2 : 0)
                                                     .padding(.vertical, 0)
+                                                if isPhone && !isHorizontal {
+                                                    splitPaneDivider
+                                                }
                                                 renderWebView(lang: "vi", p: p, isDoubleSided: false, containerMode: "split")
                                                     .padding(.leading, isHorizontal ? 2 : 0)
                                                     .padding(.trailing, 0)
@@ -150,6 +197,9 @@ struct ReaderView: View {
                                                     .padding(.leading, 0)
                                                     .padding(.trailing, isHorizontal ? 2 : 0)
                                                     .padding(.vertical, 0)
+                                                if isPhone && !isHorizontal {
+                                                    splitPaneDivider
+                                                }
                                                 renderWebView(lang: "en", p: p, isDoubleSided: false, containerMode: "split")
                                                     .padding(.leading, isHorizontal ? 2 : 0)
                                                     .padding(.trailing, 0)
@@ -219,6 +269,10 @@ struct ReaderView: View {
                                         .allowsHitTesting(false)
                                     }
                                 }
+                                // Phone: cross-fade between EN/VI/split panes
+                                // instead of the instant opacity flip. nil on
+                                // iPad = today's behaviour, untouched.
+                                .animation(isPhone ? .easeInOut(duration: 0.22) : nil, value: viewMode)
                             } // End of isReadyToRender block
                         }
                         .ignoresSafeArea(edges: .bottom)
@@ -232,10 +286,17 @@ struct ReaderView: View {
                         .onChange(of: useDoubleSided) { readerUsesDoubleSided = $0 }
                         .onChange(of: viewMode) { _ in readerUsesDoubleSided = useDoubleSided }
                         .onChange(of: isChatOpen) { _ in readerUsesDoubleSided = useDoubleSided }
-                        .scaleEffect(isFullScreen ? 1.0 : 0.94)
-                        .offset(y: isFullScreen ? 0 : 20)
-                        .clipShape(RoundedRectangle(cornerRadius: isFullScreen ? 0 : 16, style: .continuous))
-                        .shadow(color: Color.black.opacity(isFullScreen ? 0 : 0.4), radius: isFullScreen ? 0 : 20, x: 0, y: 10)
+                        // On the phone every point of width matters: always
+                        // full-bleed, no shrink/offset/shadow chrome. The header
+                        // is an OVERLAY (on iPad the 0.94 scale + offset slides
+                        // the page out from under it), so at full width the page
+                        // must instead be pushed below the header + notch.
+                        .padding(.top, isPhone && !isFullScreen ? phoneTopInset + 49 : 0)
+                        .padding(.horizontal, isPhone && isLandscape ? phoneHorizontalInset : 0)
+                        .scaleEffect(isFullScreen || isPhone ? 1.0 : 0.94)
+                        .offset(y: isFullScreen || isPhone ? 0 : 20)
+                        .clipShape(RoundedRectangle(cornerRadius: isFullScreen || isPhone ? 0 : 16, style: .continuous))
+                        .shadow(color: Color.black.opacity(isFullScreen || isPhone ? 0 : 0.4), radius: isFullScreen || isPhone ? 0 : 20, x: 0, y: 10)
                     
                     // Header nằm ĐỘC LẬP bên trên, không bị Scale
                     if !isFullScreen {
@@ -249,9 +310,12 @@ struct ReaderView: View {
                             showJumpToPageDialog: $showJumpToPageDialog,
                             inputPageString: $inputPageString,
                             isFullScreen: $isFullScreen,
-                            onDismiss: { dismiss() }
+                            onDismiss: { dismiss() },
+                            onFontDecrease: { adjustPhoneFontScale(by: -0.1) },
+                            onFontIncrease: { adjustPhoneFontScale(by: 0.1) }
                         )
-                        .padding(.top, 5)
+                        .padding(.top, isPhone ? max(5, phoneTopInset) : 5)
+                        .padding(.horizontal, isPhone && isLandscape ? phoneHorizontalInset : 0)
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
@@ -282,7 +346,7 @@ struct ReaderView: View {
                     get: { isChatOpen && !isLargeScreen },
                     set: { isChatOpen = $0 }
                 )) {
-                    ReaderChatPanelView(
+                    let chatPanel = ReaderChatPanelView(
                         isChatOpen: $isChatOpen,
                         bilingualLayoutMode: $bilingualLayoutMode,
                         book: book,
@@ -297,6 +361,12 @@ struct ReaderView: View {
                         onAskAIShortcut: askAIShortcut
                     )
                     .background(Color(hex: "111827").ignoresSafeArea())
+                    if isPhone {
+                        // Half-height detent so the page stays visible while chatting.
+                        chatPanel.presentationDetents([.medium, .large])
+                    } else {
+                        chatPanel
+                    }
                 }
             .background(Color(hex: "0f172a"))
             .statusBarHidden(true)
@@ -308,6 +378,12 @@ struct ReaderView: View {
             .onChange(of: viewMode) { _ in
                 saveProgress()
             }
+            .onChange(of: isFullScreen) { _ in
+                // Same pager refresh-guard issue as the font scale: without a
+                // revision bump the notch-clearing inset CSS never reaches the
+                // page currently on screen.
+                if isPhone { bumpSelectionOverlayRevision() }
+            }
             .overlay(
                 Group {
                     if showJumpToPageDialog {
@@ -317,6 +393,7 @@ struct ReaderView: View {
                     
                     if companionVM.phase != .idle && (companionVM.isMinimized || !isChatOpen) {
                         FloatingVoiceWidgetView(companionVM: companionVM, isChatOpen: $isChatOpen)
+                            .padding(.horizontal, isPhone && isLandscape ? phoneHorizontalInset : 0)
                     }
                 }
             )
@@ -346,6 +423,8 @@ struct ReaderView: View {
             viewMode: viewMode,
             activeSentenceId: targetSentenceId,
             isPencilModeActive: isPencilModeActive,
+            phoneFontScale: phoneFontScale,
+            topOverlayInset: (isPhone && isFullScreen) ? keyWindowSafeAreaInsets.top : 0,
             onScroll: { scrollTop in
                 if viewMode == "split" {
                     let otherLang = lang == "en" ? "vi" : "en"
@@ -503,6 +582,21 @@ struct ReaderView: View {
     
     private func bumpSelectionOverlayRevision() {
         selectionOverlayRevision += 1
+    }
+
+    /// Step the phone text scale; the new value flows into every mounted
+    /// BilingualWebView as a prop, which applies it live (no reload).
+    /// The overlay-revision bump matters: BookPagerView refreshes a hosted
+    /// page's rootView only when page/overlayRevision/pencil change, so
+    /// without it the CURRENTLY displayed page would keep the old size until
+    /// the next page turn.
+    private func adjustPhoneFontScale(by delta: Double) {
+        let target = ((phoneFontScale + delta) * 10).rounded() / 10
+        let clamped = min(1.6, max(0.8, target))
+        guard clamped != phoneFontScale else { return }
+        phoneFontScale = clamped
+        UserDefaults.standard.set(clamped, forKey: "phoneFontScale")
+        bumpSelectionOverlayRevision()
     }
 
     private func registerWebView(_ webView: WKWebView, lang: String, page: Int, containerMode: String) {
@@ -1611,6 +1705,12 @@ struct PaperSheetModifier: ViewModifier {
                     br: isLeft ? 0 : 6
                 ))
                 .shadow(color: .black.opacity(0.15), radius: 5, x: isLeft ? -2 : 2, y: 3)
+        } else if UIDevice.current.userInterfaceIdiom == .phone {
+            // Full-bleed on the phone: corner radius + drop shadow are chrome
+            // for a page card floating on a canvas; when the page IS the
+            // screen they read as edge artifacts.
+            content
+                .background(Color(hex: "F9F7F1"))
         } else {
             content
                 .background(Color(hex: "F9F7F1"))
@@ -3184,8 +3284,108 @@ struct ReaderHeaderView: View {
     @Binding var isFullScreen: Bool
     
     var onDismiss: () -> Void
-    
+    // Phone-only: font stepper actions in the view-mode menu.
+    var onFontDecrease: () -> Void = {}
+    var onFontIncrease: () -> Void = {}
+
+    private let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+
     var body: some View {
+        if isPhone {
+            phoneBody
+        } else {
+            padBody
+        }
+    }
+
+    /// Compact single-row header for the phone: back chevron, title, tappable
+    /// page pill (opens jump-to-page), view-mode menu, chat. Dropped compared
+    /// to the iPad row: prev/next arrows (swiping is the pager), the pencil
+    /// toggle (Apple Pencil is an iPad feature) and the "Library" label.
+    private var phoneBody: some View {
+        HStack(spacing: 10) {
+            Button(action: onDismiss) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 28, height: 28)
+            }
+
+            Text(book.title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(action: {
+                inputPageString = "\(page)"
+                showJumpToPageDialog = true
+            }) {
+                Text("\(page)/\(book.pageCount)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(Color(hex: "1e293b"))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    )
+            }
+
+            Menu {
+                Picker("Chế độ đọc", selection: $viewMode) {
+                    Text("English").tag("en")
+                    Text("Tiếng Việt").tag("vi")
+                    Text("Song ngữ").tag("split")
+                }
+                Divider()
+                Button(action: onFontIncrease) {
+                    Label("Chữ to hơn", systemImage: "textformat.size.larger")
+                }
+                Button(action: onFontDecrease) {
+                    Label("Chữ nhỏ hơn", systemImage: "textformat.size.smaller")
+                }
+            } label: {
+                Group {
+                    if viewMode == "split" {
+                        Image(systemName: "rectangle.split.1x2")
+                            .font(.system(size: 13))
+                    } else {
+                        Text(viewMode.uppercased())
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                }
+                .foregroundColor(.white)
+                .frame(width: 40, height: 28)
+                .background(Color(hex: "1e293b"))
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+            }
+
+            Button(action: { isChatOpen.toggle() }) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .foregroundColor(.white)
+                    .font(.system(size: 14))
+                    .frame(width: 28, height: 28)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(hex: "0f172a"))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 0.5)
+        }
+    }
+
+    /// The original iPad header, unchanged.
+    private var padBody: some View {
         HStack(spacing: 12) {
             Button(action: onDismiss) {
                 HStack(spacing: 5) {

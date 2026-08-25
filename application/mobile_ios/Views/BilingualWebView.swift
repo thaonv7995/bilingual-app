@@ -91,6 +91,10 @@ struct BilingualWebView: UIViewRepresentable {
     let viewMode: String
     let activeSentenceId: String?
     let isPencilModeActive: Bool
+    // Phone-only knobs (left at their defaults on iPad): user-adjustable text
+    // scale, and extra top padding so full-screen mode clears the notch.
+    var phoneFontScale: Double = 1.0
+    var topOverlayInset: CGFloat = 0
     @ObservedObject var api = APIService.shared
     let onScroll: (CGFloat) -> Void
     let onHighlightMessage: (HighlightMessage) -> Void
@@ -98,7 +102,36 @@ struct BilingualWebView: UIViewRepresentable {
     let onVocaAction: (VocaWebAction) -> Void
     var onWebViewReady: ((WKWebView, String, Int) -> Void)? = nil
     var onWebViewDismantled: ((WKWebView, String, Int) -> Void)? = nil
-    
+
+    /// Phone typography rule, kept in ONE place so the copy baked into the
+    /// document-start script and the live update in updateUIView never drift.
+    /// Single-line on purpose: it gets embedded in a JS string literal.
+    ///
+    /// Auto-fit: font-size derives from the pane's own viewport width (100vw)
+    /// targeting ~37 characters per line (Georgia averages ~0.5em per char, so
+    /// linewidth / 18.5 ≈ the px size that yields it), clamped to 13–18.5pt.
+    /// Each pane sizes itself — rotation and the split layouts re-fit with no
+    /// native measuring — and the user's A−/A+ scale multiplies the whole band.
+    static func phoneTypographyCss(fontScale: Double, viewMode: String) -> String {
+        let hpad = viewMode == "split" ? 28 : 32
+        let minPt = String(format: "%.1f", 13.0 * fontScale)
+        let maxPt = String(format: "%.1f", 18.5 * fontScale)
+        let divisor = String(format: "%.2f", 18.5 / fontScale)
+        // Selectors are deliberately generic (body/p/li + the known page
+        // classes): books on the server span several generator versions and
+        // the older ones don't use .prose-page/.sheet-flow at all — the size
+        // must land on the text no matter which era the page came from.
+        return "body, p, li, blockquote, .prose-page, .sheet-flow { font-size: clamp(\(minPt)pt, calc((100vw - \(hpad)px) / \(divisor)), \(maxPt)pt) !important; line-height: 1.7 !important; -webkit-hyphens: auto !important; hyphens: auto !important; }"
+    }
+
+    /// Extra top padding in full-screen so the first lines clear the notch /
+    /// Dynamic Island (the reader ignores the safe area). Empty when no inset.
+    static func phoneInsetCss(viewMode: String, topOverlayInset: CGFloat) -> String {
+        guard topOverlayInset > 0 else { return "" }
+        let base: CGFloat = viewMode == "split" ? 12 : 18
+        return " body, body.book-standalone { padding-top: \(Int(base + topOverlayInset))px !important; }"
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let preferences = WKPreferences()
         
@@ -113,14 +146,77 @@ struct BilingualWebView: UIViewRepresentable {
         let highlightColor = isEnglish ? "rgba(56, 189, 248, 0.22)" : "rgba(250, 204, 21, 0.24)"
         let hoverColor = isEnglish ? "rgba(56, 189, 248, 0.08)" : "rgba(250, 204, 21, 0.08)"
         
-        let paddingCss = viewMode == "split" ? "padding: 16px 20px !important;" : "padding: 24px 32px !important;"
-        
+        // Phone-only adaptations, gated on idiom so iPad rendering stays
+        // byte-for-byte identical (including narrow Split View windows).
+        let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+        let paddingCss: String
+        if isPhone {
+            // Extra bottom padding keeps the last lines clear of the home
+            // indicator (the reader ignores the safe area).
+            paddingCss = viewMode == "split" ? "padding: 12px 14px 28px !important;" : "padding: 18px 16px 36px !important;"
+        } else {
+            paddingCss = viewMode == "split" ? "padding: 16px 20px !important;" : "padding: 24px 32px !important;"
+        }
+        // The source pages are fixed-layout A4 (11pt). At phone width that
+        // renders small, so bump the prose to a phone-typical body size, and
+        // hyphenate so the justified text doesn't gape at a narrow measure.
+        // Title pages draw their decorative frame at absolute mm coordinates
+        // sized for a 210mm sheet (the title CONTENT is nested inside that
+        // frame, so it must never be display:none'd) — restyle it into a
+        // static, centered cover frame instead. Verified against
+        // books/*/output/en/page_0001.html rendered at 393px.
+        let phoneCss = isPhone ? """
+                        html {
+                            -webkit-text-size-adjust: none !important;
+                        }
+                        \(Self.phoneTypographyCss(fontScale: phoneFontScale, viewMode: viewMode))
+                        \(Self.phoneInsetCss(viewMode: viewMode, topOverlayInset: topOverlayInset))
+                        .title-page-container {
+                            height: auto !important;
+                        }
+                        .title-page-border {
+                            position: static !important;
+                            width: auto !important;
+                            height: auto !important;
+                            min-height: 70vh !important;
+                            margin: 24px 8px !important;
+                            padding: 32px 16px !important;
+                            border-width: 1px !important;
+                            display: flex !important;
+                            align-items: center !important;
+                            justify-content: center !important;
+                        }
+                        .title-book {
+                            font-size: 24pt !important;
+                        }
+        """ : ""
+
+        // Phone only: force the viewport to the device width. Older-generation
+        // book pages have no <meta viewport>, so WKWebView lays them out at
+        // ~980px and scales down — every font ends up tiny no matter what CSS
+        // says. Newer pages already carry this exact meta; overwriting it is a
+        // no-op for them. WebKit honours runtime changes to the meta.
+        let phoneViewportJs = isPhone ? """
+            const forceViewport = () => {
+                if (!document.head) { return; }
+                var vp = document.querySelector('meta[name="viewport"]');
+                if (!vp) {
+                    vp = document.createElement('meta');
+                    vp.setAttribute('name', 'viewport');
+                    document.head.appendChild(vp);
+                }
+                vp.setAttribute('content', 'width=device-width, initial-scale=1');
+            };
+            forceViewport();
+        """ : ""
+
         // 1. Set background color of root html tag immediately at .atDocumentStart to prevent white flash
         let cssStyleSource = """
         (function() {
             document.documentElement.style.backgroundColor = '#F9F7F1';
             document.documentElement.style.color = '#333333';
-            
+            \(phoneViewportJs)
+
             const injectStyle = () => {
                 const STYLE_ID = 'reader-highlight-style';
                 if (!document.getElementById(STYLE_ID)) {
@@ -198,6 +294,7 @@ struct BilingualWebView: UIViewRepresentable {
                             max-width: 100% !important;
                             word-wrap: break-word !important;
                         }
+        \(phoneCss)
                         mark.reader-highlight {
                             border-radius: 3px;
                             padding: 0 1px;
@@ -310,6 +407,7 @@ struct BilingualWebView: UIViewRepresentable {
             const observer = new MutationObserver((mutations, obs) => {
                 if (document.head || document.body) {
                     injectStyle();
+                    \(isPhone ? "forceViewport();" : "")
                     obs.disconnect();
                 }
             });
@@ -813,6 +911,9 @@ struct BilingualWebView: UIViewRepresentable {
         let webView = NoSelectionMenuWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
+        context.coordinator.lastPhoneDynCss =
+            Self.phoneTypographyCss(fontScale: phoneFontScale, viewMode: viewMode)
+            + Self.phoneInsetCss(viewMode: viewMode, topOverlayInset: topOverlayInset)
         webView.scrollView.delegate = context.coordinator
         webView.scrollView.showsVerticalScrollIndicator = false
         webView.scrollView.showsHorizontalScrollIndicator = false
@@ -855,6 +956,19 @@ struct BilingualWebView: UIViewRepresentable {
         context.coordinator.parent = self
         registerWebView(uiView, coordinator: context.coordinator)
         uiView.scrollView.delegate = context.coordinator
+
+        // Live phone typography / full-screen-inset changes, applied to the
+        // already-loaded page without a reload. The rules are single-line and
+        // quote-free, so embedding them in the JS literal is safe.
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            let dynCss = Self.phoneTypographyCss(fontScale: phoneFontScale, viewMode: viewMode)
+                + Self.phoneInsetCss(viewMode: viewMode, topOverlayInset: topOverlayInset)
+            if context.coordinator.lastPhoneDynCss != dynCss {
+                context.coordinator.lastPhoneDynCss = dynCss
+                let js = "(function(){var el=document.getElementById('phone-dyn-style');if(!el){el=document.createElement('style');el.id='phone-dyn-style';(document.head||document.documentElement).appendChild(el);}el.textContent='\(dynCss)';})();"
+                uiView.evaluateJavaScript(js, completionHandler: nil)
+            }
+        }
         
         context.coordinator.updatePencilCanvas(
             isPencilModeActive: isPencilModeActive,
@@ -956,6 +1070,7 @@ struct BilingualWebView: UIViewRepresentable {
         var loadedUrlString: String?
         var lastAppliedHighlights: [Highlight] = []
         var lastAppliedSentenceId: String? = nil
+        var lastPhoneDynCss: String? = nil
         weak var registeredWebView: WKWebView?
         
         var canvasView: BilingualCanvasView?
