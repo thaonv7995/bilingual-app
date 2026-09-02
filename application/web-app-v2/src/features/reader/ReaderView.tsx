@@ -21,7 +21,7 @@ import {
   syncVocaCards,
 } from '@/lib/voca';
 import { ReaderTopbar } from './ReaderTopbar';
-import { injectReaderStyles, setVocaPanelCss } from './iframe/readerStyles';
+import { injectReaderStyles, resolveBookBackground, setVocaPanelCss } from './iframe/readerStyles';
 import { segmentDocSentences } from './iframe/segmentation';
 
 // Make the voca lookup-panel CSS part of the styles injected into each iframe.
@@ -312,7 +312,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     deleteHighlight,
   });
 
-  // -- iframe load: auth-retry, paper theme, hide internal nav ----------------
+  // -- iframe load: auth-retry, BKB paper sync, hide internal nav --------------
   const handleIframeLoad = useCallback(
     (e: React.SyntheticEvent<HTMLIFrameElement>) => {
       scaleIframes();
@@ -346,6 +346,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         const nav = doc.querySelector<HTMLElement>('.page-nav');
         if (nav) nav.style.display = 'none';
 
+        iframeEl.style.backgroundColor = resolveBookBackground(doc);
         injectReaderStyles(doc, isEnglish);
         segmentDocSentences(doc);
         applyStoredHighlights(doc, book.slug, page, lang);

@@ -1676,7 +1676,7 @@ struct PaperSheetModifier: ViewModifier {
         if isDoubleSided && viewMode != "split" {
             let isLeft = page % 2 == 1
             content
-                .background(Color(hex: "F9F7F1"))
+                .background(Color.clear)
                 .overlay(
                     Group {
                         if isLeft {
@@ -1710,10 +1710,10 @@ struct PaperSheetModifier: ViewModifier {
             // for a page card floating on a canvas; when the page IS the
             // screen they read as edge artifacts.
             content
-                .background(Color(hex: "F9F7F1"))
+                .background(Color.clear)
         } else {
             content
-                .background(Color(hex: "F9F7F1"))
+                .background(Color.clear)
                 .cornerRadius(4)
                 .shadow(color: .black.opacity(0.15), radius: 5, x: 0, y: 3)
         }
@@ -3951,4 +3951,3 @@ struct FloatingVoiceWidgetView: View {
         }
     }
 }
-

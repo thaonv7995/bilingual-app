@@ -908,9 +908,12 @@ struct BilingualWebView: UIViewRepresentable {
         webView.scrollView.delegate = context.coordinator
         webView.scrollView.showsVerticalScrollIndicator = false
         webView.scrollView.showsHorizontalScrollIndicator = false
-        webView.isOpaque = true
-        webView.backgroundColor = UIColor(red: 249/255, green: 247/255, blue: 241/255, alpha: 1.0)
-        webView.scrollView.backgroundColor = UIColor(red: 249/255, green: 247/255, blue: 241/255, alpha: 1.0)
+        // Start transparent, then adopt the loaded BKB's computed paper color
+        // in didFinish. A fixed native paper color creates a visible seam for
+        // books whose design tokens use a different paper shade.
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         
         // Register observer for programmatical scrolling
@@ -1137,6 +1140,8 @@ struct BilingualWebView: UIViewRepresentable {
             self.registeredWebView = nil
             parent.onWebViewReady?(webView, parent.lang, parent.page)
 
+            syncBookBackground(in: webView)
+
             let scrollScript = """
                 (function() {
                     var isScrolling = false;
@@ -1167,6 +1172,45 @@ struct BilingualWebView: UIViewRepresentable {
                 webView.evaluateJavaScript(activeJs, completionHandler: nil)
             } else {
                 self.lastAppliedSentenceId = nil
+            }
+        }
+
+        /// Match the native WebView/scroll bounce background to the BKB page.
+        /// Body is preferred because it paints the area around the A4 sheet;
+        /// older packages with a transparent body fall back to the sheet/html.
+        private func syncBookBackground(in webView: WKWebView) {
+            let script = """
+                (function() {
+                    const candidates = [
+                        document.body,
+                        document.querySelector('.book-page'),
+                        document.documentElement
+                    ];
+                    for (const element of candidates) {
+                        if (!element) continue;
+                        const value = getComputedStyle(element).backgroundColor;
+                        const match = value && value.match(/^rgba?\\(\\s*([\\d.]+)[, ]+\\s*([\\d.]+)[, ]+\\s*([\\d.]+)(?:\\s*[,/]\\s*([\\d.]+))?\\s*\\)$/i);
+                        if (!match) continue;
+                        const alpha = match[4] == null ? 1 : Number(match[4]);
+                        if (alpha <= 0) continue;
+                        return [Number(match[1]), Number(match[2]), Number(match[3]), alpha];
+                    }
+                    return null;
+                })();
+            """
+
+            webView.evaluateJavaScript(script) { result, _ in
+                guard let components = result as? [NSNumber], components.count == 4 else { return }
+                let color = UIColor(
+                    red: CGFloat(truncating: components[0]) / 255,
+                    green: CGFloat(truncating: components[1]) / 255,
+                    blue: CGFloat(truncating: components[2]) / 255,
+                    alpha: CGFloat(truncating: components[3])
+                )
+                DispatchQueue.main.async {
+                    webView.backgroundColor = color
+                    webView.scrollView.backgroundColor = color
+                }
             }
         }
         
@@ -1333,5 +1377,4 @@ struct BilingualWebView: UIViewRepresentable {
         }
     }
 }
-
 

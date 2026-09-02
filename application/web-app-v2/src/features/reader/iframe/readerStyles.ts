@@ -15,6 +15,24 @@ export function setVocaPanelCss(css: string): void {
   vocaPanelCss = css;
 }
 
+/** Resolve the BKB-owned paper color used around its A4 sheet. */
+export function resolveBookBackground(doc: Document): string {
+  const view = doc.defaultView;
+  if (!view) return 'transparent';
+
+  const candidates = [doc.body, doc.querySelector<HTMLElement>('.book-page'), doc.documentElement];
+  for (const element of candidates) {
+    if (!element) continue;
+    const color = view.getComputedStyle(element).backgroundColor;
+    if (!color || color === 'transparent') continue;
+
+    const rgba = color.match(/^rgba\([^)]*[,/]\s*([\d.]+)\s*\)$/i);
+    if (rgba && Number(rgba[1]) <= 0) continue;
+    return color;
+  }
+  return 'transparent';
+}
+
 export function injectReaderStyles(doc: Document, isEnglish: boolean): void {
   if (doc.getElementById(STYLE_ID)) return;
   const highlightColor = isEnglish ? 'rgba(56, 189, 248, 0.18)' : 'rgba(250, 204, 21, 0.20)';

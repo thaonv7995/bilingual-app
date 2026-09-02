@@ -429,7 +429,8 @@
 .reader-iframe {
   width: 794px;
   height: 1123px;
-  background: #f9f7f1;
+  /* Set from the loaded BKB body's computed color in ReaderView.tsx. */
+  background: transparent;
   border: none;
   border-radius: 4px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
