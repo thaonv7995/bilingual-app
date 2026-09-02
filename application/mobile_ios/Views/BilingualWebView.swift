@@ -1175,15 +1175,17 @@ struct BilingualWebView: UIViewRepresentable {
             }
         }
 
-        /// Match the native WebView/scroll bounce background to the BKB page.
-        /// Body is preferred because it paints the area around the A4 sheet;
-        /// older packages with a transparent body fall back to the sheet/html.
+        /// Extend the BKB page's own paper color through the reader padding and
+        /// native WebView/scroll bounce area. The sheet is authoritative: the
+        /// BKB body may intentionally use a separate browser-canvas color which
+        /// would otherwise remain visible as a frame around the page on iOS.
         private func syncBookBackground(in webView: WKWebView) {
             let script = """
                 (function() {
                     const candidates = [
-                        document.body,
                         document.querySelector('.book-page'),
+                        document.querySelector('article'),
+                        document.body,
                         document.documentElement
                     ];
                     for (const element of candidates) {
@@ -1193,6 +1195,13 @@ struct BilingualWebView: UIViewRepresentable {
                         if (!match) continue;
                         const alpha = match[4] == null ? 1 : Number(match[4]);
                         if (alpha <= 0) continue;
+
+                        // Only extend the selected paper color into the reader's
+                        // outer canvas. Element-level BKB colors remain untouched.
+                        document.documentElement.style.setProperty('background-color', value, 'important');
+                        if (document.body) {
+                            document.body.style.setProperty('background-color', value, 'important');
+                        }
                         return [Number(match[1]), Number(match[2]), Number(match[3]), alpha];
                     }
                     return null;
@@ -1377,4 +1386,3 @@ struct BilingualWebView: UIViewRepresentable {
         }
     }
 }
-
