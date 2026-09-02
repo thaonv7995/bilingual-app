@@ -210,11 +210,12 @@ struct BilingualWebView: UIViewRepresentable {
             forceViewport();
         """ : ""
 
-        // 1. Set background color of root html tag immediately at .atDocumentStart to prevent white flash
+        // 1. Inject reader behavior and responsive geometry at document start.
+        // The BKB remains the source of truth for its visual identity: fonts,
+        // foreground/background colors, borders, and decorative styles must not
+        // be normalised by the reader.
         let cssStyleSource = """
         (function() {
-            document.documentElement.style.backgroundColor = '#F9F7F1';
-            document.documentElement.style.color = '#333333';
             \(phoneViewportJs)
 
             const injectStyle = () => {
@@ -248,7 +249,6 @@ struct BilingualWebView: UIViewRepresentable {
                             box-sizing: border-box !important;
                             overflow-x: hidden !important;
                             overflow-y: auto !important;
-                            background-color: #F9F7F1 !important;
                         }
                         body, body.book-standalone {
                             margin: 0 !important;
@@ -261,9 +261,6 @@ struct BilingualWebView: UIViewRepresentable {
                             display: block !important;
                             overflow-x: hidden !important;
                             overflow-y: auto !important;
-                            background-color: #F9F7F1 !important;
-                            color: #333333 !important;
-                            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
                         }
                         main, article, .prose-page {
                             margin: 0 !important;
@@ -271,8 +268,6 @@ struct BilingualWebView: UIViewRepresentable {
                             width: 100% !important;
                             max-width: 100% !important;
                             box-sizing: border-box !important;
-                            background-color: transparent !important;
-                            color: inherit !important;
                         }
                         .book-page, .book-page--sheet, .sheet-flow {
                             margin: 0 auto !important;
@@ -284,10 +279,6 @@ struct BilingualWebView: UIViewRepresentable {
                             max-height: none !important;
                             box-sizing: border-box !important;
                             overflow: visible !important;
-                        }
-                        div, p, h1, h2, h3, h4, h5, h6, ul, ol, li {
-                            background-color: transparent !important;
-                            color: inherit !important;
                         }
                         * {
                             box-sizing: border-box !important;
@@ -1342,6 +1333,5 @@ struct BilingualWebView: UIViewRepresentable {
         }
     }
 }
-
 
 
