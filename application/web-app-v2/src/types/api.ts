@@ -30,7 +30,12 @@ export interface Book {
   isPublished: boolean;
   createdAt?: number | null;
   lastRead?: number | null;
+  isFinished: boolean;
+  onShelf: boolean;
+  isPriority: boolean;
 }
+
+export type BookStatePatch = Partial<Pick<Book, 'isFinished' | 'onShelf' | 'isPriority'>>;
 
 export type HighlightLang = 'en' | 'vi';
 

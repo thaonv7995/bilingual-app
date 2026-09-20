@@ -259,6 +259,21 @@ class APIService: ObservableObject {
         
         return try JSONDecoder().decode([Book].self, from: data)
     }
+
+    func updateBookState(slug: String, patch: [String: Bool]) async throws -> BookState {
+        guard let url = URL(string: "\(serverUrl)/api/books/\(slug)/state") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: patch)
+        let (data, response) = try await sendRequest(request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(BookState.self, from: data)
+    }
     
     /// `lastRead` is the unix-seconds moment the reading action happened; the
     /// server keeps whichever copy is newest, so a delayed save can no longer

@@ -1,11 +1,19 @@
 import { useNavigate } from 'react-router-dom';
 import { getLocalProgress } from '@/features/reader/localProgress';
-import type { Book } from '@/types/api';
+import type { Book, BookStatePatch } from '@/types/api';
 import styles from './library.module.css';
 
 /** A single library tile: cover (or gradient fallback), resume-progress bar,
  * title, and page/lang meta. Clicking opens the reader at the saved page. */
-export function BookCard({ book, index }: { book: Book; index: number }) {
+export function BookCard({
+  book,
+  index,
+  onStateChange,
+}: {
+  book: Book;
+  index: number;
+  onStateChange: (patch: BookStatePatch) => void;
+}) {
   const navigate = useNavigate();
   const progress = getLocalProgress(book.slug);
   const hasProgress = !!(progress && progress.page > 1 && book.pageCount);
@@ -28,6 +36,7 @@ export function BookCard({ book, index }: { book: Book; index: number }) {
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           open();
@@ -35,6 +44,41 @@ export function BookCard({ book, index }: { book: Book; index: number }) {
       }}
     >
       <div className={styles.coverWrapper}>
+        <div className={styles.bookActions}>
+          <button
+            className={book.isPriority ? styles.bookActionActive : styles.bookAction}
+            title={book.isPriority ? 'Bỏ ưu tiên' : 'Ưu tiên đọc'}
+            aria-label={book.isPriority ? 'Bỏ ưu tiên' : 'Ưu tiên đọc'}
+            onClick={(event) => {
+              event.stopPropagation();
+              onStateChange({ isPriority: !book.isPriority });
+            }}
+          >
+            ★
+          </button>
+          <button
+            className={book.onShelf ? styles.bookActionActive : styles.bookAction}
+            title={book.onShelf ? 'Bỏ khỏi kệ' : 'Cho lên kệ'}
+            aria-label={book.onShelf ? 'Bỏ khỏi kệ' : 'Cho lên kệ'}
+            onClick={(event) => {
+              event.stopPropagation();
+              onStateChange({ onShelf: !book.onShelf });
+            }}
+          >
+            ▣
+          </button>
+          <button
+            className={book.isFinished ? styles.bookActionActive : styles.bookAction}
+            title={book.isFinished ? 'Đánh dấu chưa đọc xong' : 'Đánh dấu đã đọc'}
+            aria-label={book.isFinished ? 'Đánh dấu chưa đọc xong' : 'Đánh dấu đã đọc'}
+            onClick={(event) => {
+              event.stopPropagation();
+              onStateChange({ isFinished: !book.isFinished });
+            }}
+          >
+            ✓
+          </button>
+        </div>
         {book.cover ? (
           <img className={styles.coverImg} src={book.cover} alt={book.title} />
         ) : (

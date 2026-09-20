@@ -1,7 +1,7 @@
 import os
 import time
 from typing import Optional, List
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Text, event
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Text, UniqueConstraint, event
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 from sqlalchemy.pool import NullPool
@@ -94,6 +94,18 @@ class ReadingProgress(Base):
     page = Column(Integer, default=1)
     view_mode = Column(String, default="en")
     last_read = Column(Integer, default=lambda: int(time.time()))
+
+class UserBookState(Base):
+    """Per-user library organisation, shared by the web and mobile clients."""
+    __tablename__ = "user_book_states"
+    __table_args__ = (UniqueConstraint("user_id", "book_slug", name="uq_user_book_state"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    book_slug = Column(String, nullable=False, index=True)
+    is_finished = Column(Boolean, nullable=False, default=False)
+    on_shelf = Column(Boolean, nullable=False, default=False)
+    is_priority = Column(Boolean, nullable=False, default=False)
 
 class UserRefreshToken(Base):
     __tablename__ = "user_refresh_tokens"

@@ -46,6 +46,9 @@ struct Book: Codable, Identifiable, Equatable {
     /// Unix seconds this user last read the book, as known to the server. Optional for the same
     /// reason as `createdAt`; 0/nil means "never read".
     let lastRead: Int64?
+    let isFinished: Bool?
+    let onShelf: Bool?
+    let isPriority: Bool?
 
     var coverPath: String? {
         guard let cover = cover else { return nil }
@@ -59,7 +62,14 @@ struct Book: Codable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case bookId = "id"
         case slug, title, author, pageCount, cover, isPublished, createdAt, lastRead
+        case isFinished, onShelf, isPriority
     }
+}
+
+struct BookState: Codable {
+    let isFinished: Bool
+    let onShelf: Bool
+    let isPriority: Bool
 }
 
 struct Highlight: Codable, Identifiable, Equatable {

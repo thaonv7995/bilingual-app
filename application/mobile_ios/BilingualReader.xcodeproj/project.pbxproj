@@ -100,9 +100,6 @@
 			children = (
 				5538CACD35C531C90CC07521 /* Assets.xcassets */,
 				58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */,
-				E662218020EDB28D9165D73D /* Models */,
-				16601F8E94BA2CEE66D8C2A2 /* Services */,
-				FBE7E929CF26843AFD2C06AD /* Views */,
 			);
 			name = mobile_ios;
 			path = .;
@@ -393,7 +390,7 @@
 				565BF9E84B077291DBC51E85 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 		AFDC2266A6E7C754B2E6869E /* Build configuration list for PBXNativeTarget "BilingualReader" */ = {
 			isa = XCConfigurationList;
@@ -402,7 +399,7 @@
 				9E9AC5FF940D9C33B395F160 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

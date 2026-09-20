@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from api.database import get_db, User, Book, UserPermission, Highlight, ReadingProgress
+from api.database import get_db, User, Book, UserPermission, Highlight, ReadingProgress, UserBookState
 from api.auth import (
     get_current_user_or_apikey,
     require_admin,
@@ -136,15 +136,20 @@ def list_books(current_user: User = Depends(get_current_user_or_apikey), db: Ses
     # `id is None` covers the virtual admin minted for API keys: it is not a
     # persisted user and therefore owns no progress.
     last_read_by_slug = {}
+    state_by_slug = {}
     if books and current_user.id is not None:
         rows = db.query(ReadingProgress.book_slug, ReadingProgress.last_read).filter(
             ReadingProgress.user_id == current_user.id
         ).all()
         last_read_by_slug = {slug: last_read for slug, last_read in rows if last_read}
+        states = db.query(UserBookState).filter(UserBookState.user_id == current_user.id).all()
+        state_by_slug = {state.book_slug: state for state in states}
 
     def _shelf_key(b: Book):
         last_read = last_read_by_slug.get(b.slug)
+        state = state_by_slug.get(b.slug)
         return (
+            0 if state and state.is_priority else 1,
             0 if last_read else 1,      # tier: read books first
             -(last_read or 0),          # tier 1: most recently read first
             -(b.created_at or 0),       # tier 2: newest import first
@@ -169,10 +174,60 @@ def list_books(current_user: User = Depends(get_current_user_or_apikey), db: Ses
             "cover": f"books/{b.slug}/output/{b.cover_path}" if b.cover_path else None,
             "isPublished": b.is_published,
             "createdAt": b.created_at,
-            "lastRead": last_read_by_slug.get(b.slug)
+            "lastRead": last_read_by_slug.get(b.slug),
+            "isFinished": bool(state_by_slug.get(b.slug) and state_by_slug[b.slug].is_finished),
+            "onShelf": bool(state_by_slug.get(b.slug) and state_by_slug[b.slug].on_shelf),
+            "isPriority": bool(state_by_slug.get(b.slug) and state_by_slug[b.slug].is_priority),
         }
         for b in books
     ]
+
+@router.patch("/{slug}/state")
+def update_book_state(
+    slug: str,
+    state_data: dict,
+    current_user: User = Depends(get_current_user_or_apikey),
+    db: Session = Depends(get_db),
+):
+    """Update this user's organisational flags for one accessible book."""
+    book = db.query(Book).filter(Book.slug == slug).first()
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    if not current_user.is_admin:
+        has_permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.book_slug == slug,
+        ).first()
+        if not has_permission:
+            raise HTTPException(status_code=403, detail="No permission to manage this book")
+    if current_user.id is None:
+        raise HTTPException(status_code=400, detail="API keys cannot own a personal shelf")
+
+    allowed = {
+        "isFinished": "is_finished",
+        "onShelf": "on_shelf",
+        "isPriority": "is_priority",
+    }
+    supplied = {key: value for key, value in state_data.items() if key in allowed}
+    if not supplied or any(not isinstance(value, bool) for value in supplied.values()):
+        raise HTTPException(status_code=422, detail="State fields must be booleans")
+
+    state = db.query(UserBookState).filter(
+        UserBookState.user_id == current_user.id,
+        UserBookState.book_slug == slug,
+    ).first()
+    if not state:
+        state = UserBookState(user_id=current_user.id, book_slug=slug)
+        db.add(state)
+    for json_key, value in supplied.items():
+        setattr(state, allowed[json_key], value)
+    db.commit()
+    db.refresh(state)
+    return {
+        "isFinished": state.is_finished,
+        "onShelf": state.on_shelf,
+        "isPriority": state.is_priority,
+    }
 
 @router.post("/upload")
 def upload_bkb(
@@ -314,6 +369,9 @@ def delete_book(slug: str, current_user: User = Depends(require_admin), db: Sess
     
     # Remove associated progress
     db.query(ReadingProgress).filter(ReadingProgress.book_slug == slug).delete()
+
+    # Remove personal shelf metadata
+    db.query(UserBookState).filter(UserBookState.book_slug == slug).delete()
     
     db.commit()
     

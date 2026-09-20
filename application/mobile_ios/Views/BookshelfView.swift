@@ -1,6 +1,14 @@
 import SwiftUI
 
 struct BookshelfView: View {
+    private enum CollectionFilter: String, CaseIterable, Identifiable {
+        case all = "Tất cả"
+        case priority = "Ưu tiên"
+        case shelf = "Trên kệ"
+        case finished = "Đã đọc"
+        var id: String { rawValue }
+    }
+
     @StateObject private var api = APIService.shared
     @State private var books: [Book] = []
     @State private var isLoading = false
@@ -8,6 +16,8 @@ struct BookshelfView: View {
     @State private var showSettings = false
     @State private var rotationDegrees: Double = 0.0
     @State private var progressUpdateCounter: Int = 0
+    @State private var collectionFilter: CollectionFilter = .all
+    @State private var hideFinished = true
     
     // Adaptive grid columns for iPhone/iPad layouts
     let columns = [
@@ -33,9 +43,14 @@ struct BookshelfView: View {
         _ = progressUpdateCounter
         guard !books.isEmpty else { return [] }
 
-        return books
+        let ordered = books
             .map { book in (book: book, lastRead: effectiveLastRead(for: book)) }
             .sorted { lhs, rhs in
+                let lhsPriority = lhs.book.isPriority == true
+                let rhsPriority = rhs.book.isPriority == true
+                if lhsPriority != rhsPriority {
+                    return lhsPriority
+                }
                 let lhsHasBeenRead = lhs.lastRead > 0
                 let rhsHasBeenRead = rhs.lastRead > 0
                 if lhsHasBeenRead != rhsHasBeenRead {
@@ -64,6 +79,15 @@ struct BookshelfView: View {
                 return lhs.book.slug < rhs.book.slug
             }
             .map(\.book)
+
+        return ordered.filter { book in
+            switch collectionFilter {
+            case .all: return !hideFinished || book.isFinished != true
+            case .priority: return book.isPriority == true
+            case .shelf: return book.onShelf == true
+            case .finished: return book.isFinished == true
+            }
+        }
     }
 
     /// Newest known read time for a book: the server's value, or the locally cached
@@ -101,11 +125,42 @@ struct BookshelfView: View {
                     }
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: columns, spacing: 25) {
-                            ForEach(sortedBooks) { book in
-                                BookCard(book: book, onSelect: {
-                                    selectedBook = book
-                                })
+                        VStack(spacing: 16) {
+                            libraryFilters
+
+                            if sortedBooks.isEmpty {
+                                Text("Không có sách trong mục này")
+                                    .foregroundColor(Color(hex: "94a3b8"))
+                                    .padding(.top, 50)
+                            } else {
+                                LazyVGrid(columns: columns, spacing: 25) {
+                                    ForEach(sortedBooks) { book in
+                                        BookCard(
+                                            book: book,
+                                            onSelect: { selectedBook = book },
+                                            onTogglePriority: {
+                                                updateState(book, key: "isPriority", value: book.isPriority != true)
+                                            },
+                                            onToggleShelf: {
+                                                updateState(book, key: "onShelf", value: book.onShelf != true)
+                                            },
+                                            onToggleFinished: {
+                                                updateState(book, key: "isFinished", value: book.isFinished != true)
+                                            }
+                                        )
+                                        .contextMenu {
+                                            Button(book.isPriority == true ? "Bỏ ưu tiên" : "Ưu tiên đọc") {
+                                                updateState(book, key: "isPriority", value: book.isPriority != true)
+                                            }
+                                            Button(book.onShelf == true ? "Bỏ khỏi kệ" : "Cho lên kệ") {
+                                                updateState(book, key: "onShelf", value: book.onShelf != true)
+                                            }
+                                            Button(book.isFinished == true ? "Đánh dấu chưa đọc xong" : "Đánh dấu đã đọc") {
+                                                updateState(book, key: "isFinished", value: book.isFinished != true)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                         .padding(20)
@@ -202,6 +257,35 @@ struct BookshelfView: View {
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
+
+    private var libraryFilters: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Mục sách", selection: $collectionFilter) {
+                ForEach(CollectionFilter.allCases) { filter in
+                    Text(filter.rawValue).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if collectionFilter == .all {
+                Toggle("Ẩn sách đã đọc", isOn: $hideFinished)
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.85))
+                    .tint(Color(hex: "38bdf8"))
+            }
+        }
+    }
+
+    private func updateState(_ book: Book, key: String, value: Bool) {
+        Task {
+            do {
+                _ = try await api.updateBookState(slug: book.slug, patch: [key: value])
+                await loadBooks()
+            } catch {
+                print("Failed to update book state for \(book.slug): \(error)")
+            }
+        }
+    }
     
     private func loadBooks() async {
         await MainActor.run { isLoading = true }
@@ -259,6 +343,9 @@ struct BookshelfView: View {
 struct BookCard: View {
     let book: Book
     let onSelect: () -> Void
+    let onTogglePriority: () -> Void
+    let onToggleShelf: () -> Void
+    let onToggleFinished: () -> Void
     @StateObject private var api = APIService.shared
     @ObservedObject private var cacheManager = BookCacheManager.shared
     
@@ -380,6 +467,24 @@ struct BookCard: View {
                 downloadStatusOverlay,
                 alignment: .topTrailing
             )
+            .overlay(alignment: .topLeading) {
+                HStack(spacing: 5) {
+                    if book.isPriority == true {
+                        Image(systemName: "star.fill").foregroundColor(.yellow)
+                    }
+                    if book.onShelf == true {
+                        Image(systemName: "books.vertical.fill").foregroundColor(Color(hex: "38bdf8"))
+                    }
+                    if book.isFinished == true {
+                        Image(systemName: "checkmark.circle.fill").foregroundColor(Color(hex: "2dd4bf"))
+                    }
+                }
+                .font(.system(size: 13, weight: .bold))
+                .padding(7)
+                .background(Color.black.opacity(0.65))
+                .clipShape(Capsule())
+                .padding(8)
+            }
             .cornerRadius(12)
             .shadow(color: Color.black.opacity(0.4), radius: 8, x: 0, y: 4)
             .contentShape(Rectangle())
@@ -388,11 +493,21 @@ struct BookCard: View {
             }
             
             // Book Titles
-            VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 6) {
                 Text(book.title)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
+                Spacer(minLength: 0)
+                Menu {
+                    Button(book.isPriority == true ? "Bỏ ưu tiên" : "Ưu tiên đọc", action: onTogglePriority)
+                    Button(book.onShelf == true ? "Bỏ khỏi kệ" : "Cho lên kệ", action: onToggleShelf)
+                    Button(book.isFinished == true ? "Đánh dấu chưa đọc xong" : "Đánh dấu đã đọc", action: onToggleFinished)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundColor(.white.opacity(0.75))
+                        .padding(2)
+                }
             }
             .frame(maxWidth: .infinity, minHeight: 40, alignment: .topLeading)
             .padding(.horizontal, 4)

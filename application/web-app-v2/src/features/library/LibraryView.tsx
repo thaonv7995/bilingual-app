@@ -5,7 +5,7 @@ import { useAuthStore } from '@/features/auth/authStore';
 import { getLocalProgress } from '@/features/reader/localProgress';
 import { BookCard } from './BookCard';
 import { sortBooks } from './bookOrder';
-import { useBooks } from './useBooks';
+import { useBooks, useUpdateBookState } from './useBooks';
 import styles from './library.module.css';
 
 const GRID_MAX_WIDTH = 1600; // .dashboard max-width
@@ -40,10 +40,13 @@ export function LibraryView() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const { data: books = [], isLoading, isError } = useBooks();
+  const updateBookState = useUpdateBookState();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [collection, setCollection] = useState<'all' | 'priority' | 'shelf' | 'finished'>('all');
+  const [hideFinished, setHideFinished] = useState(true);
   const cols = useColumnCount();
   const pageSize = Math.max(1, cols * 3);
 
@@ -54,18 +57,27 @@ export function LibraryView() {
   // just finished jumps to position 1 immediately — no refetch, works offline.
   // Recomputed per mount, which is exactly when we come back from the reader.
   const ordered = useMemo(
-    () => sortBooks(books, (b) => getLocalProgress(b.slug)?.lastRead),
+    () => {
+      const sorted = sortBooks(books, (b) => getLocalProgress(b.slug)?.lastRead);
+      return [...sorted].sort((a, b) => Number(b.isPriority) - Number(a.isPriority));
+    },
     [books],
   );
 
   // Filtering preserves relative order, so the shelf order survives search.
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return ordered;
-    return ordered.filter(
+    const inCollection = ordered.filter((book) => {
+      if (collection === 'priority') return book.isPriority;
+      if (collection === 'shelf') return book.onShelf;
+      if (collection === 'finished') return book.isFinished;
+      return !hideFinished || !book.isFinished;
+    });
+    if (!q) return inCollection;
+    return inCollection.filter(
       (b) => b.title.toLowerCase().includes(q) || (b.author ?? '').toLowerCase().includes(q),
     );
-  }, [ordered, searchQuery]);
+  }, [ordered, searchQuery, collection, hideFinished]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const clampedPage = Math.min(currentPage, totalPages);
@@ -106,6 +118,40 @@ export function LibraryView() {
       </header>
 
       <main className={styles.dashboard}>
+        <div className={styles.libraryControls}>
+          <div className={styles.collectionTabs} role="group" aria-label="Lọc tủ sách">
+            {([
+              ['all', 'Tất cả'],
+              ['priority', 'Ưu tiên'],
+              ['shelf', 'Trên kệ'],
+              ['finished', 'Đã đọc'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                className={collection === value ? styles.collectionTabActive : styles.collectionTab}
+                onClick={() => {
+                  setCollection(value);
+                  setCurrentPage(1);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {collection === 'all' && (
+            <label className={styles.hideFinished}>
+              <input
+                type="checkbox"
+                checked={hideFinished}
+                onChange={(event) => {
+                  setHideFinished(event.target.checked);
+                  setCurrentPage(1);
+                }}
+              />
+              Ẩn sách đã đọc
+            </label>
+          )}
+        </div>
         {isLoading ? (
           <div className={styles.noResults}>Đang tải thư viện…</div>
         ) : isError ? (
@@ -121,7 +167,12 @@ export function LibraryView() {
             ) : (
               <div className={styles.booksGrid}>
                 {paginated.map((book, index) => (
-                  <BookCard key={book.slug} book={book} index={index} />
+                  <BookCard
+                    key={book.slug}
+                    book={book}
+                    index={index}
+                    onStateChange={(patch) => updateBookState.mutate({ slug: book.slug, patch })}
+                  />
                 ))}
               </div>
             )}
