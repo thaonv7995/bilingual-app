@@ -43,13 +43,20 @@
   letter-spacing: -0.5px;
 }
 
+.libraryNavigation {
+  flex: 1;
+  max-width: 650px;
+  margin: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .search {
   flex: 1;
-  max-width: 460px;
   position: relative;
   display: flex;
   align-items: center;
-  margin: 0 24px;
 }
 
 .search svg {
@@ -95,28 +102,39 @@
   flex: 1;
 }
 
-.libraryControls {
+.collectionSelectLabel {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: 4px;
+  color: var(--text-muted);
+  height: 36px;
+  padding-left: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
 }
 
-.collectionSelectLabel {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
+.collectionSelectLabel::after {
+  content: '';
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
 }
 
 .collectionSelect {
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 8px 34px 8px 11px;
-  background: #172033;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  padding: 0 40px 0 4px;
+  height: 34px;
+  background: transparent;
   color: var(--text);
   cursor: pointer;
   font-size: 12px;
@@ -220,65 +238,34 @@
     box-shadow 0.25s ease;
 }
 
-.bookMenu {
+.priorityButton {
   position: absolute;
   z-index: 3;
-  top: 8px;
-  right: 8px;
-}
-
-.bookMenu summary {
+  top: 6px;
+  right: 6px;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 28px;
-  border-radius: 9px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(15, 23, 42, 0.78);
   backdrop-filter: blur(8px);
-  color: white;
+  color: rgba(255, 255, 255, 0.72);
   cursor: pointer;
-  font-size: 13px;
-  letter-spacing: 1px;
-  list-style: none;
+  transition: all 0.2s ease;
 }
 
-.bookMenu summary::-webkit-details-marker {
-  display: none;
-}
-
-.bookMenuDropdown {
-  position: absolute;
-  top: 34px;
-  right: 0;
-  min-width: 148px;
-  padding: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 10px;
-  background: #172033;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
-}
-
-.bookMenuDropdown button {
-  display: grid;
-  grid-template-columns: 18px 1fr;
-  width: 100%;
-  border: 0;
-  border-radius: 7px;
-  padding: 8px;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  font-size: 12px;
-  text-align: left;
-}
-
-.bookMenuDropdown button:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.bookMenuDropdown span {
+.priorityButton:hover {
   color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.5);
+  transform: scale(1.05);
+}
+
+.priorityButtonActive {
+  color: #fbbf24;
+  background: rgba(15, 23, 42, 0.9);
+  border-color: rgba(251, 191, 36, 0.48);
 }
 
 .card:hover .coverWrapper {
@@ -460,20 +447,34 @@
 }
 
 @media (max-width: 599px) {
-  .libraryControls {
-    align-items: flex-start;
-    flex-direction: column;
-  }
   .cardTitle {
     font-size: 14px;
   }
   .meta {
     font-size: 11px;
   }
-  .search {
+  .libraryNavigation {
     order: 3;
     min-width: 100%;
     margin: 0;
+  }
+
+  .collectionSelectLabel {
+    flex: 0 0 40px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .collectionSelect {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    opacity: 0;
+  }
+
+  .collectionSelectLabel::after {
+    display: none;
   }
 }
 

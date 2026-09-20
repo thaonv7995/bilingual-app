@@ -57,13 +57,10 @@ export function LibraryView() {
   // the local progress cache folded in (effectiveLastRead), so a book the user
   // just finished jumps to position 1 immediately — no refetch, works offline.
   // Recomputed per mount, which is exactly when we come back from the reader.
-  const ordered = useMemo(
-    () => {
-      const sorted = sortBooks(books, (b) => getLocalProgress(b.slug)?.lastRead);
-      return [...sorted].sort((a, b) => Number(b.isPriority) - Number(a.isPriority));
-    },
-    [books],
-  );
+  const ordered = useMemo(() => {
+    const sorted = sortBooks(books, (b) => getLocalProgress(b.slug)?.lastRead);
+    return [...sorted].sort((a, b) => Number(b.isPriority) - Number(a.isPriority));
+  }, [books]);
 
   // Filtering preserves relative order, so the shelf order survives search.
   const filtered = useMemo(() => {
@@ -91,20 +88,48 @@ export function LibraryView() {
       <header className={styles.header}>
         <div className={styles.headerContainer}>
           <h1 className={styles.brand}>Bilingual Digital Library</h1>
-          <div className={styles.search}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              type="search"
-              placeholder={`Tìm trong ${books.length} cuốn sách...`}
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-            />
+          <div className={styles.libraryNavigation}>
+            <div className={styles.search}>
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                placeholder={`Tìm trong ${books.length} cuốn sách...`}
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+            <label className={styles.collectionSelectLabel} title="Lọc thư viện">
+              <FilterIcon />
+              <select
+                className={styles.collectionSelect}
+                value={collection}
+                aria-label="Lọc thư viện"
+                onChange={(event) => {
+                  setCollection(event.target.value as typeof collection);
+                  setCurrentPage(1);
+                }}
+              >
+                <option value="all">Tất cả sách</option>
+                <option value="priority">Ưu tiên đọc</option>
+                <option value="finished">Đã đọc</option>
+              </select>
+            </label>
           </div>
           {user && (
             <ProfileMenu
@@ -118,23 +143,6 @@ export function LibraryView() {
       </header>
 
       <main className={styles.dashboard}>
-        <div className={styles.libraryControls}>
-          <label className={styles.collectionSelectLabel}>
-            Hiển thị
-            <select
-              className={styles.collectionSelect}
-              value={collection}
-              onChange={(event) => {
-                setCollection(event.target.value as typeof collection);
-                setCurrentPage(1);
-              }}
-            >
-              <option value="all">Tất cả sách</option>
-              <option value="priority">Ưu tiên đọc</option>
-              <option value="finished">Đã đọc</option>
-            </select>
-          </label>
-        </div>
         {isLoading ? (
           <div className={styles.noResults}>Đang tải thư viện…</div>
         ) : isError ? (
@@ -196,15 +204,34 @@ export function LibraryView() {
   );
 }
 
+function FilterIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 6h16" />
+      <path d="M7 12h10" />
+      <path d="M10 18h4" />
+    </svg>
+  );
+}
+
 function EmptyLibrary() {
   return (
     <div className={styles.emptyState}>
       <div className={styles.emptyIcon}>📚</div>
       <h3>Thư viện song ngữ trống</h3>
       <p>
-        Hệ thống vừa được reset dữ liệu sạch sẽ. Vui lòng nhấn nút{' '}
-        <strong>Admin Site</strong> phía trên thanh công cụ để truy cập trang quản trị và tải lên
-        tệp sách <code>.bkb</code> của bạn!
+        Hệ thống vừa được reset dữ liệu sạch sẽ. Vui lòng nhấn nút <strong>Admin Site</strong> phía
+        trên thanh công cụ để truy cập trang quản trị và tải lên tệp sách <code>.bkb</code> của bạn!
       </p>
     </div>
   );

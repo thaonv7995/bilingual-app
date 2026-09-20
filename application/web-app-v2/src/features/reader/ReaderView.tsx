@@ -9,7 +9,7 @@ import { useVoice } from '@/features/voice/useVoice';
 import { SettingsModal } from '@/features/settings/SettingsModal';
 import { useSettingsStore } from '@/features/settings/settingsStore';
 import { useAuthStore } from '@/features/auth/authStore';
-import { useBooks } from '@/features/library/useBooks';
+import { useBooks, useUpdateBookState } from '@/features/library/useBooks';
 import type { Book, ViewMode } from '@/types/api';
 import {
   cleanWord,
@@ -48,7 +48,11 @@ import {
 } from './readerConstants';
 import './reader.css';
 
-const AUTH_ERROR_MARKERS = ['Access Denied: Please log in first', 'Not authenticated', 'Invalid or expired JWT'];
+const AUTH_ERROR_MARKERS = [
+  'Access Denied: Please log in first',
+  'Not authenticated',
+  'Invalid or expired JWT',
+];
 
 export function ReaderView() {
   const { slug = '', page: pageParam } = useParams();
@@ -69,6 +73,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   const toast = useToast();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const updateBookState = useUpdateBookState();
 
   const local = useMemo(() => getLocalProgress(book.slug), [book.slug]);
   // Captured at mount: the URL-sync effect rewrites the URL to /page/:page
@@ -270,7 +275,8 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     async (targetOrUpdater: number | ((base: number) => number)) => {
       if (!book.pageCount) return;
       const base = requestedPageRef.current;
-      const requested = typeof targetOrUpdater === 'function' ? targetOrUpdater(base) : targetOrUpdater;
+      const requested =
+        typeof targetOrUpdater === 'function' ? targetOrUpdater(base) : targetOrUpdater;
       const target = Math.max(1, Math.min(book.pageCount, Number(requested) || 1));
       if (target === base) return;
 
@@ -500,6 +506,8 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         zoomMode={zoomMode}
         zoomLevel={displayedZoom}
         chatOpen={chatOpen}
+        isBookFinished={book.isFinished}
+        isUpdatingFinished={updateBookState.isPending}
         username={user?.username ?? ''}
         isAdmin={user?.is_admin ?? false}
         onHome={() => navigate('/')}
@@ -509,6 +517,12 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         onSelectZoomMode={selectZoomMode}
         onAdjustZoom={adjustReaderZoom}
         onToggleChat={toggleChat}
+        onToggleFinished={() =>
+          updateBookState.mutate({
+            slug: book.slug,
+            patch: { isFinished: !book.isFinished },
+          })
+        }
         onOpenSettings={() => setSettingsOpen(true)}
         onLogout={logout}
       />

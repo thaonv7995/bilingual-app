@@ -100,6 +100,7 @@ struct BilingualWebView: UIViewRepresentable {
     let onHighlightMessage: (HighlightMessage) -> Void
     let onSentenceClicked: (String?) -> Void
     let onVocaAction: (VocaWebAction) -> Void
+    var onOpenExternalURL: ((URL) -> Void)? = nil
     var onWebViewReady: ((WKWebView, String, Int) -> Void)? = nil
     var onWebViewDismantled: ((WKWebView, String, Int) -> Void)? = nil
 
@@ -901,6 +902,7 @@ struct BilingualWebView: UIViewRepresentable {
         
         let webView = NoSelectionMenuWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
         context.coordinator.webView = webView
         context.coordinator.lastPhoneDynCss =
             Self.phoneTypographyCss(fontScale: phoneFontScale, viewMode: viewMode)
@@ -1056,7 +1058,7 @@ struct BilingualWebView: UIViewRepresentable {
         Coordinator(self)
     }
     
-    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, UIScrollViewDelegate, PKCanvasViewDelegate {
+    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UIScrollViewDelegate, PKCanvasViewDelegate {
         var parent: BilingualWebView
         weak var webView: WKWebView?
         var lastReceivedScrollTop: CGFloat = 0
@@ -1132,6 +1134,98 @@ struct BilingualWebView: UIViewRepresentable {
                         userInfo: ["contentOffset": contentOffset]
                     )
                 }
+            }
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            guard navigationAction.targetFrame?.isMainFrame != false,
+                  let url = navigationAction.request.url else {
+                decisionHandler(.allow)
+                return
+            }
+
+            if isBookContentURL(url) {
+                // Links with target="_blank" do not have a target frame. Keep
+                // book-local links in the current reader WebView instead of
+                // creating a second, unmanaged WebView.
+                if navigationAction.targetFrame == nil {
+                    webView.load(navigationAction.request)
+                    decisionHandler(.cancel)
+                } else {
+                    decisionHandler(.allow)
+                }
+                return
+            }
+
+            guard isSupportedExternalURL(url) else {
+                decisionHandler(.cancel)
+                return
+            }
+
+            openExternalURL(url)
+            decisionHandler(.cancel)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            createWebViewWith configuration: WKWebViewConfiguration,
+            for navigationAction: WKNavigationAction,
+            windowFeatures: WKWindowFeatures
+        ) -> WKWebView? {
+            guard navigationAction.targetFrame == nil,
+                  let url = navigationAction.request.url else {
+                return nil
+            }
+
+            if isBookContentURL(url) {
+                webView.load(navigationAction.request)
+            } else if isSupportedExternalURL(url) {
+                openExternalURL(url)
+            }
+            return nil
+        }
+
+        private func isBookContentURL(_ url: URL) -> Bool {
+            if url.scheme?.lowercased() == "about" {
+                return true
+            }
+
+            if url.isFileURL {
+                let outputDirectory = BookCacheManager.shared
+                    .localOutputDir(slug: parent.bookSlug)
+                    .standardizedFileURL
+                let candidate = url.standardizedFileURL
+                return candidate.path == outputDirectory.path
+                    || candidate.path.hasPrefix(outputDirectory.path + "/")
+            }
+
+            guard let sourceURL = URL(string: parent.urlString),
+                  let sourceScheme = sourceURL.scheme?.lowercased(),
+                  let candidateScheme = url.scheme?.lowercased(),
+                  ["http", "https"].contains(candidateScheme),
+                  sourceScheme == candidateScheme,
+                  sourceURL.host?.lowercased() == url.host?.lowercased(),
+                  sourceURL.port == url.port,
+                  let outputRange = sourceURL.path.range(of: "/output/") else {
+                return false
+            }
+
+            let bookOutputPath = String(sourceURL.path[..<outputRange.upperBound])
+            return url.path.hasPrefix(bookOutputPath)
+        }
+
+        private func isSupportedExternalURL(_ url: URL) -> Bool {
+            guard let scheme = url.scheme?.lowercased() else { return false }
+            return ["http", "https", "mailto", "tel"].contains(scheme)
+        }
+
+        private func openExternalURL(_ url: URL) {
+            DispatchQueue.main.async { [weak self] in
+                self?.parent.onOpenExternalURL?(url)
             }
         }
         

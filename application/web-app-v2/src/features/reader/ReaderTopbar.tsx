@@ -15,6 +15,8 @@ export function ReaderTopbar({
   zoomMode,
   zoomLevel,
   chatOpen,
+  isBookFinished,
+  isUpdatingFinished,
   username,
   isAdmin,
   onHome,
@@ -24,6 +26,7 @@ export function ReaderTopbar({
   onSelectZoomMode,
   onAdjustZoom,
   onToggleChat,
+  onToggleFinished,
   onOpenSettings,
   onLogout,
 }: {
@@ -33,6 +36,8 @@ export function ReaderTopbar({
   zoomMode: ZoomMode;
   zoomLevel: number;
   chatOpen: boolean;
+  isBookFinished: boolean;
+  isUpdatingFinished: boolean;
   username: string;
   isAdmin: boolean;
   onHome: () => void;
@@ -42,6 +47,7 @@ export function ReaderTopbar({
   onSelectZoomMode: (mode: ZoomMode) => void;
   onAdjustZoom: (direction: number) => void;
   onToggleChat: () => void;
+  onToggleFinished: () => void;
   onOpenSettings: () => void;
   onLogout: () => void;
 }) {
@@ -120,6 +126,18 @@ export function ReaderTopbar({
       </div>
 
       <div className="reader-topbar__right">
+        {page >= book.pageCount && (
+          <button
+            className={`reader-complete-btn ${isBookFinished ? 'is-complete' : ''}`}
+            onClick={onToggleFinished}
+            disabled={isUpdatingFinished}
+            title={isBookFinished ? 'Đánh dấu chưa hoàn thành' : 'Hoàn thành sách'}
+          >
+            <CompleteIcon filled={isBookFinished} />
+            <span>{isBookFinished ? 'Đã hoàn thành' : 'Hoàn thành'}</span>
+          </button>
+        )}
+
         <div className="view-modes">
           {VIEW_MODES.map((v) => (
             <button
@@ -154,9 +172,38 @@ export function ReaderTopbar({
   );
 }
 
+function CompleteIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill={filled ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="m8 12 2.5 2.5L16 9" />
+    </svg>
+  );
+}
+
 function Chevron({ dir }: { dir: 'left' | 'right' }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d={dir === 'left' ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6'} />
     </svg>
   );
@@ -164,7 +211,17 @@ function Chevron({ dir }: { dir: 'left' | 'right' }) {
 
 function BookIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
     </svg>
@@ -173,7 +230,17 @@ function BookIcon() {
 
 function SplitIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
       <line x1="12" y1="3" x2="12" y2="21" />
     </svg>
@@ -182,7 +249,17 @@ function SplitIcon() {
 
 function ChatIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
       <circle cx="9" cy="10" r="1" />
       <circle cx="15" cy="10" r="1" />

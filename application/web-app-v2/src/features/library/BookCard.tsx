@@ -44,29 +44,17 @@ export function BookCard({
       }}
     >
       <div className={styles.coverWrapper}>
-        <details className={styles.bookMenu} onClick={(event) => event.stopPropagation()}>
-          <summary aria-label="Tùy chọn sách" title="Tùy chọn sách">•••</summary>
-          <div className={styles.bookMenuDropdown}>
-          <button
-            onClick={(event) => {
-              event.stopPropagation();
-              onStateChange({ isPriority: !book.isPriority, isFinished: false });
-              event.currentTarget.closest('details')?.removeAttribute('open');
-            }}
-          >
-            <span>{book.isPriority ? '✓' : ''}</span> Ưu tiên đọc
-          </button>
-          <button
-            onClick={(event) => {
-              event.stopPropagation();
-              onStateChange({ isFinished: !book.isFinished, isPriority: false });
-              event.currentTarget.closest('details')?.removeAttribute('open');
-            }}
-          >
-            <span>{book.isFinished ? '✓' : ''}</span> Đã đọc
-          </button>
-          </div>
-        </details>
+        <button
+          className={`${styles.priorityButton} ${book.isPriority ? styles.priorityButtonActive : ''}`}
+          aria-label={book.isPriority ? 'Bỏ ưu tiên' : 'Ưu tiên đọc'}
+          title={book.isPriority ? 'Bỏ ưu tiên' : 'Ưu tiên đọc'}
+          onClick={(event) => {
+            event.stopPropagation();
+            onStateChange({ isPriority: !book.isPriority });
+          }}
+        >
+          <StarIcon filled={book.isPriority} />
+        </button>
         {book.cover ? (
           <img className={styles.coverImg} src={book.cover} alt={book.title} />
         ) : (
@@ -95,5 +83,23 @@ export function BookCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function StarIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill={filled ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
   );
 }

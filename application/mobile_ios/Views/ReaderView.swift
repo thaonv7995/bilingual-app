@@ -1,6 +1,25 @@
 import SwiftUI
 import UIKit
 import WebKit
+import SafariServices
+
+private struct ExternalBrowserDestination: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct ReaderSafariView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        let configuration = SFSafariViewController.Configuration()
+        configuration.entersReaderIfAvailable = false
+        configuration.barCollapsingEnabled = true
+        return SFSafariViewController(url: url, configuration: configuration)
+    }
+
+    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
+}
 
 struct ChatMessage: Identifiable, Codable {
     var id = UUID()
@@ -47,6 +66,8 @@ struct ReaderView: View {
     @State private var page: Int
     @State private var viewMode: String // "en" | "vi" | "split"
     @State private var isFullScreen = false
+    @State private var isBookFinished: Bool
+    @State private var isUpdatingFinished = false
     /// Phone reader text scale, persisted. 1.0 == 13pt base; 0 in defaults
     /// means "never set".
     @State private var phoneFontScale: Double = {
@@ -73,6 +94,7 @@ struct ReaderView: View {
         
         self._page = State(initialValue: initialPage)
         self._viewMode = State(initialValue: initialViewMode)
+        self._isBookFinished = State(initialValue: book.isFinished == true)
     }
     
     // Highlights States
@@ -112,6 +134,7 @@ struct ReaderView: View {
     @State private var readerUsesDoubleSided = false
     @State private var selectionOverlayRevision = 0
     @State private var webViews: [String: WKWebView] = [:]
+    @State private var externalBrowserDestination: ExternalBrowserDestination? = nil
     
     let highlightColors = [
         ("#fde68a", Color(hex: "fde68a")), // Yellow
@@ -310,7 +333,10 @@ struct ReaderView: View {
                             showJumpToPageDialog: $showJumpToPageDialog,
                             inputPageString: $inputPageString,
                             isFullScreen: $isFullScreen,
+                            isBookFinished: isBookFinished,
+                            isUpdatingFinished: isUpdatingFinished,
                             onDismiss: { dismiss() },
+                            onToggleFinished: toggleBookFinished,
                             onFontDecrease: { adjustPhoneFontScale(by: -0.1) },
                             onFontIncrease: { adjustPhoneFontScale(by: 0.1) }
                         )
@@ -399,6 +425,10 @@ struct ReaderView: View {
             )
         }
         .ignoresSafeArea()
+        .sheet(item: $externalBrowserDestination) { destination in
+            ReaderSafariView(url: destination.url)
+                .ignoresSafeArea()
+        }
     }
     
     // --- Highlights UI / logic ---
@@ -447,6 +477,9 @@ struct ReaderView: View {
             onVocaAction: { action in
                 handleVocaWebAction(action)
             },
+            onOpenExternalURL: { url in
+                openExternalURL(url)
+            },
             onWebViewReady: { webView, readyLang, readyPage in
                 registerWebView(webView, lang: readyLang, page: readyPage, containerMode: containerMode)
             },
@@ -476,6 +509,50 @@ struct ReaderView: View {
             }
             .allowsHitTesting(true)
         )
+    }
+
+    private func openExternalURL(_ url: URL) {
+        guard let scheme = url.scheme?.lowercased() else { return }
+
+        switch scheme {
+        case "http", "https":
+            externalBrowserDestination = ExternalBrowserDestination(url: url)
+        case "mailto", "tel":
+            UIApplication.shared.open(url)
+        default:
+            break
+        }
+    }
+
+    private func toggleBookFinished() {
+        guard !isUpdatingFinished else { return }
+        let previous = isBookFinished
+        let next = !previous
+        isBookFinished = next
+        isUpdatingFinished = true
+
+        Task {
+            do {
+                let state = try await api.updateBookState(
+                    slug: book.slug,
+                    patch: ["isFinished": next]
+                )
+                await MainActor.run {
+                    isBookFinished = state.isFinished
+                    isUpdatingFinished = false
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("BookStateUpdated"),
+                        object: nil
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    isBookFinished = previous
+                    isUpdatingFinished = false
+                }
+                print("Failed to update completion state for \(book.slug): \(error)")
+            }
+        }
     }
 
     private func vocaPanelSafeInsets(lang: String, page: Int, isDoubleSided: Bool) -> (left: CGFloat, right: CGFloat) {
@@ -3282,13 +3359,24 @@ struct ReaderHeaderView: View {
     @Binding var showJumpToPageDialog: Bool
     @Binding var inputPageString: String
     @Binding var isFullScreen: Bool
+    let isBookFinished: Bool
+    let isUpdatingFinished: Bool
     
     var onDismiss: () -> Void
+    var onToggleFinished: () -> Void
     // Phone-only: font stepper actions in the view-mode menu.
     var onFontDecrease: () -> Void = {}
     var onFontIncrease: () -> Void = {}
 
     private let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+
+    private var isShowingLastPage: Bool {
+        if useDoubleSided {
+            let left = page % 2 == 1 ? page : max(1, page - 1)
+            return min(book.pageCount, left + 1) >= book.pageCount
+        }
+        return page >= book.pageCount
+    }
 
     var body: some View {
         if isPhone {
@@ -3332,6 +3420,18 @@ struct ReaderHeaderView: View {
                         RoundedRectangle(cornerRadius: 6)
                             .stroke(Color.white.opacity(0.1), lineWidth: 1)
                     )
+            }
+
+            if isShowingLastPage {
+                Button(action: onToggleFinished) {
+                    Image(systemName: isBookFinished ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(isBookFinished ? Color(hex: "22c55e") : .white)
+                        .frame(width: 28, height: 28)
+                }
+                .disabled(isUpdatingFinished)
+                .opacity(isUpdatingFinished ? 0.5 : 1)
+                .accessibilityLabel(isBookFinished ? "Đánh dấu chưa hoàn thành" : "Hoàn thành sách")
             }
 
             Menu {
@@ -3471,6 +3571,27 @@ struct ReaderHeaderView: View {
                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
             )
             .padding(.trailing, 8)
+
+            if isShowingLastPage {
+                Button(action: onToggleFinished) {
+                    Label(
+                        isBookFinished ? "Đã hoàn thành" : "Hoàn thành",
+                        systemImage: isBookFinished ? "checkmark.circle.fill" : "checkmark.circle"
+                    )
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(isBookFinished ? Color(hex: "22c55e") : .white)
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(isBookFinished ? Color(hex: "22c55e").opacity(0.12) : Color(hex: "1e293b"))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(isBookFinished ? Color(hex: "22c55e").opacity(0.35) : Color.white.opacity(0.1), lineWidth: 1)
+                    )
+                }
+                .disabled(isUpdatingFinished)
+                .opacity(isUpdatingFinished ? 0.5 : 1)
+            }
             
             Button(action: { isPencilModeActive.toggle() }) {
                 Image(systemName: isPencilModeActive ? "pencil.tip.crop.circle.badge.minus" : "pencil.tip.crop.circle")
