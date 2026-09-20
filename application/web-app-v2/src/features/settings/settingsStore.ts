@@ -41,6 +41,7 @@ export interface Settings {
   ttsModel: string;
   audioSource: AudioSource;
   layoutMode: LayoutMode;
+  hideFinishedBooks: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -52,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ttsModel: 'edge-tts/en-US-SteffanNeural',
   audioSource: 'auto',
   layoutMode: 'en-vi',
+  hideFinishedBooks: true,
 };
 
 interface SettingsState {

@@ -44,41 +44,29 @@ export function BookCard({
       }}
     >
       <div className={styles.coverWrapper}>
-        <div className={styles.bookActions}>
+        <details className={styles.bookMenu} onClick={(event) => event.stopPropagation()}>
+          <summary aria-label="Tùy chọn sách" title="Tùy chọn sách">•••</summary>
+          <div className={styles.bookMenuDropdown}>
           <button
-            className={book.isPriority ? styles.bookActionActive : styles.bookAction}
-            title={book.isPriority ? 'Bỏ ưu tiên' : 'Ưu tiên đọc'}
-            aria-label={book.isPriority ? 'Bỏ ưu tiên' : 'Ưu tiên đọc'}
             onClick={(event) => {
               event.stopPropagation();
-              onStateChange({ isPriority: !book.isPriority });
+              onStateChange({ isPriority: !book.isPriority, isFinished: false });
+              event.currentTarget.closest('details')?.removeAttribute('open');
             }}
           >
-            ★
+            <span>{book.isPriority ? '✓' : ''}</span> Ưu tiên đọc
           </button>
           <button
-            className={book.onShelf ? styles.bookActionActive : styles.bookAction}
-            title={book.onShelf ? 'Bỏ khỏi kệ' : 'Cho lên kệ'}
-            aria-label={book.onShelf ? 'Bỏ khỏi kệ' : 'Cho lên kệ'}
             onClick={(event) => {
               event.stopPropagation();
-              onStateChange({ onShelf: !book.onShelf });
+              onStateChange({ isFinished: !book.isFinished, isPriority: false });
+              event.currentTarget.closest('details')?.removeAttribute('open');
             }}
           >
-            ▣
+            <span>{book.isFinished ? '✓' : ''}</span> Đã đọc
           </button>
-          <button
-            className={book.isFinished ? styles.bookActionActive : styles.bookAction}
-            title={book.isFinished ? 'Đánh dấu chưa đọc xong' : 'Đánh dấu đã đọc'}
-            aria-label={book.isFinished ? 'Đánh dấu chưa đọc xong' : 'Đánh dấu đã đọc'}
-            onClick={(event) => {
-              event.stopPropagation();
-              onStateChange({ isFinished: !book.isFinished });
-            }}
-          >
-            ✓
-          </button>
-        </div>
+          </div>
+        </details>
         {book.cover ? (
           <img className={styles.coverImg} src={book.cover} alt={book.title} />
         ) : (

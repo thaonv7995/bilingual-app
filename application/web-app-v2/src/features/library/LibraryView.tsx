@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ProfileMenu } from '@/components/ProfileMenu';
 import { SettingsModal } from '@/features/settings/SettingsModal';
 import { useAuthStore } from '@/features/auth/authStore';
+import { useSettingsStore } from '@/features/settings/settingsStore';
 import { getLocalProgress } from '@/features/reader/localProgress';
 import { BookCard } from './BookCard';
 import { sortBooks } from './bookOrder';
@@ -41,12 +42,12 @@ export function LibraryView() {
   const logout = useAuthStore((s) => s.logout);
   const { data: books = [], isLoading, isError } = useBooks();
   const updateBookState = useUpdateBookState();
+  const hideFinished = useSettingsStore((s) => s.settings.hideFinishedBooks);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [collection, setCollection] = useState<'all' | 'priority' | 'shelf' | 'finished'>('all');
-  const [hideFinished, setHideFinished] = useState(true);
+  const [collection, setCollection] = useState<'all' | 'priority' | 'finished'>('all');
   const cols = useColumnCount();
   const pageSize = Math.max(1, cols * 3);
 
@@ -69,7 +70,6 @@ export function LibraryView() {
     const q = searchQuery.trim().toLowerCase();
     const inCollection = ordered.filter((book) => {
       if (collection === 'priority') return book.isPriority;
-      if (collection === 'shelf') return book.onShelf;
       if (collection === 'finished') return book.isFinished;
       return !hideFinished || !book.isFinished;
     });
@@ -119,38 +119,21 @@ export function LibraryView() {
 
       <main className={styles.dashboard}>
         <div className={styles.libraryControls}>
-          <div className={styles.collectionTabs} role="group" aria-label="Lọc tủ sách">
-            {([
-              ['all', 'Tất cả'],
-              ['priority', 'Ưu tiên'],
-              ['shelf', 'Trên kệ'],
-              ['finished', 'Đã đọc'],
-            ] as const).map(([value, label]) => (
-              <button
-                key={value}
-                className={collection === value ? styles.collectionTabActive : styles.collectionTab}
-                onClick={() => {
-                  setCollection(value);
-                  setCurrentPage(1);
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {collection === 'all' && (
-            <label className={styles.hideFinished}>
-              <input
-                type="checkbox"
-                checked={hideFinished}
-                onChange={(event) => {
-                  setHideFinished(event.target.checked);
-                  setCurrentPage(1);
-                }}
-              />
-              Ẩn sách đã đọc
-            </label>
-          )}
+          <label className={styles.collectionSelectLabel}>
+            Hiển thị
+            <select
+              className={styles.collectionSelect}
+              value={collection}
+              onChange={(event) => {
+                setCollection(event.target.value as typeof collection);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="all">Tất cả sách</option>
+              <option value="priority">Ưu tiên đọc</option>
+              <option value="finished">Đã đọc</option>
+            </select>
+          </label>
         </div>
         {isLoading ? (
           <div className={styles.noResults}>Đang tải thư viện…</div>

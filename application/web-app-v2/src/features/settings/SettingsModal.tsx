@@ -313,6 +313,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               ))}
             </div>
           </Section>
+
+          <Section title="Thư viện">
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={form.hideFinishedBooks}
+                onChange={(e) => patch({ hideFinishedBooks: e.target.checked })}
+              />
+              <span>
+                <strong>Ẩn sách đã đọc</strong>
+                <small>Sách đã hoàn thành chỉ hiện khi chọn bộ lọc “Đã đọc”.</small>
+              </span>
+            </label>
+          </Section>
         </div>
 
         <div className={styles.footer}>

@@ -14,6 +14,7 @@ struct AISettingsView: View {
     @State private var aiApiKey: String = ""
     @State private var aiModel: String = "gpt-4o-mini"
     @State private var bilingualLayoutMode: String = "en-vi"
+    @State private var hideFinishedBooks: Bool = true
     /// Mirrors the server's `vocaOrigin`; `defaultOrigin` is only the value offered when the
     /// server has none. The key field stays EMPTY on purpose — the server never returns it.
     @State private var vocaApiOrigin: String = VocaService.defaultOrigin
@@ -65,6 +66,30 @@ struct AISettingsView: View {
                             .foregroundColor(Color(hex: "94a3b8"))
                             .lineSpacing(4)
                             .padding(.bottom, 5)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Thư viện")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.white.opacity(0.9))
+                            Toggle(isOn: $hideFinishedBooks) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Ẩn sách đã đọc")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.9))
+                                    Text("Sách đã hoàn thành chỉ hiện trong bộ lọc Đã đọc")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            .tint(Color(hex: "14b8a6"))
+                        }
+                        .padding()
+                        .background(Color.white.opacity(0.04))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
                         
                         // Section 1: Provider Picker
                         VStack(alignment: .leading, spacing: 10) {
@@ -777,6 +802,7 @@ struct AISettingsView: View {
         self.aiApiKey = UserDefaults.standard.string(forKey: "aiApiKey") ?? ""
         self.aiModel = UserDefaults.standard.string(forKey: "aiModel") ?? "gpt-4o-mini"
         self.bilingualLayoutMode = UserDefaults.standard.string(forKey: "bilingualLayoutMode") ?? "en-vi"
+        self.hideFinishedBooks = UserDefaults.standard.object(forKey: "hideFinishedBooks") as? Bool ?? true
         // Unknown/absent value falls back to `auto` through the enum, never to a raw string.
         self.audioSource = VocaAudioSource.current.rawValue
         self.deviceVoiceReady = DeviceSpeech.shared.isAvailable
@@ -842,6 +868,7 @@ struct AISettingsView: View {
         UserDefaults.standard.set(aiApiKey, forKey: "aiApiKey")
         UserDefaults.standard.set(aiModel, forKey: "aiModel")
         UserDefaults.standard.set(bilingualLayoutMode, forKey: "bilingualLayoutMode")
+        UserDefaults.standard.set(hideFinishedBooks, forKey: "hideFinishedBooks")
         UserDefaults.standard.set(
             (VocaAudioSource(rawValue: audioSource) ?? .auto).rawValue,
             forKey: VocaAudioSource.defaultsKey

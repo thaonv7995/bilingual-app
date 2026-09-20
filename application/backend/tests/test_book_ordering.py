@@ -263,26 +263,33 @@ def test_last_read_is_per_user_and_does_not_reorder_another_shelf():
     assert _slugs(UID_A) == ["p1", "p3", "p2"]
 
 
-def test_personal_collections_are_per_user_and_priority_books_sort_first():
+def test_personal_states_are_per_user_mutually_exclusive_and_priority_sorts_first():
     _setup([("older", 1_000), ("newer", 2_000)])
     db = SessionLocal()
     try:
         user_a = db.query(User).filter(User.id == UID_A).first()
         state = update_book_state(
             "older",
-            {"isPriority": True, "onShelf": True, "isFinished": True},
+            {"isFinished": True},
             current_user=user_a,
             db=db,
         )
-        assert state == {"isPriority": True, "onShelf": True, "isFinished": True}
+        assert state["isFinished"] is True
+        state = update_book_state(
+            "older",
+            {"isPriority": True},
+            current_user=user_a,
+            db=db,
+        )
+        assert state == {"isPriority": True, "onShelf": False, "isFinished": False}
     finally:
         db.close()
 
     shelf_a = _shelf(UID_A)
     assert [book["slug"] for book in shelf_a] == ["older", "newer"]
     assert shelf_a[0]["isPriority"] is True
-    assert shelf_a[0]["onShelf"] is True
-    assert shelf_a[0]["isFinished"] is True
+    assert shelf_a[0]["onShelf"] is False
+    assert shelf_a[0]["isFinished"] is False
 
     shelf_b = {book["slug"]: book for book in _shelf(UID_B)}
     assert shelf_b["older"]["isPriority"] is False

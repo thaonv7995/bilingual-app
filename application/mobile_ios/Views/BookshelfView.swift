@@ -4,7 +4,6 @@ struct BookshelfView: View {
     private enum CollectionFilter: String, CaseIterable, Identifiable {
         case all = "Tất cả"
         case priority = "Ưu tiên"
-        case shelf = "Trên kệ"
         case finished = "Đã đọc"
         var id: String { rawValue }
     }
@@ -17,7 +16,7 @@ struct BookshelfView: View {
     @State private var rotationDegrees: Double = 0.0
     @State private var progressUpdateCounter: Int = 0
     @State private var collectionFilter: CollectionFilter = .all
-    @State private var hideFinished = true
+    @State private var hideFinished = UserDefaults.standard.object(forKey: "hideFinishedBooks") as? Bool ?? true
     
     // Adaptive grid columns for iPhone/iPad layouts
     let columns = [
@@ -84,7 +83,6 @@ struct BookshelfView: View {
             switch collectionFilter {
             case .all: return !hideFinished || book.isFinished != true
             case .priority: return book.isPriority == true
-            case .shelf: return book.onShelf == true
             case .finished: return book.isFinished == true
             }
         }
@@ -141,9 +139,6 @@ struct BookshelfView: View {
                                             onTogglePriority: {
                                                 updateState(book, key: "isPriority", value: book.isPriority != true)
                                             },
-                                            onToggleShelf: {
-                                                updateState(book, key: "onShelf", value: book.onShelf != true)
-                                            },
                                             onToggleFinished: {
                                                 updateState(book, key: "isFinished", value: book.isFinished != true)
                                             }
@@ -151,9 +146,6 @@ struct BookshelfView: View {
                                         .contextMenu {
                                             Button(book.isPriority == true ? "Bỏ ưu tiên" : "Ưu tiên đọc") {
                                                 updateState(book, key: "isPriority", value: book.isPriority != true)
-                                            }
-                                            Button(book.onShelf == true ? "Bỏ khỏi kệ" : "Cho lên kệ") {
-                                                updateState(book, key: "onShelf", value: book.onShelf != true)
                                             }
                                             Button(book.isFinished == true ? "Đánh dấu chưa đọc xong" : "Đánh dấu đã đọc") {
                                                 updateState(book, key: "isFinished", value: book.isFinished != true)
@@ -231,7 +223,13 @@ struct BookshelfView: View {
                     .applySheetBackground(Color(hex: "0f172a"))
             }
             .onAppear {
+                hideFinished = UserDefaults.standard.object(forKey: "hideFinishedBooks") as? Bool ?? true
                 Task { await loadBooks() }
+            }
+            .onChange(of: showSettings) { isShowing in
+                if !isShowing {
+                    hideFinished = UserDefaults.standard.object(forKey: "hideFinishedBooks") as? Bool ?? true
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ReadingProgressUpdated"))) { _ in
                 progressUpdateCounter += 1
@@ -259,20 +257,15 @@ struct BookshelfView: View {
     }
 
     private var libraryFilters: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("Mục sách", selection: $collectionFilter) {
+        HStack {
+            Spacer()
+            Picker("Hiển thị", selection: $collectionFilter) {
                 ForEach(CollectionFilter.allCases) { filter in
                     Text(filter.rawValue).tag(filter)
                 }
             }
-            .pickerStyle(.segmented)
-
-            if collectionFilter == .all {
-                Toggle("Ẩn sách đã đọc", isOn: $hideFinished)
-                    .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.85))
-                    .tint(Color(hex: "38bdf8"))
-            }
+            .pickerStyle(.menu)
+            .tint(.white.opacity(0.9))
         }
     }
 
@@ -344,7 +337,6 @@ struct BookCard: View {
     let book: Book
     let onSelect: () -> Void
     let onTogglePriority: () -> Void
-    let onToggleShelf: () -> Void
     let onToggleFinished: () -> Void
     @StateObject private var api = APIService.shared
     @ObservedObject private var cacheManager = BookCacheManager.shared
@@ -467,24 +459,6 @@ struct BookCard: View {
                 downloadStatusOverlay,
                 alignment: .topTrailing
             )
-            .overlay(alignment: .topLeading) {
-                HStack(spacing: 5) {
-                    if book.isPriority == true {
-                        Image(systemName: "star.fill").foregroundColor(.yellow)
-                    }
-                    if book.onShelf == true {
-                        Image(systemName: "books.vertical.fill").foregroundColor(Color(hex: "38bdf8"))
-                    }
-                    if book.isFinished == true {
-                        Image(systemName: "checkmark.circle.fill").foregroundColor(Color(hex: "2dd4bf"))
-                    }
-                }
-                .font(.system(size: 13, weight: .bold))
-                .padding(7)
-                .background(Color.black.opacity(0.65))
-                .clipShape(Capsule())
-                .padding(8)
-            }
             .cornerRadius(12)
             .shadow(color: Color.black.opacity(0.4), radius: 8, x: 0, y: 4)
             .contentShape(Rectangle())
@@ -501,7 +475,6 @@ struct BookCard: View {
                 Spacer(minLength: 0)
                 Menu {
                     Button(book.isPriority == true ? "Bỏ ưu tiên" : "Ưu tiên đọc", action: onTogglePriority)
-                    Button(book.onShelf == true ? "Bỏ khỏi kệ" : "Cho lên kệ", action: onToggleShelf)
                     Button(book.isFinished == true ? "Đánh dấu chưa đọc xong" : "Đánh dấu đã đọc", action: onToggleFinished)
                 } label: {
                     Image(systemName: "ellipsis.circle")

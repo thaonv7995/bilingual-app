@@ -221,6 +221,14 @@ def update_book_state(
         db.add(state)
     for json_key, value in supplied.items():
         setattr(state, allowed[json_key], value)
+    # The current UI exposes one library state at a time: priority, finished,
+    # or normal (both false). Keep legacy `on_shelf` data inert as normal.
+    if supplied.get("isPriority") is True:
+        state.is_finished = False
+        state.on_shelf = False
+    elif supplied.get("isFinished") is True:
+        state.is_priority = False
+        state.on_shelf = False
     db.commit()
     db.refresh(state)
     return {

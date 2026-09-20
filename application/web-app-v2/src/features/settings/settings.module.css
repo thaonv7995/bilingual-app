@@ -69,6 +69,33 @@
   margin-bottom: 12px;
 }
 
+.checkboxRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.checkboxRow input {
+  margin-top: 3px;
+  accent-color: #00c6ff;
+}
+
+.checkboxRow span {
+  display: grid;
+  gap: 3px;
+}
+
+.checkboxRow strong {
+  font-size: 13px;
+}
+
+.checkboxRow small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
