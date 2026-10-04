@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from api.database import init_db, User, Book
 from api.auth import get_password_hash
-from api.config import WORKSPACE_ROOT, BOOKS_DIR, WEB_APP_DIR
-from api.routes import auth, books, admin, chat, voca, settings
+from api.config import WORKSPACE_ROOT, BOOKS_DIR, WEB_APP_DIR, APPLICATION_DIR
+from api.routes import auth, books, admin, chat, voca, settings, notebook
 from books_core.paths import BookPaths
 
 app = FastAPI(title="Bilingual Digital Library API")
@@ -30,6 +30,7 @@ app.include_router(admin.router)
 app.include_router(chat.router)
 app.include_router(voca.router)
 app.include_router(settings.router)
+app.include_router(notebook.router)
 
 # Initialize DB on Startup
 @app.on_event("startup")
@@ -102,7 +103,12 @@ def sync_books_directory_to_db(db: Session):
 import os as _os
 
 _v2_dist_env = _os.environ.get("FRONTEND_V2_DIST", "").strip()
-_V2_DIST = Path(_v2_dist_env) if _v2_dist_env and Path(_v2_dist_env).is_dir() else None
+if _v2_dist_env and Path(_v2_dist_env).is_dir():
+    _V2_DIST = Path(_v2_dist_env)
+elif (APPLICATION_DIR / "web-app-v2" / "dist").is_dir():
+    _V2_DIST = APPLICATION_DIR / "web-app-v2" / "dist"
+else:
+    _V2_DIST = None
 
 if _V2_DIST is not None:
     if (_V2_DIST / "assets").is_dir():

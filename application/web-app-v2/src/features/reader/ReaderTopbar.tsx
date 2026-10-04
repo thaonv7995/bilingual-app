@@ -15,6 +15,9 @@ export function ReaderTopbar({
   zoomMode,
   zoomLevel,
   chatOpen,
+  notePanelOpen,
+  noteCount,
+  hasPageNotes,
   isBookFinished,
   isUpdatingFinished,
   username,
@@ -26,6 +29,7 @@ export function ReaderTopbar({
   onSelectZoomMode,
   onAdjustZoom,
   onToggleChat,
+  onToggleNotePanel,
   onToggleFinished,
   onOpenSettings,
   onLogout,
@@ -36,6 +40,9 @@ export function ReaderTopbar({
   zoomMode: ZoomMode;
   zoomLevel: number;
   chatOpen: boolean;
+  notePanelOpen: boolean;
+  noteCount: number;
+  hasPageNotes: boolean;
   isBookFinished: boolean;
   isUpdatingFinished: boolean;
   username: string;
@@ -47,6 +54,7 @@ export function ReaderTopbar({
   onSelectZoomMode: (mode: ZoomMode) => void;
   onAdjustZoom: (direction: number) => void;
   onToggleChat: () => void;
+  onToggleNotePanel: () => void;
   onToggleFinished: () => void;
   onOpenSettings: () => void;
   onLogout: () => void;
@@ -54,14 +62,30 @@ export function ReaderTopbar({
   return (
     <div className="reader-topbar">
       <div className="reader-topbar__left">
-        <button className="btn-action" onClick={onHome}>
+        <button className="btn-action" onClick={onHome} title="Về thư viện">
           🏠 Library
         </button>
-        <span className="reader-topbar__title">{book.title}</span>
+        <span className="reader-topbar__title" title={book.title}>{book.title}</span>
       </div>
 
       <div className="reader-topbar__center">
         <div className="reader-nav">
+          <button
+            className="nav-btn page-nav__menu"
+            onClick={() => {
+              const val = prompt(`Nhập số trang cần chuyển (1 - ${book.pageCount}):`, String(page));
+              if (val) {
+                const num = parseInt(val, 10);
+                if (!isNaN(num) && num >= 1 && num <= book.pageCount) {
+                  onGoToPage(num);
+                }
+              }
+            }}
+            title="Mục lục trang / Nhảy trang nhanh"
+            aria-label="Mục lục"
+          >
+            <MenuIcon />
+          </button>
           <button
             className="nav-btn page-nav__arrow"
             disabled={page <= 1}
@@ -71,7 +95,6 @@ export function ReaderTopbar({
             <Chevron dir="left" />
           </button>
           <span className="page-indicator">
-            Trang
             <input
               className="page-input"
               type="number"
@@ -84,8 +107,9 @@ export function ReaderTopbar({
                 if (val > book.pageCount) val = book.pageCount;
                 onGoToPage(val);
               }}
+              aria-label="Số trang hiện tại"
             />
-            / {book.pageCount}
+            <span className="page-total">/ {book.pageCount}</span>
           </span>
           <button
             className="nav-btn page-nav__arrow"
@@ -107,20 +131,21 @@ export function ReaderTopbar({
           <button className="zoom-step-btn" onClick={() => onAdjustZoom(1)} aria-label="Phóng to">
             +
           </button>
-          <span className="zoom-toolbar-divider" aria-hidden="true" />
           <button
             className={`zoom-fit-btn ${zoomMode === 'fit-page' ? 'active' : ''}`}
             onClick={() => onSelectZoomMode('fit-page')}
-            title="Vừa trang (Shift+P)"
+            title="Vừa trang (Fit Page)"
+            aria-label="Vừa trang"
           >
-            Fit Page
+            <FitPageIcon />
           </button>
           <button
             className={`zoom-fit-btn ${zoomMode === 'fit-width' ? 'active' : ''}`}
             onClick={() => onSelectZoomMode('fit-width')}
-            title="Vừa chiều rộng (Shift+W)"
+            title="Vừa chiều rộng (Fit Width)"
+            aria-label="Vừa chiều rộng"
           >
-            Fit Width
+            <FitWidthIcon />
           </button>
         </div>
       </div>
@@ -151,6 +176,20 @@ export function ReaderTopbar({
             </button>
           ))}
         </div>
+
+        <button
+          className={`btn-icon btn-reader-notes ${notePanelOpen ? 'active' : ''} ${hasPageNotes ? 'has-page-notes' : ''}`}
+          onClick={onToggleNotePanel}
+          title={hasPageNotes ? `Ghi chép & Sổ tay (N) • Trang ${page} có ghi chú` : 'Ghi chép & Sổ tay (N)'}
+        >
+          <NoteIcon />
+          {hasPageNotes && (
+            <span className="reader-notes-pin-dot" title={`Trang ${page} có ghi chú`}>
+              <MiniPinIcon />
+            </span>
+          )}
+          {noteCount > 0 && <span className="reader-notes-badge">{noteCount}</span>}
+        </button>
 
         <button
           className={`btn-icon ${chatOpen ? 'active' : ''}`}
@@ -264,6 +303,68 @@ function ChatIcon() {
       <circle cx="9" cy="10" r="1" />
       <circle cx="15" cy="10" r="1" />
       <path d="M9 15h6" />
+    </svg>
+  );
+}
+
+function MenuIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <line x1="3" y1="6" x2="3.01" y2="6" />
+      <line x1="3" y1="12" x2="3.01" y2="12" />
+      <line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+  );
+}
+
+
+function FitPageIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="12" y1="3" x2="12" y2="21" />
+      <polyline points="8 7 12 3 16 7" />
+      <polyline points="8 17 12 21 16 17" />
+      <line x1="4" y1="3" x2="20" y2="3" />
+      <line x1="4" y1="21" x2="20" y2="21" />
+    </svg>
+  );
+}
+
+function FitWidthIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="3" y1="12" x2="21" y2="12" />
+      <polyline points="7 8 3 12 7 16" />
+      <polyline points="17 8 21 12 17 16" />
+      <line x1="3" y1="4" x2="3" y2="20" />
+      <line x1="21" y1="4" x2="21" y2="20" />
+    </svg>
+  );
+}
+
+function NoteIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 6h4" />
+      <path d="M2 10h4" />
+      <path d="M2 14h4" />
+      <path d="M2 18h4" />
+      <rect width="16" height="20" x="4" y="2" rx="2" />
+      <path d="M9.5 8h5" />
+      <path d="M9.5 12h5" />
+      <path d="M9.5 16h3" />
+    </svg>
+  );
+}
+
+function MiniPinIcon() {
+  return (
+    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="12" y1="17" x2="12" y2="22" />
+      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a3 3 0 0 0-6 0v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" fill="currentColor" />
     </svg>
   );
 }

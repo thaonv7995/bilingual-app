@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct BookshelfView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     private enum CollectionFilter: String, CaseIterable, Identifiable {
         case all = "Tất cả"
         case priority = "Ưu tiên"
@@ -164,31 +166,39 @@ struct BookshelfView: View {
             }
             .navigationTitle("Tủ Sách Song Ngữ")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(
+            .modifier(CompactLibrarySearchModifier(
                 text: $searchText,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Tìm sách hoặc tác giả"
-            )
+                enabled: horizontalSizeClass != .regular
+            ))
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Menu {
-                        Picker("Hiển thị", selection: $collectionFilter) {
-                            ForEach(CollectionFilter.allCases) { filter in
-                                Text(filter.rawValue).tag(filter)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: collectionFilter == .all
-                              ? "line.3.horizontal.decrease.circle"
-                              : "line.3.horizontal.decrease.circle.fill")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(collectionFilter == .all ? .white.opacity(0.9) : Color(hex: "38bdf8"))
-                            .frame(width: 32, height: 32)
+                if horizontalSizeClass == .regular {
+                    ToolbarItem(placement: .principal) {
+                        LibraryToolbarSearchField(text: $searchText)
                     }
-                    .accessibilityLabel("Lọc sách: \(collectionFilter.rawValue)")
                 }
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 10) {
+                        Menu {
+                            Picker("Hiển thị", selection: $collectionFilter) {
+                                ForEach(CollectionFilter.allCases) { filter in
+                                    Text(filter.rawValue).tag(filter)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "line.3.horizontal.decrease")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(collectionFilter == .all ? .white.opacity(0.9) : Color(hex: "38bdf8"))
+                                .frame(width: 32, height: 32)
+                                .background(collectionFilter == .all ? Color.white.opacity(0.06) : Color(hex: "38bdf8").opacity(0.12))
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(collectionFilter == .all ? Color.white.opacity(0.12) : Color(hex: "38bdf8").opacity(0.3), lineWidth: 1)
+                                )
+                        }
+                        .accessibilityLabel("Lọc sách: \(collectionFilter.rawValue)")
+
                         Button(action: {
                             showSettings = true
                         }) {
@@ -342,6 +352,61 @@ struct BookshelfView: View {
             print("Failed to fetch books: \(error)")
             await MainActor.run { self.isLoading = false }
         }
+    }
+}
+
+private struct CompactLibrarySearchModifier: ViewModifier {
+    @Binding var text: String
+    let enabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content.searchable(
+                text: $text,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Tìm sách hoặc tác giả"
+            )
+        } else {
+            content
+        }
+    }
+}
+
+private struct LibraryToolbarSearchField: View {
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.white.opacity(0.5))
+
+            TextField("Tìm sách hoặc tác giả", text: $text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14))
+                .foregroundColor(.white)
+
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.45))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Xóa tìm kiếm")
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(width: 320, height: 36)
+        .background(Color.white.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
     }
 }
 

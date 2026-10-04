@@ -89,6 +89,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [secretsLoaded, setSecretsLoaded] = useState(false);
   const [vocaTesting, setVocaTesting] = useState(false);
   const [vocaTestResult, setVocaTestResult] = useState('');
+  const [notebookUrl, setNotebookUrl] = useState(() => localStorage.getItem('bilingual.notebookUrl') || 'http://localhost:27972');
 
   useEffect(() => {
     let cancelled = false;
@@ -312,6 +313,35 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 </button>
               ))}
             </div>
+          </Section>
+
+          <Section title="Liên kết Notebook Studio" hint="Địa chỉ Notebook Studio để liên kết ghi chép và mở nhanh sổ tay thông minh.">
+            <Field label="Notebook Studio URL" full>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  className={styles.input}
+                  type="url"
+                  placeholder="http://localhost:27972"
+                  value={notebookUrl}
+                  onChange={(e) => {
+                    setNotebookUrl(e.target.value);
+                    localStorage.setItem('bilingual.notebookUrl', e.target.value.trim());
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className={styles.btnGhost}
+                  style={{ whiteSpace: 'nowrap', padding: '0 12px' }}
+                  onClick={() => {
+                    const target = (notebookUrl || '').trim() || 'http://localhost:27972';
+                    window.open(target, '_blank');
+                  }}
+                >
+                  Mở Thử ↗
+                </button>
+              </div>
+            </Field>
           </Section>
 
           <Section title="Thư viện">

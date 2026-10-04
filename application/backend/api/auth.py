@@ -1,7 +1,7 @@
 import os
 import time
 from typing import Optional
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, HTTPException, Security, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 import bcrypt
 import jwt
@@ -10,6 +10,7 @@ from api.database import get_db, User, APIKey
 
 from api.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_SECONDS, REFRESH_TOKEN_EXPIRE_SECONDS
 
+HARDCODED_CLIENT_ID = os.environ.get("NOTEBOOK_CLIENT_ID", "notebook_client_v1")
 
 security_jwt = HTTPBearer(auto_error=False)
 security_apikey = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -42,14 +43,20 @@ def decode_access_token(token: str) -> Optional[dict]:
     return None
 
 def get_current_user_or_apikey(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_jwt),
     api_key: Optional[str] = Depends(security_apikey),
     db: Session = Depends(get_db)
 ) -> Optional[User]:
     """
-    Authenticate request via JWT token or API Key.
-    Returns the authenticated User object (or a dummy admin user for API Keys).
+    Authenticate request via JWT token, API Key, or hardcoded trusted Client-ID.
+    Returns the authenticated User object (or a dummy admin user for API Keys / Client-ID).
     """
+    # 0. Check Hardcoded Client ID (header or query parameter)
+    client_id = request.headers.get("X-Client-ID") or request.query_params.get("client_id")
+    if (client_id and client_id == HARDCODED_CLIENT_ID) or (api_key and api_key == HARDCODED_CLIENT_ID):
+        return User(username="client_notebook_studio", is_admin=True)
+
     # 1. Check API Key
     if api_key:
         key_record = db.query(APIKey).filter(APIKey.key_value == api_key, APIKey.is_active == True).first()

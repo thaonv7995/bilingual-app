@@ -10,8 +10,12 @@ interface ToastItem {
   type: ToastType;
 }
 
-interface ToastApi {
+export interface ToastApi {
   show: (message: string, type?: ToastType, durationMs?: number) => void;
+  success: (message: string, durationMs?: number) => void;
+  error: (message: string, durationMs?: number) => void;
+  info: (message: string, durationMs?: number) => void;
+  warning: (message: string, durationMs?: number) => void;
 }
 
 const ToastContext = createContext<ToastApi | null>(null);
@@ -40,7 +44,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }, durationMs);
   }, []);
 
-  const api = useMemo(() => ({ show }), [show]);
+  const api = useMemo(
+    () => ({
+      show,
+      success: (message: string, durationMs?: number) => show(message, 'success', durationMs),
+      error: (message: string, durationMs?: number) => show(message, 'danger', durationMs),
+      info: (message: string, durationMs?: number) => show(message, 'info', durationMs),
+      warning: (message: string, durationMs?: number) => show(message, 'warning', durationMs),
+    }),
+    [show],
+  );
 
   return (
     <ToastContext.Provider value={api}>

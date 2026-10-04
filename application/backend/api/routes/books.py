@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, Response, status, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
 from api.database import get_db, User, Book, UserPermission, Highlight, ReadingProgress, UserBookState
@@ -12,7 +12,7 @@ from api.auth import (
     get_current_user_or_apikey,
     require_admin,
     decode_access_token,
-    decode_access_token
+    HARDCODED_CLIENT_ID
 )
 from api.config import BOOKS_DIR
 from books_core.paths import BookPaths
@@ -23,9 +23,16 @@ content_router = APIRouter(prefix="/books", tags=["books content"])
 
 # --- Helper function for cookie & header authentication ---
 def get_user_from_request(request: Request, db: Session) -> Optional[User]:
+    # 0. Try Client-ID first
+    client_id = request.headers.get("X-Client-ID") or request.query_params.get("client_id")
+    if client_id and client_id == HARDCODED_CLIENT_ID:
+        return User(username="client_notebook_studio", is_admin=True)
+
     # 1. Try X-API-Key first
     api_key = request.headers.get("X-API-Key")
     if api_key:
+        if api_key == HARDCODED_CLIENT_ID:
+            return User(username="client_notebook_studio", is_admin=True)
         from api.database import APIKey
         key_record = db.query(APIKey).filter(APIKey.key_value == api_key, APIKey.is_active == True).first()
         if key_record:
@@ -103,6 +110,98 @@ def serve_secure_book_static(slug: str, path: str, request: Request, db: Session
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Book resource file not found."
         )
+
+    # If it is an HTML page and embed=1 is requested, inject the Smart Quote listener
+    if file_path.suffix.lower() == ".html" and request.query_params.get("embed") == "1":
+        try:
+            content = file_path.read_text(encoding="utf-8")
+            smart_quote_script = """
+<style>
+.nb-quote-popover {
+  position: fixed;
+  z-index: 999999;
+  background: #1e293b;
+  color: #f8fafc;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+  padding: 4px;
+  display: flex;
+  gap: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  animation: nbFadeIn 0.15s ease-out;
+}
+@keyframes nbFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.nb-quote-btn {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.2s;
+}
+.nb-quote-btn:hover {
+  background: #2563eb;
+}
+</style>
+<script>
+(function() {
+  if (window.parent && window.parent !== window) {
+    let popover = null;
+    function hidePopover() {
+      if (popover) { popover.remove(); popover = null; }
+    }
+    document.addEventListener('mouseup', function(e) {
+      setTimeout(function() {
+        const sel = window.getSelection();
+        const text = sel ? sel.toString().trim() : '';
+        if (!text || text.length < 2) { hidePopover(); return; }
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        hidePopover();
+        popover = document.createElement('div');
+        popover.className = 'nb-quote-popover';
+        popover.innerHTML = '<button type="button" class="nb-quote-btn"><span>✦</span> Trích dẫn vào sổ</button>';
+        const top = Math.max(10, rect.top - 46);
+        const left = Math.max(10, rect.left + (rect.width / 2) - 80);
+        popover.style.top = top + 'px';
+        popover.style.left = left + 'px';
+        document.body.appendChild(popover);
+        popover.querySelector('.nb-quote-btn').onclick = function(evt) {
+          evt.stopPropagation();
+          window.parent.postMessage({
+            type: 'NOTEBOOK_INSERT_QUOTE',
+            quote: text,
+            title: document.title,
+            url: window.location.href
+          }, '*');
+          hidePopover();
+        };
+      }, 60);
+    });
+    document.addEventListener('mousedown', function(e) {
+      if (popover && !popover.contains(e.target)) hidePopover();
+    });
+  }
+})();
+</script>
+"""
+            if "</body>" in content:
+                content = content.replace("</body>", f"{smart_quote_script}\n</body>")
+            else:
+                content += smart_quote_script
+            return HTMLResponse(content=content, media_type="text/html")
+        except Exception:
+            pass
         
     return FileResponse(file_path)
 

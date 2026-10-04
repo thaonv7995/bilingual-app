@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS = {
   realtimeApiKey: '',
   realtimeModel: 'gpt-realtime-mini',
   realtimeVoice: 'alloy',
+  notebookUrl: 'http://localhost:27972',
   ...defaultVocaSettings(),
 };
 
@@ -794,6 +795,7 @@ function App() {
   const [formVocaBridgeToken, setFormVocaBridgeToken] = useState(settings.vocaBridgeToken || '');
   const [formTtsEndpoint, setFormTtsEndpoint] = useState(settings.ttsEndpoint || '');
   const [formTtsModel, setFormTtsModel] = useState(settings.ttsModel || 'edge-tts/en-US-SteffanNeural');
+  const [formNotebookUrl, setFormNotebookUrl] = useState(settings.notebookUrl || localStorage.getItem('bilingual.notebookUrl') || 'http://localhost:27972');
 
   const openSettings = () => {
     setFormProvider(settings.provider);
@@ -808,6 +810,7 @@ function App() {
     setFormVocaBridgeToken(settings.vocaBridgeToken || '');
     setFormTtsEndpoint(settings.ttsEndpoint || '');
     setFormTtsModel(settings.ttsModel || 'edge-tts/en-US-SteffanNeural');
+    setFormNotebookUrl(settings.notebookUrl || localStorage.getItem('bilingual.notebookUrl') || 'http://localhost:27972');
     setSettingsOpen(true);
   };
 
@@ -1444,18 +1447,31 @@ function App() {
 
       if (handleZoomShortcut(e)) return;
 
-      if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      const key = e.key.toLowerCase();
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp' || key === 'k') {
         e.preventDefault();
         requestPageChange(p => p - 1);
-      } else if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+      } else if (e.key === 'ArrowRight' || e.key === 'PageDown' || key === 'j') {
         e.preventDefault();
         requestPageChange(p => p + 1);
+      } else if (key === 'f') {
+        e.preventDefault();
+        selectZoomMode(zoomMode === 'fit-page' ? 'fit-width' : 'fit-page');
+      } else if (e.key === '1') {
+        e.preventDefault();
+        setViewMode('en');
+      } else if (e.key === '2') {
+        e.preventDefault();
+        setViewMode('vi');
+      } else if (e.key === '3') {
+        e.preventDefault();
+        setViewMode('split');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeBook, viewMode, page]);
+  }, [activeBook, viewMode, page, zoomMode, selectZoomMode, setViewMode]);
 
   // Iframe content load handler
   const handleIframeLoad = (e) => {
@@ -1518,12 +1534,25 @@ function App() {
         doc.addEventListener('keydown', (event) => {
           if (handleZoomShortcut(event)) return;
 
-          if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+          const key = event.key.toLowerCase();
+          if (event.key === 'ArrowLeft' || event.key === 'PageUp' || key === 'k') {
             event.preventDefault();
             requestPageChange(p => p - 1);
-          } else if (event.key === 'ArrowRight' || event.key === 'PageDown') {
+          } else if (event.key === 'ArrowRight' || event.key === 'PageDown' || key === 'j') {
             event.preventDefault();
             requestPageChange(p => p + 1);
+          } else if (key === 'f') {
+            event.preventDefault();
+            selectZoomMode(zoomMode === 'fit-page' ? 'fit-width' : 'fit-page');
+          } else if (event.key === '1') {
+            event.preventDefault();
+            setViewMode('en');
+          } else if (event.key === '2') {
+            event.preventDefault();
+            setViewMode('vi');
+          } else if (event.key === '3') {
+            event.preventDefault();
+            setViewMode('split');
           }
         });
       }
@@ -1801,6 +1830,7 @@ Return ONLY the JSON array, no other text.`;
 
   const saveSettings = (e) => {
     e.preventDefault();
+    const cleanNotebookUrl = (formNotebookUrl || '').trim() || 'http://localhost:27972';
     const updated = {
       provider: formProvider,
       baseURL: formBaseURL,
@@ -1813,10 +1843,12 @@ Return ONLY the JSON array, no other text.`;
       vocaBridgeToken: formVocaBridgeToken.trim(),
       ttsEndpoint: formTtsEndpoint.trim(),
       ttsModel: formTtsModel.trim(),
+      notebookUrl: cleanNotebookUrl,
       useApiTts: true,
     };
     setSettings(updated);
     localStorage.setItem('bilingual.reader.settings', JSON.stringify(updated));
+    localStorage.setItem('bilingual.notebookUrl', cleanNotebookUrl);
     
     setLayoutMode(formLayoutMode);
     localStorage.setItem('bilingual.reader.layoutMode', formLayoutMode);
@@ -3287,6 +3319,38 @@ TOOLS:
                 </div>
               </div>
             </section>
+
+            <section class="settings-section">
+              <h4 class="settings-section__title">Liên kết Notebook Studio</h4>
+              <p class="settings-section__hint">Địa chỉ Notebook Studio để liên kết ghi chép và mở nhanh sổ tay thông minh.</p>
+              <div class="settings-form-grid">
+                <div class="form-group form-group--full">
+                  <label class="form-label">Notebook Studio URL</label>
+                  <div style="display: flex; gap: 8px;">
+                    <input
+                      class="form-input"
+                      type="url"
+                      placeholder="http://localhost:27972"
+                      value=${formNotebookUrl}
+                      onInput=${(e) => setFormNotebookUrl(e.target.value)}
+                      style="flex: 1;"
+                    />
+                    <button
+                      type="button"
+                      class="btn-secondary"
+                      style="white-space: nowrap; padding: 0 12px; height: 38px;"
+                      onClick=${() => {
+                        const target = (formNotebookUrl || '').trim() || 'http://localhost:27972';
+                        window.open(target, '_blank');
+                      }}
+                      title="Mở tab mới kiểm tra Notebook Studio"
+                    >
+                      Mở Thử ↗
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
           <div class="modal-footer">
             <button class="btn-secondary" type="button" onClick=${() => setSettingsOpen(false)}>Hủy</button>
@@ -3344,21 +3408,36 @@ TOOLS:
     <div class="reader-view">
       <div class="reader-topbar">
         <div class="reader-topbar__left">
-          <button class="btn-action" onClick=${() => setActiveBook(null)}>
+          <button class="btn-action" onClick=${() => setActiveBook(null)} title="Về thư viện sách">
             🏠 Library
           </button>
-          <span class="reader-topbar__title">${activeBook.title}</span>
+          <span class="reader-topbar__title" title=${activeBook.title}>${activeBook.title}</span>
         </div>
 
         <div class="reader-topbar__center">
           <div class="reader-nav">
-            <button class="nav-btn page-nav__arrow" disabled=${page <= 1} onClick=${() => requestPageChange(p => p - 1)} title="Previous page" aria-label="Previous page">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="m15 18-6-6 6-6"></path>
+            <button class="nav-btn page-nav__menu" onClick=${() => {
+              let val = prompt(`Nhập số trang cần chuyển (1 - ${activeBook.pageCount}):`, String(page));
+              if (val) {
+                let num = parseInt(val, 10);
+                if (!isNaN(num) && num >= 1 && num <= activeBook.pageCount) {
+                  requestPageChange(num);
+                }
+              }
+            }} title="Mục lục trang / Nhảy trang nhanh" aria-label="Mục lục">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
               </svg>
             </button>
+            <button class="nav-btn page-nav__arrow" disabled=${page <= 1} onClick=${() => requestPageChange(p => p - 1)} title="Trang trước" aria-label="Trang trước">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
             <span class="page-indicator">
-              Trang
               <input class="page-input" type="number" min="1" max=${activeBook.pageCount} value=${page}
                 onChange=${(e) => {
                   let val = parseInt(e.target.value, 10);
@@ -3366,61 +3445,79 @@ TOOLS:
                   if (val > activeBook.pageCount) val = activeBook.pageCount;
                   requestPageChange(val);
                 }}
+                aria-label="Số trang hiện tại"
               />
-              / ${activeBook.pageCount}
+              <span class="page-total">/ ${activeBook.pageCount}</span>
             </span>
-            <button class="nav-btn page-nav__arrow" disabled=${page >= activeBook.pageCount} onClick=${() => requestPageChange(p => p + 1)} title="Next page" aria-label="Next page">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="m9 18 6-6-6-6"></path>
-              </svg>
+            <button class="nav-btn page-nav__arrow" disabled=${page >= activeBook.pageCount} onClick=${() => requestPageChange(p => p + 1)} title="Trang sau" aria-label="Trang sau">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
             </button>
           </div>
 
           <div class="reader-zoom-toolbar" role="group" aria-label="Page zoom controls">
-            <button class="zoom-step-btn" onClick=${() => adjustReaderZoom(-1)} title="Zoom out" aria-label="Zoom out">−</button>
-            <span class="zoom-level" aria-live="polite">${formatReaderZoom(manualZoom)}</span>
-            <button class="zoom-step-btn" onClick=${() => adjustReaderZoom(1)} title="Zoom in" aria-label="Zoom in">+</button>
-            <span class="zoom-toolbar-divider" aria-hidden="true"></span>
+            <button class="zoom-step-btn" onClick=${() => adjustReaderZoom(-1)} title="Thu nhỏ (−)">−</button>
+            <span class="zoom-level" onClick=${() => { selectZoomMode('custom'); setManualZoom(1.0); }} title="Nhấp để đặt lại 100%">${formatReaderZoom(manualZoom)}</span>
+            <button class="zoom-step-btn" onClick=${() => adjustReaderZoom(1)} title="Phóng to (+)">+</button>
             <button
               class=${`zoom-fit-btn ${zoomMode === 'fit-page' ? 'active' : ''}`}
               onClick=${() => selectZoomMode('fit-page')}
-              title="Fit the entire page (Shift+P)"
-            >Fit Page</button>
+              title="Vừa toàn bộ trang (Fit Page)"
+              aria-label="Vừa toàn bộ trang"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="3" x2="12" y2="21"></line>
+                <polyline points="8 7 12 3 16 7"></polyline>
+                <polyline points="8 17 12 21 16 17"></polyline>
+                <line x1="4" y1="3" x2="20" y2="3"></line>
+                <line x1="4" y1="21" x2="20" y2="21"></line>
+              </svg>
+            </button>
             <button
               class=${`zoom-fit-btn ${zoomMode === 'fit-width' ? 'active' : ''}`}
               onClick=${() => selectZoomMode('fit-width')}
-              title="Fit page to available width (Shift+W)"
-            >Fit Width</button>
+              title="Vừa chiều rộng (Fit Width)"
+              aria-label="Vừa chiều rộng"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <polyline points="7 8 3 12 7 16"></polyline>
+                <polyline points="17 8 21 12 17 16"></polyline>
+                <line x1="3" y1="4" x2="3" y2="20"></line>
+                <line x1="21" y1="4" x2="21" y2="20"></line>
+              </svg>
+            </button>
           </div>
         </div>
 
         <div class="reader-topbar__right">
           <div class="view-modes">
-            <button class=${`mode-btn ${viewMode === 'en' ? 'active' : ''}`} onClick=${() => setViewMode('en')} title="Tiếng Anh (Bản gốc)">
+            <button class=${`mode-btn ${viewMode === 'en' ? 'active' : ''}`} onClick=${() => setViewMode('en')} title="Tiếng Anh (Bản gốc - 1 trang)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                <rect x="5" y="3" width="14" height="18" rx="2"></rect>
+                <line x1="9" y1="8" x2="15" y2="8"></line>
+                <line x1="9" y1="12" x2="15" y2="12"></line>
               </svg>
               <span>EN</span>
             </button>
-            <button class=${`mode-btn ${viewMode === 'vi' ? 'active' : ''}`} onClick=${() => setViewMode('vi')} title="Tiếng Việt (Bản dịch)">
+            <button class=${`mode-btn ${viewMode === 'vi' ? 'active' : ''}`} onClick=${() => setViewMode('vi')} title="Tiếng Việt (Bản dịch - 1 trang)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                <rect x="5" y="3" width="14" height="18" rx="2"></rect>
+                <line x1="9" y1="8" x2="15" y2="8"></line>
+                <line x1="9" y1="12" x2="15" y2="12"></line>
               </svg>
               <span>VI</span>
             </button>
-            <button class=${`mode-btn ${viewMode === 'split' ? 'active' : ''}`} onClick=${() => setViewMode('split')} title="Song ngữ song song">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="12" y1="3" x2="12" y2="21"></line>
+            <button class=${`mode-btn ${viewMode === 'split' ? 'active' : ''}`} onClick=${() => setViewMode('split')} title="Song ngữ song song (Mở 2 trang)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
               </svg>
               <span>Song Ngữ</span>
             </button>
           </div>
 
           <button class=${`btn-icon ${chatOpen ? 'active' : ''}`} onClick=${() => setChatOpen(!chatOpen)} title="Companion Reader Agent">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
               <circle cx="9" cy="10" r="1"></circle>
               <circle cx="15" cy="10" r="1"></circle>

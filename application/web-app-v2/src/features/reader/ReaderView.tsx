@@ -21,6 +21,12 @@ import {
   syncVocaCards,
 } from '@/lib/voca';
 import { ReaderTopbar } from './ReaderTopbar';
+import { ReaderNotePanel } from './ReaderNotePanel';
+import {
+  type BookNotebookStatus,
+  fetchBookNotebookStatus,
+  syncNoteToNotebook,
+} from './notebookApi';
 import { injectReaderStyles, resolveBookBackground, setVocaPanelCss } from './iframe/readerStyles';
 import { segmentDocSentences } from './iframe/segmentation';
 
@@ -142,6 +148,73 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     });
   }, []);
 
+  // Notebook integration state
+  const [notebookStatus, setNotebookStatus] = useState<BookNotebookStatus | null>(null);
+  const [notePanelOpen, setNotePanelOpen] = useState(false);
+
+  const refreshNotebookStatus = useCallback(async () => {
+    try {
+      const st = await fetchBookNotebookStatus(book.slug);
+      setNotebookStatus(st);
+    } catch {
+      // offline / not reachable
+    }
+  }, [book.slug]);
+
+  useEffect(() => {
+    void refreshNotebookStatus();
+  }, [refreshNotebookStatus]);
+
+  const hasPageNotes = useMemo(() => {
+    return notebookStatus?.pagesWithNotes?.includes(page) ?? false;
+  }, [notebookStatus, page]);
+
+  const noteCount = notebookStatus?.notes?.length ?? 0;
+
+  // Listen for voca lookup panel "Push to Notebook"
+  useEffect(() => {
+    const handlePushVocab = async (e: Event) => {
+      const customEvt = e as CustomEvent<{ card: any }>;
+      const card = customEvt.detail?.card;
+      if (!card) return;
+
+      if (!notebookStatus?.linkedNotebook?.id) {
+        setNotePanelOpen(true);
+        toast.info('Hãy chọn hoặc tạo Sổ tay để lưu từ vựng.');
+        return;
+      }
+
+      try {
+        const res = await syncNoteToNotebook({
+          notebookId: notebookStatus.linkedNotebook.id,
+          bookSlug: book.slug,
+          bookTitle: book.title,
+          page,
+          type: 'vocab',
+          text: card.word,
+          vocab: {
+            word: card.word,
+            ipa: card.ipa || card.pronunciation || '',
+            meaningVi: card.meaningVi || '',
+            meaningEn: card.meaningEn || '',
+            example: card.examples?.[0] || '',
+          },
+        });
+        if (res.ok) {
+          toast.success(`Đã lưu "${card.word}" vào Sổ tay!`);
+          void refreshNotebookStatus();
+        } else {
+          toast.error(res.message || 'Lỗi lưu từ vựng');
+        }
+      } catch {
+        toast.error('Không thể kết nối đến Sổ tay');
+      }
+    };
+
+    window.addEventListener('bilingual:push-vocab-to-notebook', handlePushVocab);
+    return () => window.removeEventListener('bilingual:push-vocab-to-notebook', handlePushVocab);
+  }, [book.slug, book.title, page, notebookStatus, refreshNotebookStatus, toast]);
+
   // Keep the imperative highlight layer's context fresh every render (v2's
   // typed replacement for v1's reassigned `highlightAppContext` global).
   useEffect(() => {
@@ -162,9 +235,35 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
           showVocaError(err instanceof Error ? err.message : 'Tra cứu thất bại.');
         }
       },
+      onPushToNotebook: async (text, note) => {
+        if (!notebookStatus?.linkedNotebook?.id) {
+          setNotePanelOpen(true);
+          toast.info('Hãy chọn hoặc tạo Sổ tay để lưu trích dẫn.');
+          return;
+        }
+        try {
+          const res = await syncNoteToNotebook({
+            notebookId: notebookStatus.linkedNotebook.id,
+            bookSlug: book.slug,
+            bookTitle: book.title,
+            page,
+            type: 'quote',
+            text,
+            note,
+          });
+          if (res.ok) {
+            toast.success('Đã lưu trích dẫn vào Sổ tay!');
+            void refreshNotebookStatus();
+          } else {
+            toast.error(res.message || 'Lỗi lưu vào Sổ tay');
+          }
+        } catch {
+          toast.error('Không thể kết nối đến Sổ tay');
+        }
+      },
     });
     return () => setHighlightContext(null);
-  }, [book.slug, page, createHighlight, updateHighlight, deleteHighlight]);
+  }, [book.slug, book.title, page, createHighlight, updateHighlight, deleteHighlight, notebookStatus, refreshNotebookStatus, toast]);
 
   const enPageUrl = `/books/${encodeURIComponent(book.slug)}/output/en/page_${padPage(page)}.html`;
   const viPageUrl = `/books/${encodeURIComponent(book.slug)}/output/vi/page_${padPage(page)}.html`;
@@ -388,23 +487,40 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     return () => window.removeEventListener('resize', scaleIframes);
   }, [scaleIframes]);
 
-  // Keyboard navigation + zoom shortcuts (app.js:1438-1458).
+  // Keyboard navigation + shortcuts (J/K, ArrowLeft/Right, F, 1/2/3, N).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = document.activeElement;
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable)) return;
       if (handleZoomShortcut(e)) return;
-      if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+
+      const key = e.key.toLowerCase();
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp' || key === 'k') {
         e.preventDefault();
         void requestPageChange((p) => p - 1);
-      } else if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+      } else if (e.key === 'ArrowRight' || e.key === 'PageDown' || key === 'j') {
         e.preventDefault();
         void requestPageChange((p) => p + 1);
+      } else if (key === 'f') {
+        e.preventDefault();
+        selectZoomMode(zoomMode === 'fit-page' ? 'fit-width' : 'fit-page');
+      } else if (e.key === '1') {
+        e.preventDefault();
+        setViewMode('en');
+      } else if (e.key === '2') {
+        e.preventDefault();
+        setViewMode('vi');
+      } else if (e.key === '3') {
+        e.preventDefault();
+        setViewMode('split');
+      } else if (key === 'n') {
+        e.preventDefault();
+        setNotePanelOpen((v) => !v);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [handleZoomShortcut, requestPageChange]);
+  }, [handleZoomShortcut, requestPageChange, zoomMode, selectZoomMode, setViewMode]);
 
   // Scroll-sync EN/VI wrappers for stacked layouts (app.js:1263-1296).
   useEffect(() => {
@@ -506,6 +622,9 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         zoomMode={zoomMode}
         zoomLevel={displayedZoom}
         chatOpen={chatOpen}
+        notePanelOpen={notePanelOpen}
+        noteCount={noteCount}
+        hasPageNotes={hasPageNotes}
         isBookFinished={book.isFinished}
         isUpdatingFinished={updateBookState.isPending}
         username={user?.username ?? ''}
@@ -517,6 +636,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         onSelectZoomMode={selectZoomMode}
         onAdjustZoom={adjustReaderZoom}
         onToggleChat={toggleChat}
+        onToggleNotePanel={() => setNotePanelOpen((v) => !v)}
         onToggleFinished={() =>
           updateBookState.mutate({
             slug: book.slug,
@@ -584,6 +704,16 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       </div>
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+
+      <ReaderNotePanel
+        isOpen={notePanelOpen}
+        onClose={() => setNotePanelOpen(false)}
+        book={book}
+        currentPage={page}
+        onGoToPage={(p) => void requestPageChange(p)}
+        status={notebookStatus}
+        onRefreshStatus={refreshNotebookStatus}
+      />
     </div>
   );
 }
