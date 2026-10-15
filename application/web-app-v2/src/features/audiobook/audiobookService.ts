@@ -14,6 +14,37 @@ const audioBlobCache = new Map<string, string>();
 const ongoingPrefetches = new Map<string, Promise<string>>();
 let currentAudioElement: HTMLAudioElement | null = null;
 
+export function getCurrentAudioElement(): HTMLAudioElement | null {
+  return currentAudioElement;
+}
+
+export function getAudioDuration(): number {
+  return currentAudioElement?.duration || 0;
+}
+
+export function seekAudio(timeSeconds: number): void {
+  if (currentAudioElement) {
+    currentAudioElement.currentTime = Math.max(0, timeSeconds);
+  }
+}
+
+export function pauseCurrentAudio(): void {
+  if (currentAudioElement) {
+    currentAudioElement.pause();
+  }
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.pause();
+  }
+}
+
+export async function resumeCurrentAudio(): Promise<void> {
+  if (currentAudioElement) {
+    await currentAudioElement.play();
+  } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.resume();
+  }
+}
+
 export function stopCurrentAudio(): void {
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     window.speechSynthesis.cancel();
@@ -38,14 +69,17 @@ export function clearAudioCache(): void {
 /**
  * Prefetches synthesized audio in the background and caches the Object URL.
  */
-export async function prefetchSentenceAudio(options: SynthesizeOptions): Promise<void> {
+export async function prefetchAudio(options: SynthesizeOptions): Promise<string> {
   const { text, provider = 'device', voice = '', speed = '1.0', lang = 'en-US' } = options;
   const trimmed = text.trim();
-  if (!trimmed || provider === 'device') return;
+  if (!trimmed || provider === 'device') return '';
 
   const cacheKey = `${provider}:${voice}:${speed}:${lang}:${trimmed}`;
-  if (audioBlobCache.has(cacheKey) || ongoingPrefetches.has(cacheKey)) {
-    return;
+  if (audioBlobCache.has(cacheKey)) {
+    return audioBlobCache.get(cacheKey)!;
+  }
+  if (ongoingPrefetches.has(cacheKey)) {
+    return ongoingPrefetches.get(cacheKey)!;
   }
 
   const prefetchPromise = (async () => {
@@ -76,13 +110,19 @@ export async function prefetchSentenceAudio(options: SynthesizeOptions): Promise
   })();
 
   ongoingPrefetches.set(cacheKey, prefetchPromise);
+  return prefetchPromise;
 }
 
+export const prefetchSentenceAudio = prefetchAudio;
+
 /**
- * Synthesizes or plays audio for a piece of text.
- * Returns a promise that resolves when playback has finished.
+ * Synthesizes and plays audio for a piece of text (e.g. full page).
+ * Emits time updates during playback for continuous highlight tracking.
  */
-export async function playSentenceAudio(options: SynthesizeOptions): Promise<void> {
+export async function playPageAudio(
+  options: SynthesizeOptions,
+  onTimeUpdate?: (currentTime: number, duration: number) => void,
+): Promise<void> {
   const { text, provider = 'device', voice = '', speed = '1.0', lang = 'en-US' } = options;
   const trimmed = text.trim();
   if (!trimmed) return;
@@ -132,10 +172,17 @@ export async function playSentenceAudio(options: SynthesizeOptions): Promise<voi
     currentAudioElement = audio;
 
     const cleanup = () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
       if (currentAudioElement === audio) {
         currentAudioElement = null;
+      }
+    };
+
+    const handleTimeUpdate = () => {
+      if (onTimeUpdate) {
+        onTimeUpdate(audio.currentTime, audio.duration || 0);
       }
     };
 
@@ -149,6 +196,7 @@ export async function playSentenceAudio(options: SynthesizeOptions): Promise<voi
       reject(new Error('Audio playback error'));
     };
 
+    audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('error', onError);
 
@@ -164,3 +212,5 @@ export async function playSentenceAudio(options: SynthesizeOptions): Promise<voi
     });
   });
 }
+
+export const playSentenceAudio = playPageAudio;

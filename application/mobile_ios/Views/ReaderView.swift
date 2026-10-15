@@ -304,6 +304,7 @@ struct ReaderView: View {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                 isReadyToRender = true
                             }
+                            AudiobookManager.shared.updateContext(bookSlug: self.book.slug, currentPage: self.page, totalPage: self.book.pageCount)
                             readerUsesDoubleSided = useDoubleSided
                             AudiobookManager.shared.onPageTurnNeeded = {
                                 if self.page < self.book.pageCount {
@@ -328,6 +329,7 @@ struct ReaderView: View {
                             }
                         }
                         .onChange(of: page) { newPage in
+                            AudiobookManager.shared.updateContext(bookSlug: self.book.slug, currentPage: newPage, totalPage: self.book.pageCount)
                             if AudiobookManager.shared.isBarVisible {
                                 AudiobookManager.shared.updateWebViews(
                                     en: findCurrentWebView(lang: "en", page: newPage),
@@ -363,8 +365,6 @@ struct ReaderView: View {
                                 viewMode = "vi"
                             } else if newMode == .en && viewMode == "vi" {
                                 viewMode = "en"
-                            } else if newMode == .bilingual && viewMode != "split" {
-                                viewMode = "split"
                             }
                         }
                         .onChange(of: isChatOpen) { _ in readerUsesDoubleSided = useDoubleSided }

@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { playSentenceAudio, prefetchSentenceAudio, stopCurrentAudio } from './audiobookService';
+import {
+  playPageAudio,
+  prefetchAudio,
+  stopCurrentAudio,
+  pauseCurrentAudio,
+  resumeCurrentAudio,
+  seekAudio,
+  getAudioDuration,
+  getCurrentAudioElement,
+} from './audiobookService';
 import { useServerSecrets } from '@/features/settings/serverSecrets';
 import { segmentDocSentences } from '../reader/iframe/segmentation';
+import { apiFetch } from '@/lib/api-client';
 
-export type AudiobookLanguageMode = 'en' | 'vi' | 'bilingual';
+export type AudiobookLanguageMode = 'en' | 'vi';
 
 export interface SentenceItem {
   id: string;
@@ -12,24 +22,25 @@ export interface SentenceItem {
 }
 
 interface UseAudiobookOptions {
-  bookSlug: string;
+  bookSlug?: string;
   currentPage: number;
   totalPage: number;
   viewMode: 'en' | 'vi' | 'split';
   enIframeRef: React.RefObject<HTMLIFrameElement | null>;
   viIframeRef: React.RefObject<HTMLIFrameElement | null>;
   onNextPage: () => void;
-  onPrevPage: () => void;
+  onPrevPage?: () => void;
 }
 
 export function useAudiobook({
+  bookSlug,
   currentPage,
   totalPage,
   viewMode,
   enIframeRef,
   viIframeRef,
   onNextPage,
-}: Omit<UseAudiobookOptions, 'bookSlug' | 'onPrevPage'>) {
+}: UseAudiobookOptions) {
   const { data: serverSecrets } = useServerSecrets();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
@@ -40,8 +51,12 @@ export function useAudiobook({
   const [error, setError] = useState<string | null>(null);
 
   const playingRef = useRef(false);
-  const abortControllerRef = useRef<boolean>(false);
+  const currentSentenceIndexRef = useRef(0);
   const shouldAutoPlayNextPageRef = useRef<boolean>(false);
+  const cumulativeOffsetsRef = useRef<number[]>([]);
+  const totalCharsRef = useRef<number>(0);
+  const activePageRef = useRef<number>(currentPage);
+  activePageRef.current = currentPage;
 
   // Sync speed with server settings when loaded
   useEffect(() => {
@@ -96,7 +111,7 @@ export function useAudiobook({
       .filter((item) => item.text.length > 0);
   }, []);
 
-  // Extract sentences for a given mode
+  // Extract sentences for selected mode (en or vi)
   const extractSentencesForMode = useCallback(
     (targetMode: AudiobookLanguageMode): SentenceItem[] => {
       const enList = getDocSentences(enIframeRef.current, 'en');
@@ -104,28 +119,28 @@ export function useAudiobook({
 
       if (targetMode === 'en') {
         return enList.length > 0 ? enList : viList.map((item) => ({ ...item, lang: 'en' as const }));
-      }
-      if (targetMode === 'vi') {
+      } else {
         return viList.length > 0 ? viList : enList.map((item) => ({ ...item, lang: 'vi' as const }));
       }
-      if (targetMode === 'bilingual') {
-        if (enList.length > 0 && viList.length > 0) {
-          const maxLen = Math.max(enList.length, viList.length);
-          const interleaved: SentenceItem[] = [];
-          for (let i = 0; i < maxLen; i++) {
-            if (enList[i]) interleaved.push(enList[i]!);
-            if (viList[i]) interleaved.push(viList[i]!);
-          }
-          return interleaved;
-        }
-        return enList.length > 0 ? enList : viList;
-      }
-      return enList.length > 0 ? enList : viList;
     },
     [getDocSentences, enIframeRef, viIframeRef],
   );
 
-  // Highlight and scroll sentence in iframes (targeted by lang to avoid scroll conflict)
+  // Calculate character offsets for accurate sentence time mapping
+  const updateSentenceOffsets = useCallback((items: SentenceItem[]) => {
+    const charLengths = items.map((s) => Math.max(1, s.text.length));
+    const total = charLengths.reduce((acc, len) => acc + len, 0);
+    const offsets: number[] = [];
+    let running = 0;
+    for (const len of charLengths) {
+      offsets.push(running);
+      running += len;
+    }
+    cumulativeOffsetsRef.current = offsets;
+    totalCharsRef.current = total;
+  }, []);
+
+  // Highlight and scroll sentence in iframes
   const highlightSentence = useCallback(
     (sentenceId: string | null, targetLang?: 'en' | 'vi') => {
       const applyToDoc = (iframe: HTMLIFrameElement | null) => {
@@ -153,37 +168,153 @@ export function useAudiobook({
     [enIframeRef, viIframeRef],
   );
 
+  // Background prefetch for next page audio
+  const prefetchNextPageAudio = useCallback(
+    async (nextPage: number, nextMode: AudiobookLanguageMode) => {
+      if (nextPage > totalPage || !bookSlug) return;
+      try {
+        const pad = String(nextPage).padStart(4, '0');
+        const url = `/books/${encodeURIComponent(bookSlug)}/output/${nextMode}/page_${pad}.html`;
+        const res = await apiFetch(url);
+        if (!res.ok) return;
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        let nodes = Array.from(doc.querySelectorAll<HTMLElement>('.sentence-node'));
+        if (nodes.length === 0) {
+          nodes = Array.from(
+            doc.querySelectorAll<HTMLElement>(
+              'p, h1, h2, h3, h4, h5, h6, li, blockquote, .chapter-start, .section-title, .action-header, .action-title',
+            ),
+          );
+        }
+        const text = nodes
+          .map((n) => n.textContent?.trim() || '')
+          .filter((t) => t.length > 0)
+          .join(' ');
+        if (!text) return;
+
+        const provider = serverSecrets?.audioProvider || 'device';
+        if (provider === 'device') return;
+        const isVi = nextMode === 'vi';
+        const langTag = isVi ? 'vi-VN' : 'en-US';
+        const voice = isVi
+          ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : ''))
+          : (serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice || (provider === 'azure' ? 'en-US-JennyNeural' : provider === 'elevenlabs' ? '21m00Tcm4TlvDq8ikWAM' : 'alloy'));
+
+        await prefetchAudio({
+          text,
+          provider,
+          voice,
+          speed,
+          lang: langTag,
+        });
+      } catch (err) {
+        console.warn('[Audiobook] Next page prefetch error:', err);
+      }
+    },
+    [bookSlug, totalPage, serverSecrets, speed],
+  );
+
   // Atomic mode change: cleanly stop audio, switch mode, re-extract, and reset index
   const changeMode = useCallback(
     (newMode: AudiobookLanguageMode) => {
-      // 1. Immediately abort active playback
       shouldAutoPlayNextPageRef.current = false;
-      abortControllerRef.current = true;
       playingRef.current = false;
       setIsPlaying(false);
       stopCurrentAudio();
       highlightSentence(null);
 
-      // 2. Set new mode & reset index
       setMode(newMode);
+      currentSentenceIndexRef.current = 0;
       setCurrentSentenceIndex(0);
       setError(null);
 
-      // 3. Extract sentences synchronously with the new mode
       const list = extractSentencesForMode(newMode);
       setSentences(list);
+      updateSentenceOffsets(list);
       if (list[0]) {
         highlightSentence(list[0].id, list[0].lang);
       }
     },
-    [extractSentencesForMode, highlightSentence],
+    [extractSentencesForMode, highlightSentence, updateSentenceOffsets],
   );
 
-  // Main playback loop
-  const playLoop = useCallback(
+  // Play full page audio
+  const startFullPagePlayback = useCallback(
     async (startIndex: number, currentList: SentenceItem[]) => {
-      if (startIndex >= currentList.length) {
-        // Reached end of page
+      if (currentList.length === 0) {
+        setError('Không tìm thấy nội dung văn bản trên trang này.');
+        setIsPlaying(false);
+        playingRef.current = false;
+        return;
+      }
+
+      setIsPlaying(true);
+      playingRef.current = true;
+      setError(null);
+
+      const pageText = currentList.map((s) => s.text).join(' ');
+      const provider = serverSecrets?.audioProvider || 'device';
+      const isVi = mode === 'vi';
+      const langTag = isVi ? 'vi-VN' : 'en-US';
+      const voice = isVi
+        ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : ''))
+        : (serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice || (provider === 'azure' ? 'en-US-JennyNeural' : provider === 'elevenlabs' ? '21m00Tcm4TlvDq8ikWAM' : 'alloy'));
+
+      // Prefetch NEXT page audio in the background while this page is starting
+      prefetchNextPageAudio(currentPage + 1, mode);
+
+      try {
+        let hasInitialSeek = false;
+        await playPageAudio(
+          {
+            text: pageText,
+            provider,
+            voice,
+            speed,
+            lang: langTag,
+          },
+          (currentTime, duration) => {
+            if (!playingRef.current) return;
+            const totalChars = totalCharsRef.current;
+            const offsets = cumulativeOffsetsRef.current;
+            if (!duration || duration <= 0 || totalChars <= 0) return;
+
+            // If playback started at an offset sentence, perform initial seek once metadata is ready
+            if (!hasInitialSeek && startIndex > 0 && offsets.length > startIndex) {
+              hasInitialSeek = true;
+              const targetOffset = offsets[startIndex] || 0;
+              const targetTime = (targetOffset / totalChars) * duration;
+              seekAudio(targetTime);
+              return;
+            }
+
+            const currentFraction = Math.min(1, Math.max(0, currentTime / duration));
+            const currentChar = currentFraction * totalChars;
+
+            let activeIdx = 0;
+            for (let i = 0; i < offsets.length; i++) {
+              if (currentChar >= offsets[i]!) {
+                activeIdx = i;
+              } else {
+                break;
+              }
+            }
+
+            if (activeIdx !== currentSentenceIndexRef.current) {
+              currentSentenceIndexRef.current = activeIdx;
+              setCurrentSentenceIndex(activeIdx);
+              const item = currentList[activeIdx];
+              if (item) {
+                highlightSentence(item.id, item.lang);
+              }
+            }
+          },
+        );
+
+        if (!playingRef.current) return;
+
+        // Page audio completed
         if (autoPageTurn && currentPage < totalPage) {
           shouldAutoPlayNextPageRef.current = true;
           onNextPage();
@@ -192,179 +323,125 @@ export function useAudiobook({
           playingRef.current = false;
           highlightSentence(null);
         }
-        return;
-      }
-
-      const item = currentList[startIndex];
-      if (!item) return;
-
-      setCurrentSentenceIndex(startIndex);
-      highlightSentence(item.id, item.lang);
-      setError(null);
-
-      try {
-        const provider = serverSecrets?.audioProvider || 'device';
-        const isVi = (mode === 'vi') || (mode === 'bilingual' && item.lang === 'vi');
-        const langTag = isVi ? 'vi-VN' : 'en-US';
-        const voice = isVi
-          ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : ''))
-          : (serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice || (provider === 'azure' ? 'en-US-JennyNeural' : provider === 'elevenlabs' ? '21m00Tcm4TlvDq8ikWAM' : 'alloy'));
-
-        // Prefetch upcoming 1-2 sentences in the background for smooth zero-delay playback
-        if (provider !== 'device') {
-          for (let lookahead = 1; lookahead <= 2; lookahead++) {
-            const nextIdx = startIndex + lookahead;
-            const nextItem = currentList[nextIdx];
-            if (!nextItem) continue;
-            const nextIsVi = (mode === 'vi') || (mode === 'bilingual' && nextItem.lang === 'vi');
-            const nextLangTag = nextIsVi ? 'vi-VN' : 'en-US';
-            const nextVoice = nextIsVi
-              ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : ''))
-              : (serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice || (provider === 'azure' ? 'en-US-JennyNeural' : provider === 'elevenlabs' ? '21m00Tcm4TlvDq8ikWAM' : 'alloy'));
-            prefetchSentenceAudio({
-              text: nextItem.text,
-              provider,
-              voice: nextVoice,
-              speed,
-              lang: nextLangTag,
-            }).catch(() => {});
-          }
-        }
-
-        await playSentenceAudio({
-          text: item.text,
-          provider,
-          voice,
-          speed,
-          lang: langTag,
-        });
-
-        if (abortControllerRef.current || !playingRef.current) {
-          return;
-        }
-
-        // Natural pause between sentences (200ms)
-        await new Promise((resolve) => setTimeout(resolve, 200));
-
-        if (abortControllerRef.current || !playingRef.current) {
-          return;
-        }
-
-        // Proceed to next sentence
-        playLoop(startIndex + 1, currentList);
       } catch (err: any) {
-        if (abortControllerRef.current || !playingRef.current) return;
+        if (!playingRef.current) return;
         console.error('[Audiobook] Playback error:', err);
         setError(err.message || 'Lỗi phát âm thanh');
         setIsPlaying(false);
         playingRef.current = false;
       }
     },
-    [autoPageTurn, currentPage, totalPage, onNextPage, highlightSentence, serverSecrets, speed],
+    [
+      serverSecrets,
+      mode,
+      prefetchNextPageAudio,
+      currentPage,
+      speed,
+      autoPageTurn,
+      totalPage,
+      onNextPage,
+      highlightSentence,
+    ],
   );
+
+  // Play / Resume
+  const play = useCallback(() => {
+    let list = sentences;
+    if (list.length === 0) {
+      list = extractSentencesForMode(mode);
+      setSentences(list);
+      updateSentenceOffsets(list);
+    }
+    if (list.length === 0) {
+      setError('Không tìm thấy nội dung văn bản trên trang này.');
+      return;
+    }
+
+    const audioEl = getCurrentAudioElement();
+    if (audioEl && !audioEl.ended && audioEl.src) {
+      // Resume existing paused audio
+      setIsPlaying(true);
+      playingRef.current = true;
+      resumeCurrentAudio().catch((err) => {
+        console.warn('[Audiobook] Resume failed, restarting:', err);
+        startFullPagePlayback(currentSentenceIndexRef.current, list);
+      });
+      return;
+    }
+
+    startFullPagePlayback(currentSentenceIndexRef.current, list);
+  }, [sentences, extractSentencesForMode, mode, updateSentenceOffsets, startFullPagePlayback]);
+
+  // Pause
+  const pause = useCallback(() => {
+    shouldAutoPlayNextPageRef.current = false;
+    setIsPlaying(false);
+    playingRef.current = false;
+    pauseCurrentAudio();
+  }, []);
+
+  // Seek to specific sentence index
+  const seekToSentence = useCallback(
+    (targetIdx: number) => {
+      if (sentences.length === 0) return;
+      const clamped = Math.max(0, Math.min(sentences.length - 1, targetIdx));
+      currentSentenceIndexRef.current = clamped;
+      setCurrentSentenceIndex(clamped);
+      const item = sentences[clamped];
+      if (item) {
+        highlightSentence(item.id, item.lang);
+      }
+
+      const duration = getAudioDuration();
+      const totalChars = totalCharsRef.current;
+      const offsets = cumulativeOffsetsRef.current;
+      if (duration > 0 && totalChars > 0 && offsets.length > clamped) {
+        const targetOffset = offsets[clamped] || 0;
+        const targetTime = (targetOffset / totalChars) * duration;
+        seekAudio(targetTime);
+      } else if (isPlaying) {
+        // Audio not yet loaded or device TTS, restart from target index
+        stopCurrentAudio();
+        startFullPagePlayback(clamped, sentences);
+      }
+    },
+    [sentences, highlightSentence, isPlaying, startFullPagePlayback],
+  );
+
+  const nextSentence = useCallback(() => {
+    seekToSentence(currentSentenceIndexRef.current + 1);
+  }, [seekToSentence]);
+
+  const prevSentence = useCallback(() => {
+    seekToSentence(currentSentenceIndexRef.current - 1);
+  }, [seekToSentence]);
 
   // Re-extract sentences when page or viewMode changes, and auto-continue playback on page change
   useEffect(() => {
     const timer = setTimeout(() => {
       const extracted = extractSentencesForMode(mode);
       setSentences(extracted);
+      updateSentenceOffsets(extracted);
+
       if (shouldAutoPlayNextPageRef.current) {
         shouldAutoPlayNextPageRef.current = false;
         if (extracted.length > 0) {
+          currentSentenceIndexRef.current = 0;
           setCurrentSentenceIndex(0);
-          setIsPlaying(true);
-          playingRef.current = true;
-          abortControllerRef.current = false;
-          playLoop(0, extracted);
+          startFullPagePlayback(0, extracted);
         }
-      } else if (currentSentenceIndex >= extracted.length) {
+      } else if (currentSentenceIndexRef.current >= extracted.length) {
+        currentSentenceIndexRef.current = 0;
         setCurrentSentenceIndex(0);
       }
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [currentPage, viewMode, mode, extractSentencesForMode, currentSentenceIndex, playLoop]);
-
-  const play = useCallback(() => {
-    let list = sentences;
-    if (list.length === 0) {
-      list = extractSentencesForMode(mode);
-      setSentences(list);
-    }
-    if (list.length === 0) {
-      setError('Không tìm thấy nội dung văn bản trên trang này.');
-      return;
-    }
-    setIsPlaying(true);
-    playingRef.current = true;
-    abortControllerRef.current = false;
-    shouldAutoPlayNextPageRef.current = false;
-
-    // Prefetch immediately for the upcoming sentences
-    const provider = serverSecrets?.audioProvider || 'device';
-    if (provider !== 'device') {
-      for (let lookahead = 0; lookahead <= 2; lookahead++) {
-        const idx = currentSentenceIndex + lookahead;
-        const nextItem = list[idx];
-        if (!nextItem) continue;
-        const nextIsVi = (mode === 'vi') || (mode === 'bilingual' && nextItem.lang === 'vi');
-        const nextLangTag = nextIsVi ? 'vi-VN' : 'en-US';
-        const nextVoice = nextIsVi
-          ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : ''))
-          : (serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice || (provider === 'azure' ? 'en-US-JennyNeural' : provider === 'elevenlabs' ? '21m00Tcm4TlvDq8ikWAM' : 'alloy'));
-        prefetchSentenceAudio({
-          text: nextItem.text,
-          provider,
-          voice: nextVoice,
-          speed,
-          lang: nextLangTag,
-        }).catch(() => {});
-      }
-    }
-
-    playLoop(currentSentenceIndex, list);
-  }, [sentences, extractSentencesForMode, mode, currentSentenceIndex, playLoop]);
-
-  const pause = useCallback(() => {
-    shouldAutoPlayNextPageRef.current = false;
-    setIsPlaying(false);
-    playingRef.current = false;
-    abortControllerRef.current = true;
-    stopCurrentAudio();
-  }, []);
-
-  const nextSentence = useCallback(() => {
-    stopCurrentAudio();
-    const nextIdx = Math.min(sentences.length - 1, currentSentenceIndex + 1);
-    setCurrentSentenceIndex(nextIdx);
-    const item = sentences[nextIdx];
-    if (item) {
-      highlightSentence(item.id, item.lang);
-    }
-    if (isPlaying) {
-      abortControllerRef.current = false;
-      playLoop(nextIdx, sentences);
-    }
-  }, [sentences, currentSentenceIndex, isPlaying, playLoop, highlightSentence]);
-
-  const prevSentence = useCallback(() => {
-    stopCurrentAudio();
-    const prevIdx = Math.max(0, currentSentenceIndex - 1);
-    setCurrentSentenceIndex(prevIdx);
-    const item = sentences[prevIdx];
-    if (item) {
-      highlightSentence(item.id, item.lang);
-    }
-    if (isPlaying) {
-      abortControllerRef.current = false;
-      playLoop(prevIdx, sentences);
-    }
-  }, [sentences, currentSentenceIndex, isPlaying, playLoop, highlightSentence]);
+  }, [currentPage, viewMode, mode, extractSentencesForMode, updateSentenceOffsets, startFullPagePlayback]);
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
-      abortControllerRef.current = true;
       playingRef.current = false;
       stopCurrentAudio();
       highlightSentence(null);

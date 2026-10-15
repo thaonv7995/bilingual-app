@@ -143,8 +143,9 @@ async def synthesize_speech(
             speed_val = 1.0
 
         chosen_voice = voice if voice in ["alloy", "echo", "fable", "onyx", "nova", "shimmer"] else "alloy"
+        openai_input = text[:4000] if len(text) > 4000 else text
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             try:
                 resp = await client.post(
                     "https://api.openai.com/v1/audio/speech",
@@ -154,7 +155,7 @@ async def synthesize_speech(
                     },
                     json={
                         "model": "tts-1",
-                        "input": text,
+                        "input": openai_input,
                         "voice": chosen_voice,
                         "speed": speed_val,
                     },
@@ -224,7 +225,7 @@ async def synthesize_speech(
             "User-Agent": "BilingualReader",
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             try:
                 resp = await client.post(target_url, headers=headers, content=ssml.encode("utf-8"))
             except httpx.RequestError as exc:
@@ -248,8 +249,9 @@ async def synthesize_speech(
 
         voice_id = voice if voice else "21m00Tcm4TlvDq8ikWAM"  # Rachel
         target_url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        eleven_input = text[:5000] if len(text) > 5000 else text
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             try:
                 resp = await client.post(
                     target_url,
@@ -259,7 +261,7 @@ async def synthesize_speech(
                         "Accept": "audio/mpeg",
                     },
                     json={
-                        "text": text,
+                        "text": eleven_input,
                         "model_id": "eleven_multilingual_v2",
                     },
                 )

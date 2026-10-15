@@ -99,30 +99,14 @@ struct AudiobookPlayerBar: View {
                             if manager.mode == .vi { Image(systemName: "checkmark") }
                         }
                     }
-                    Button(action: { manager.changeMode(.bilingual) }) {
-                        HStack {
-                            Image(systemName: "rectangle.split.2x1")
-                            Text("Song ngữ (EN · VI)")
-                            if manager.mode == .bilingual { Image(systemName: "checkmark") }
-                        }
-                    }
                 } label: {
-                    HStack(spacing: 3) {
-                        if manager.mode == .bilingual {
-                            Image(systemName: "rectangle.split.2x1")
-                                .font(.system(size: 10, weight: .semibold))
-                            Text("Song ngữ")
-                                .font(.system(size: 11, weight: .semibold))
-                        } else {
-                            Text(manager.mode == .en ? "EN" : "VI")
-                                .font(.system(size: 11, weight: .bold))
-                        }
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(6)
+                    Text(manager.mode == .en ? "EN" : "VI")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(6)
                 }
 
                 // Speed Menu

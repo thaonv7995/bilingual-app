@@ -99,11 +99,10 @@ export function AudiobookBar({
           className={styles.select}
           value={mode}
           onChange={(e) => onModeChange(e.target.value as AudiobookLanguageMode)}
-          title="Chế độ đọc ngôn ngữ"
+          title="Ngôn ngữ đọc"
         >
           <option value="en">EN (Tiếng Anh)</option>
           <option value="vi">VI (Tiếng Việt)</option>
-          <option value="bilingual">Song ngữ (EN · VI)</option>
         </select>
 
         <select

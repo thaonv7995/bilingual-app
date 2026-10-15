@@ -146,6 +146,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   const viIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const audiobook = useAudiobook({
+    bookSlug: book.slug,
     currentPage: page,
     totalPage: book.pageCount,
     viewMode,
@@ -425,8 +426,6 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         setViewMode('vi');
       } else if (newMode === 'en' && viewMode === 'vi') {
         setViewMode('en');
-      } else if (newMode === 'bilingual' && viewMode !== 'split') {
-        setViewMode('split');
       }
     },
     [audiobook, viewMode, setViewMode],
@@ -440,8 +439,6 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
           audiobook.changeMode('en');
         } else if (newViewMode === 'vi' && audiobook.mode === 'en') {
           audiobook.changeMode('vi');
-        } else if (newViewMode === 'split' && audiobook.mode !== 'bilingual') {
-          audiobook.changeMode('bilingual');
         }
       }
     },

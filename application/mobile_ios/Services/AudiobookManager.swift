@@ -11,13 +11,11 @@ struct AudioSentenceItem: Identifiable, Equatable {
 enum AudiobookLanguageMode: String, CaseIterable {
     case en = "en"
     case vi = "vi"
-    case bilingual = "bilingual"
 
     var title: String {
         switch self {
         case .en: return "EN"
         case .vi: return "VI"
-        case .bilingual: return "Song ngữ"
         }
     }
 }
@@ -40,12 +38,19 @@ final class AudiobookManager: ObservableObject {
     @Published var voiceEn: String = ""
     @Published var voiceVi: String = ""
     @Published var currentViewMode: String = "split"
+    @Published var bookSlug: String = ""
+    @Published var currentPage: Int = 1
+    @Published var totalPage: Int = 1
     var shouldContinuePlayingOnPageLoad: Bool = false
 
     private var playbackTask: Task<Void, Never>?
+    private var timeTrackingTask: Task<Void, Never>?
     private weak var enWebView: WKWebView?
     private weak var viWebView: WKWebView?
     var onPageTurnNeeded: (() -> Void)?
+
+    private var cumulativeOffsets: [Int] = []
+    private var totalChars: Int = 0
 
     private init() {}
 
@@ -55,6 +60,12 @@ final class AudiobookManager: ObservableObject {
         self.voiceEn = voiceEn
         self.voiceVi = voiceVi
         self.speed = speed
+    }
+
+    func updateContext(bookSlug: String, currentPage: Int, totalPage: Int) {
+        self.bookSlug = bookSlug
+        self.currentPage = currentPage
+        self.totalPage = totalPage
     }
 
     func voiceFor(lang: String) -> String {
@@ -108,6 +119,7 @@ final class AudiobookManager: ObservableObject {
         let wasPlaying = isPlaying
         shouldContinuePlayingOnPageLoad = false
         pause()
+        AudioProviderFactory.shared.stop()
         highlightSentence(id: nil)
         self.mode = newMode
         self.currentSentenceIndex = 0
@@ -175,29 +187,30 @@ final class AudiobookManager: ObservableObject {
         }
 
         var combined: [AudioSentenceItem] = []
-
         if mode == .en {
             combined = !enItems.isEmpty ? enItems : viItems.map { AudioSentenceItem(id: $0.id, text: $0.text, lang: "en") }
-        } else if mode == .vi {
+        } else {
             combined = !viItems.isEmpty ? viItems : enItems.map { AudioSentenceItem(id: $0.id, text: $0.text, lang: "vi") }
-        } else if mode == .bilingual {
-            if !enItems.isEmpty && !viItems.isEmpty {
-                let maxCount = max(enItems.count, viItems.count)
-                for i in 0..<maxCount {
-                    if i < enItems.count { combined.append(enItems[i]) }
-                    if i < viItems.count { combined.append(viItems[i]) }
-                }
-            } else if !enItems.isEmpty {
-                combined = enItems
-            } else {
-                combined = viItems
-            }
         }
 
         self.sentences = combined
+        updateSentenceOffsets(combined)
         if currentSentenceIndex >= combined.count {
             currentSentenceIndex = 0
         }
+    }
+
+    private func updateSentenceOffsets(_ items: [AudioSentenceItem]) {
+        let charLengths = items.map { max(1, $0.text.count) }
+        let total = charLengths.reduce(0, +)
+        var offsets: [Int] = []
+        var running = 0
+        for len in charLengths {
+            offsets.append(running)
+            running += len
+        }
+        self.cumulativeOffsets = offsets
+        self.totalChars = total
     }
 
     func play() {
@@ -213,33 +226,166 @@ final class AudiobookManager: ObservableObject {
             return
         }
 
-        isPlaying = true
-        errorMessage = nil
-        playbackTask?.cancel()
-
-        // Prefetch upcoming sentences immediately
-        if provider != "device" {
-            for lookahead in 0...2 {
-                let idx = currentSentenceIndex + lookahead
-                if idx < sentences.count {
-                    let nextItem = sentences[idx]
-                    let nextIsVi = (mode == .vi) || (mode == .bilingual && nextItem.lang == "vi")
-                    let nextLangTag = nextIsVi ? "vi-VN" : "en-US"
-                    let nextVoice = voiceFor(lang: nextLangTag)
-                    AudioProviderFactory.shared.prefetch(
-                        text: nextItem.text,
-                        provider: provider,
-                        voice: nextVoice,
-                        speed: speed,
-                        lang: nextLangTag
-                    )
-                }
+        // Resume existing audio if paused
+        if AudioProviderFactory.shared.duration > 0 && !AudioProviderFactory.shared.isAudioPlaying {
+            if AudioProviderFactory.shared.resume() {
+                isPlaying = true
+                startTimeTracking()
+                return
             }
         }
 
-        playbackTask = Task {
-            await runPlaybackLoop(from: currentSentenceIndex)
+        isPlaying = true
+        errorMessage = nil
+        playbackTask?.cancel()
+        timeTrackingTask?.cancel()
+
+        // Prefetch NEXT page audio in the background
+        Task.detached(priority: .background) { [weak self] in
+            guard let self = self else { return }
+            let nextPage = await self.currentPage + 1
+            let curMode = await self.mode
+            await self.prefetchNextPageAudio(page: nextPage, targetMode: curMode)
         }
+
+        playbackTask = Task {
+            await startFullPagePlayback(from: currentSentenceIndex)
+        }
+    }
+
+    private func startFullPagePlayback(from startIndex: Int) async {
+        guard !sentences.isEmpty else { return }
+
+        let fullPageText = sentences.map { $0.text }.joined(separator: " ")
+        let isVi = mode == .vi
+        let langTag = isVi ? "vi-VN" : "en-US"
+        let selectedVoice = voiceFor(lang: langTag)
+
+        startTimeTracking()
+
+        do {
+            try await AudioProviderFactory.shared.speak(
+                text: fullPageText,
+                provider: provider,
+                voice: selectedVoice,
+                speed: speed,
+                lang: langTag
+            )
+
+            // Audio finished playing
+            stopTimeTracking()
+            if isPlaying {
+                if autoPageTurn && currentPage < totalPage {
+                    shouldContinuePlayingOnPageLoad = true
+                    onPageTurnNeeded?()
+                } else {
+                    isPlaying = false
+                    highlightSentence(id: nil)
+                }
+            }
+        } catch is CancellationError {
+            stopTimeTracking()
+        } catch {
+            stopTimeTracking()
+            if !Task.isCancelled {
+                errorMessage = error.localizedDescription
+                isPlaying = false
+            }
+        }
+    }
+
+    private func startTimeTracking() {
+        timeTrackingTask?.cancel()
+        timeTrackingTask = Task { [weak self] in
+            var hasInitialSeek = false
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                guard let self = self, self.isPlaying else { break }
+
+                let duration = AudioProviderFactory.shared.duration
+                let currentTime = AudioProviderFactory.shared.currentTime
+                let total = self.totalChars
+                let offsets = self.cumulativeOffsets
+
+                if duration > 0 && total > 0 && !offsets.isEmpty {
+                    if !hasInitialSeek && self.currentSentenceIndex > 0 && offsets.count > self.currentSentenceIndex {
+                        hasInitialSeek = true
+                        let targetOffset = offsets[self.currentSentenceIndex]
+                        let targetTime = (Double(targetOffset) / Double(total)) * duration
+                        AudioProviderFactory.shared.seek(to: targetTime)
+                        continue
+                    }
+
+                    let fraction = min(1.0, max(0.0, currentTime / duration))
+                    let currentChar = Int(fraction * Double(total))
+
+                    var activeIdx = 0
+                    for i in 0..<offsets.count {
+                        if currentChar >= offsets[i] {
+                            activeIdx = i
+                        } else {
+                            break
+                        }
+                    }
+
+                    if activeIdx != self.currentSentenceIndex && activeIdx < self.sentences.count {
+                        self.currentSentenceIndex = activeIdx
+                        let item = self.sentences[activeIdx]
+                        self.highlightSentence(id: item.id, lang: item.lang)
+                    }
+                }
+            }
+        }
+    }
+
+    private func stopTimeTracking() {
+        timeTrackingTask?.cancel()
+        timeTrackingTask = nil
+    }
+
+    private func prefetchNextPageAudio(page: Int, targetMode: AudiobookLanguageMode) async {
+        guard page <= totalPage, !bookSlug.isEmpty, provider != "device" else { return }
+
+        var htmlString: String = ""
+        if let localUrl = BookCacheManager.shared.localPageURL(slug: bookSlug, lang: targetMode.rawValue, page: page),
+           let localData = try? Data(contentsOf: localUrl),
+           let localHtml = String(data: localData, encoding: .utf8) {
+            htmlString = localHtml
+        } else if let remoteUrl = URL(string: "\(APIService.shared.serverUrl)/books/\(bookSlug)/output/\(targetMode.rawValue)/page_\(String(format: "%04d", page)).html?token=\(APIService.shared.token)") {
+            if let (data, _) = try? await URLSession.shared.data(from: remoteUrl),
+               let remoteHtml = String(data: data, encoding: .utf8) {
+                htmlString = remoteHtml
+            }
+        }
+
+        guard !htmlString.isEmpty else { return }
+        let plainText = stripHtmlToText(htmlString)
+        guard !plainText.isEmpty else { return }
+
+        let langTag = targetMode == .vi ? "vi-VN" : "en-US"
+        let nextVoice = voiceFor(lang: langTag)
+        AudioProviderFactory.shared.prefetch(
+            text: plainText,
+            provider: provider,
+            voice: nextVoice,
+            speed: speed,
+            lang: langTag
+        )
+    }
+
+    private func stripHtmlToText(_ html: String) -> String {
+        let withoutTags = html.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        let cleaned = withoutTags
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return cleaned
     }
 
     func pause() {
@@ -247,96 +393,34 @@ final class AudiobookManager: ObservableObject {
         isPlaying = false
         playbackTask?.cancel()
         playbackTask = nil
-        AudioProviderFactory.shared.stop()
+        stopTimeTracking()
+        AudioProviderFactory.shared.pause()
+    }
+
+    func seekToSentence(_ index: Int) {
+        guard !sentences.isEmpty else { return }
+        let clamped = max(0, min(sentences.count - 1, index))
+        currentSentenceIndex = clamped
+        let item = sentences[clamped]
+        highlightSentence(id: item.id, lang: item.lang)
+
+        let duration = AudioProviderFactory.shared.duration
+        if duration > 0 && totalChars > 0 && clamped < cumulativeOffsets.count {
+            let targetOffset = cumulativeOffsets[clamped]
+            let targetTime = (Double(targetOffset) / Double(totalChars)) * duration
+            AudioProviderFactory.shared.seek(to: targetTime)
+        } else if isPlaying {
+            AudioProviderFactory.shared.stop()
+            play()
+        }
     }
 
     func nextSentence() {
-        guard !sentences.isEmpty else { return }
-        AudioProviderFactory.shared.stop()
-        let nextIdx = min(sentences.count - 1, currentSentenceIndex + 1)
-        currentSentenceIndex = nextIdx
-        let item = sentences[nextIdx]
-        highlightSentence(id: item.id, lang: item.lang)
-        if isPlaying {
-            play()
-        }
+        seekToSentence(currentSentenceIndex + 1)
     }
 
     func prevSentence() {
-        guard !sentences.isEmpty else { return }
-        AudioProviderFactory.shared.stop()
-        let prevIdx = max(0, currentSentenceIndex - 1)
-        currentSentenceIndex = prevIdx
-        let item = sentences[prevIdx]
-        highlightSentence(id: item.id, lang: item.lang)
-        if isPlaying {
-            play()
-        }
-    }
-
-    private func runPlaybackLoop(from startIndex: Int) async {
-        for idx in startIndex..<sentences.count {
-            guard isPlaying, !Task.isCancelled else { break }
-
-            currentSentenceIndex = idx
-            let item = sentences[idx]
-            highlightSentence(id: item.id, lang: item.lang)
-
-            // Lookahead prefetch next 1-2 sentences in the background
-            if provider != "device" {
-                for lookahead in 1...2 {
-                    let nextIdx = idx + lookahead
-                    if nextIdx < sentences.count {
-                        let nextItem = sentences[nextIdx]
-                        let nextIsVi = (mode == .vi) || (mode == .bilingual && nextItem.lang == "vi")
-                        let nextLangTag = nextIsVi ? "vi-VN" : "en-US"
-                        let nextVoice = voiceFor(lang: nextLangTag)
-                        AudioProviderFactory.shared.prefetch(
-                            text: nextItem.text,
-                            provider: provider,
-                            voice: nextVoice,
-                            speed: speed,
-                            lang: nextLangTag
-                        )
-                    }
-                }
-            }
-
-            do {
-                let isVi = (mode == .vi) || (mode == .bilingual && item.lang == "vi")
-                let langTag = isVi ? "vi-VN" : "en-US"
-                let selectedVoice = voiceFor(lang: langTag)
-                try await AudioProviderFactory.shared.speak(
-                    text: item.text,
-                    provider: provider,
-                    voice: selectedVoice,
-                    speed: speed,
-                    lang: langTag
-                )
-
-                // Natural pause between sentences (200ms)
-                try await Task.sleep(nanoseconds: 200_000_000)
-            } catch is CancellationError {
-                break
-            } catch {
-                if !Task.isCancelled {
-                    errorMessage = error.localizedDescription
-                    isPlaying = false
-                }
-                break
-            }
-        }
-
-        // Reached end of sentences
-        if isPlaying && currentSentenceIndex >= sentences.count - 1 {
-            if autoPageTurn {
-                shouldContinuePlayingOnPageLoad = true
-                onPageTurnNeeded?()
-            } else {
-                isPlaying = false
-                highlightSentence(id: nil)
-            }
-        }
+        seekToSentence(currentSentenceIndex - 1)
     }
 
     func highlightSentence(id: String?, lang: String? = nil) {
@@ -366,6 +450,7 @@ final class AudiobookManager: ObservableObject {
     func close() {
         shouldContinuePlayingOnPageLoad = false
         pause()
+        AudioProviderFactory.shared.stop()
         highlightSentence(id: nil)
         isBarVisible = false
     }

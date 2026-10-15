@@ -79,6 +79,49 @@ final class AudioProviderFactory: NSObject, AVAudioPlayerDelegate {
         prefetchLock.unlock()
     }
 
+    var currentTime: TimeInterval {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return audioPlayer?.currentTime ?? 0
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            audioPlayer?.currentTime = newValue
+        }
+    }
+
+    var duration: TimeInterval {
+        lock.lock()
+        defer { lock.unlock() }
+        return audioPlayer?.duration ?? 0
+    }
+
+    var isAudioPlaying: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return audioPlayer?.isPlaying ?? false
+    }
+
+    func pause() {
+        lock.lock()
+        audioPlayer?.pause()
+        lock.unlock()
+    }
+
+    func resume() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return audioPlayer?.play() ?? false
+    }
+
+    func seek(to time: TimeInterval) {
+        lock.lock()
+        audioPlayer?.currentTime = max(0, time)
+        lock.unlock()
+    }
+
     /// Preview a test phrase with given audio settings
     func preview(provider: String, voice: String, speed: String, lang: String = "en-US") async throws {
         let sampleText = lang.hasPrefix("vi")
@@ -93,13 +136,14 @@ final class AudioProviderFactory: NSObject, AVAudioPlayerDelegate {
         )
     }
 
-    /// Speaks or plays a sentence of text. Suspends until the sentence is completely read.
+    /// Speaks or plays a piece of text (e.g. full page). Suspends until playback is finished.
     func speak(
         text: String,
         provider: String,
         voice: String,
         speed: String,
-        lang: String = "en-US"
+        lang: String = "en-US",
+        startTime: TimeInterval = 0
     ) async throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -131,11 +175,11 @@ final class AudioProviderFactory: NSObject, AVAudioPlayerDelegate {
             audioCache.setObject(audioData as NSData, forKey: cacheKey as NSString)
         }
 
-        try await playAudioData(audioData, speed: speed)
+        try await playAudioData(audioData, speed: speed, startTime: startTime)
     }
 
     /// Play in-memory MP3 audio data
-    private func playAudioData(_ data: Data, speed: String) async throws {
+    private func playAudioData(_ data: Data, speed: String, startTime: TimeInterval = 0) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.main.async {
                 do {
@@ -144,6 +188,9 @@ final class AudioProviderFactory: NSObject, AVAudioPlayerDelegate {
                     self.audioPlayer?.enableRate = true
                     if let rate = Float(speed), rate > 0 {
                         self.audioPlayer?.rate = rate
+                    }
+                    if startTime > 0 && startTime < (self.audioPlayer?.duration ?? 0) {
+                        self.audioPlayer?.currentTime = startTime
                     }
                     self.lock.lock()
                     self.playbackContinuation = continuation
