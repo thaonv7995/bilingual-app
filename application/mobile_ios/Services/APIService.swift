@@ -479,6 +479,7 @@ class APIService: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = 120.0
 
         let (data, response) = try await sendRequest(request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {

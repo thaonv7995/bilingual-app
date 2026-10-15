@@ -16,6 +16,25 @@ final class AudioProviderFactory: NSObject, AVAudioPlayerDelegate {
     private override init() {
         super.init()
         audioCache.countLimit = 200
+        configureAudioSession()
+    }
+
+    /// Ensures AVAudioSession is set to .playback so audio plays even when physical Silent/Mute switch is ON
+    func configureAudioSession() {
+        guard AudioSessionCoordinator.shared.mode != .liveVoice else { return }
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playback, mode: .spokenAudio, options: [])
+            try session.setActive(true)
+        } catch {
+            print("[AudioProviderFactory] Primary audio session config failed: \(error). Falling back to basic .playback")
+            do {
+                try session.setCategory(.playback)
+                try session.setActive(true)
+            } catch {
+                print("[AudioProviderFactory] Basic audio session config failed: \(error)")
+            }
+        }
     }
 
     private func getPrefetchTask(for key: String) -> Task<Data, Error>? {
@@ -113,7 +132,11 @@ final class AudioProviderFactory: NSObject, AVAudioPlayerDelegate {
     func resume() -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        return audioPlayer?.play() ?? false
+        guard let player = audioPlayer, player.currentTime < player.duration - 0.1 else {
+            return false
+        }
+        configureAudioSession()
+        return player.play()
     }
 
     func seek(to time: TimeInterval) {
@@ -143,12 +166,13 @@ final class AudioProviderFactory: NSObject, AVAudioPlayerDelegate {
         voice: String,
         speed: String,
         lang: String = "en-US",
-        startTime: TimeInterval = 0
+        startRatio: Double = 0.0
     ) async throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
         stop()
+        configureAudioSession()
 
         // 1. Native Device TTS (AVSpeechSynthesizer via DeviceSpeech)
         if provider == "device" {
@@ -175,29 +199,39 @@ final class AudioProviderFactory: NSObject, AVAudioPlayerDelegate {
             audioCache.setObject(audioData as NSData, forKey: cacheKey as NSString)
         }
 
-        try await playAudioData(audioData, speed: speed, startTime: startTime)
+        try await playAudioData(audioData, speed: speed, startRatio: startRatio)
     }
 
     /// Play in-memory MP3 audio data
-    private func playAudioData(_ data: Data, speed: String, startTime: TimeInterval = 0) async throws {
+    private func playAudioData(_ data: Data, speed: String, startRatio: Double = 0.0) async throws {
+        guard !data.isEmpty else {
+            throw NSError(domain: "AudioPlayback", code: -4, userInfo: [NSLocalizedDescriptionKey: "Dữ liệu âm thanh trống"])
+        }
+
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.main.async {
                 do {
-                    self.audioPlayer = try AVAudioPlayer(data: data)
-                    self.audioPlayer?.delegate = self
-                    self.audioPlayer?.enableRate = true
+                    self.configureAudioSession()
+
+                    let player = try AVAudioPlayer(data: data)
+                    player.delegate = self
+                    player.volume = 1.0
+                    player.enableRate = true
                     if let rate = Float(speed), rate > 0 {
-                        self.audioPlayer?.rate = rate
+                        player.rate = rate
                     }
-                    if startTime > 0 && startTime < (self.audioPlayer?.duration ?? 0) {
-                        self.audioPlayer?.currentTime = startTime
+                    player.prepareToPlay()
+                    if startRatio > 0 && startRatio < 1.0 && player.duration > 0 {
+                        player.currentTime = startRatio * player.duration
                     }
+
                     self.lock.lock()
+                    self.audioPlayer = player
                     self.playbackContinuation = continuation
                     self.lock.unlock()
 
-                    guard self.audioPlayer?.play() == true else {
-                        self.resumeContinuation(with: NSError(domain: "AudioPlayback", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to start audio playback"]))
+                    guard player.play() else {
+                        self.resumeContinuation(with: NSError(domain: "AudioPlayback", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không thể phát âm thanh"]))
                         return
                     }
                 } catch {
@@ -235,10 +269,20 @@ final class AudioProviderFactory: NSObject, AVAudioPlayerDelegate {
 
     // MARK: - AVAudioPlayerDelegate
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        lock.lock()
+        if audioPlayer === player {
+            audioPlayer = nil
+        }
+        lock.unlock()
         resumeContinuation(with: flag ? nil : NSError(domain: "AudioPlayback", code: -2, userInfo: [NSLocalizedDescriptionKey: "Playback did not complete successfully"]))
     }
 
     func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        lock.lock()
+        if audioPlayer === player {
+            audioPlayer = nil
+        }
+        lock.unlock()
         resumeContinuation(with: error ?? NSError(domain: "AudioPlayback", code: -3, userInfo: [NSLocalizedDescriptionKey: "Decode error occurred"]))
     }
 }

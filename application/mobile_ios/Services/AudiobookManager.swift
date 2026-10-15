@@ -42,6 +42,7 @@ final class AudiobookManager: ObservableObject {
     @Published var currentPage: Int = 1
     @Published var totalPage: Int = 1
     var shouldContinuePlayingOnPageLoad: Bool = false
+    private var isPausedOnCurrentPage: Bool = false
 
     private var playbackTask: Task<Void, Never>?
     private var timeTrackingTask: Task<Void, Never>?
@@ -63,6 +64,15 @@ final class AudiobookManager: ObservableObject {
     }
 
     func updateContext(bookSlug: String, currentPage: Int, totalPage: Int) {
+        if self.currentPage != currentPage || self.bookSlug != bookSlug {
+            if !shouldContinuePlayingOnPageLoad {
+                isPausedOnCurrentPage = false
+                if isPlaying {
+                    pause()
+                }
+                AudioProviderFactory.shared.stop()
+            }
+        }
         self.bookSlug = bookSlug
         self.currentPage = currentPage
         self.totalPage = totalPage
@@ -124,7 +134,11 @@ final class AudiobookManager: ObservableObject {
     func changeMode(_ newMode: AudiobookLanguageMode) {
         let wasPlaying = isPlaying
         shouldContinuePlayingOnPageLoad = false
-        pause()
+        isPausedOnCurrentPage = false
+        isPlaying = false
+        playbackTask?.cancel()
+        playbackTask = nil
+        stopTimeTracking()
         AudioProviderFactory.shared.stop()
         highlightSentence(id: nil)
         self.mode = newMode
@@ -232,19 +246,24 @@ final class AudiobookManager: ObservableObject {
             return
         }
 
-        // Resume existing audio if paused
-        if AudioProviderFactory.shared.duration > 0 && !AudioProviderFactory.shared.isAudioPlaying {
+        errorMessage = nil
+
+        // Only resume if user was actively paused on this current page and player is not already playing
+        if isPausedOnCurrentPage && playbackTask != nil && !AudioProviderFactory.shared.isAudioPlaying {
             if AudioProviderFactory.shared.resume() {
                 isPlaying = true
+                isPausedOnCurrentPage = false
                 startTimeTracking()
                 return
             }
         }
 
+        // Fresh page playback
+        isPausedOnCurrentPage = false
         isPlaying = true
-        errorMessage = nil
         playbackTask?.cancel()
-        timeTrackingTask?.cancel()
+        playbackTask = nil
+        stopTimeTracking()
 
         // Prefetch NEXT page audio in the background
         Task.detached(priority: .background) { [weak self] in
@@ -267,6 +286,13 @@ final class AudiobookManager: ObservableObject {
         let langTag = isVi ? "vi-VN" : "en-US"
         let selectedVoice = voiceFor(lang: langTag)
 
+        print("[AudiobookManager] startFullPagePlayback page=\(currentPage) mode=\(mode.rawValue) provider=\(provider) voice=\(selectedVoice) speed=\(speed) sentences=\(sentences.count) startIndex=\(startIndex)")
+
+        var startRatio: Double = 0.0
+        if startIndex > 0 && startIndex < cumulativeOffsets.count && totalChars > 0 {
+            startRatio = Double(cumulativeOffsets[startIndex]) / Double(totalChars)
+        }
+
         startTimeTracking()
 
         do {
@@ -275,10 +301,12 @@ final class AudiobookManager: ObservableObject {
                 provider: provider,
                 voice: selectedVoice,
                 speed: speed,
-                lang: langTag
+                lang: langTag,
+                startRatio: startRatio
             )
 
             // Audio finished playing
+            isPausedOnCurrentPage = false
             stopTimeTracking()
             if isPlaying {
                 if autoPageTurn && currentPage < totalPage {
@@ -293,7 +321,9 @@ final class AudiobookManager: ObservableObject {
             stopTimeTracking()
         } catch {
             stopTimeTracking()
+            isPausedOnCurrentPage = false
             if !Task.isCancelled {
+                print("[AudiobookManager] Playback error: \(error.localizedDescription)")
                 errorMessage = error.localizedDescription
                 isPlaying = false
             }
@@ -397,8 +427,7 @@ final class AudiobookManager: ObservableObject {
     func pause() {
         shouldContinuePlayingOnPageLoad = false
         isPlaying = false
-        playbackTask?.cancel()
-        playbackTask = nil
+        isPausedOnCurrentPage = true
         stopTimeTracking()
         AudioProviderFactory.shared.pause()
     }
@@ -417,6 +446,7 @@ final class AudiobookManager: ObservableObject {
             AudioProviderFactory.shared.seek(to: targetTime)
         } else if isPlaying {
             AudioProviderFactory.shared.stop()
+            isPausedOnCurrentPage = false
             play()
         }
     }
@@ -455,7 +485,11 @@ final class AudiobookManager: ObservableObject {
 
     func close() {
         shouldContinuePlayingOnPageLoad = false
-        pause()
+        isPausedOnCurrentPage = false
+        isPlaying = false
+        playbackTask?.cancel()
+        playbackTask = nil
+        stopTimeTracking()
         AudioProviderFactory.shared.stop()
         highlightSentence(id: nil)
         isBarVisible = false
