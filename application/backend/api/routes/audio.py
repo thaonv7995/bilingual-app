@@ -37,8 +37,8 @@ def _user_settings(db: Session, user: User) -> Optional[UserSettings]:
     return db.query(UserSettings).filter(UserSettings.user_id == user.id).first()
 
 
-def _get_cache_path(provider: str, voice: str, speed: str, text: str) -> Path:
-    normalized = f"{provider}:{voice}:{speed}:{text.strip()}"
+def _get_cache_path(provider: str, voice: str, speed: str, text: str, lang: str = "en") -> Path:
+    normalized = f"{provider}:{voice}:{speed}:{lang}:{text.strip()}"
     digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     return CACHE_DIR / f"{digest}.mp3"
 
@@ -98,13 +98,23 @@ async def synthesize_speech(
     speed = req.speed or (s.speech_speed if s and s.speech_speed else "1.0")
 
     is_vi = (req.lang or "").lower().startswith("vi")
+    lang_tag = "vi" if is_vi else "en"
+
     if is_vi:
-        voice = req.voice or (s.audio_voice_vi if s and s.audio_voice_vi else "")
-        if not voice or voice.startswith("en-"):
-            voice = (s.audio_voice_vi if s and s.audio_voice_vi else "") or ("vi-VN-HoaiMyNeural" if provider == "azure" else (s.audio_voice if s and s.audio_voice else ""))
+        voice = (s.audio_voice_vi if s and s.audio_voice_vi else "") or req.voice or ""
+        # If voice is empty or an English preset/default, prioritize user's audio_voice_vi
+        if (not voice) or voice in ["21m00Tcm4TlvDq8ikWAM", "en-US-JennyNeural", "alloy"] or voice.startswith("en-"):
+            if s and s.audio_voice_vi:
+                voice = s.audio_voice_vi
+            elif provider == "azure":
+                voice = "vi-VN-HoaiMyNeural"
+            elif provider == "openai":
+                voice = "alloy"
+            elif s and s.audio_voice:
+                voice = s.audio_voice
     else:
         voice = req.voice or (s.audio_voice_en if s and s.audio_voice_en else "") or (s.audio_voice if s and s.audio_voice else "")
-        if not voice or voice.startswith("vi-"):
+        if (not voice) or voice.startswith("vi-"):
             voice = (s.audio_voice_en if s and s.audio_voice_en else "") or ("en-US-JennyNeural" if provider == "azure" else (s.audio_voice if s and s.audio_voice else ""))
 
     if provider == "device":
@@ -114,7 +124,7 @@ async def synthesize_speech(
         )
 
     # Check cache
-    cache_path = _get_cache_path(provider, voice, speed, text)
+    cache_path = _get_cache_path(provider, voice, speed, text, lang=lang_tag)
     if cache_path.is_file() and cache_path.stat().st_size > 0:
         content = cache_path.read_bytes()
         return Response(
@@ -251,6 +261,18 @@ async def synthesize_speech(
         target_url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
         eleven_input = text[:5000] if len(text) > 5000 else text
 
+        # Note: eleven_multilingual_v2 does NOT support Vietnamese (limited to 29 languages).
+        # eleven_turbo_v2_5 supports 32 languages including Vietnamese.
+        payload_data = {
+            "text": eleven_input,
+            "model_id": "eleven_turbo_v2_5",
+            "language_code": "vi" if is_vi else "en",
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75,
+            },
+        }
+
         async with httpx.AsyncClient(timeout=120.0) as client:
             try:
                 resp = await client.post(
@@ -260,10 +282,7 @@ async def synthesize_speech(
                         "Content-Type": "application/json",
                         "Accept": "audio/mpeg",
                     },
-                    json={
-                        "text": eleven_input,
-                        "model_id": "eleven_multilingual_v2",
-                    },
+                    json=payload_data,
                 )
             except httpx.RequestError as exc:
                 raise HTTPException(status_code=502, detail=f"Failed to connect to ElevenLabs: {exc}") from exc

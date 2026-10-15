@@ -340,6 +340,17 @@ struct ReaderView: View {
                         }
                         .onChange(of: AudiobookManager.shared.isBarVisible) { isVisible in
                             if isVisible {
+                                Task {
+                                    if let secrets = try? await api.fetchServerSecrets() {
+                                        AudiobookManager.shared.configure(
+                                            provider: secrets.audioProvider ?? "device",
+                                            voice: secrets.audioVoice ?? "",
+                                            speed: secrets.speechSpeed ?? "1.0",
+                                            voiceEn: secrets.audioVoiceEn ?? "",
+                                            voiceVi: secrets.audioVoiceVi ?? ""
+                                        )
+                                    }
+                                }
                                 AudiobookManager.shared.updateWebViews(
                                     en: findCurrentWebView(lang: "en", page: page),
                                     vi: findCurrentWebView(lang: "vi", page: page),

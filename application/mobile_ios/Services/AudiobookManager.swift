@@ -74,6 +74,12 @@ final class AudiobookManager: ObservableObject {
             if !voiceVi.isEmpty { return voiceVi }
             if provider == "azure" { return "vi-VN-HoaiMyNeural" }
             if provider == "openai" { return "alloy" }
+            if provider == "elevenlabs" {
+                if !voice.isEmpty && voice != "21m00Tcm4TlvDq8ikWAM" && !voice.hasPrefix("en-") {
+                    return voice
+                }
+                return ""
+            }
             return voice
         } else {
             if !voiceEn.isEmpty { return voiceEn }

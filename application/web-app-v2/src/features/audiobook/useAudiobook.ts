@@ -198,7 +198,7 @@ export function useAudiobook({
         const isVi = nextMode === 'vi';
         const langTag = isVi ? 'vi-VN' : 'en-US';
         const voice = isVi
-          ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : ''))
+          ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : (serverSecrets?.audioVoice && serverSecrets.audioVoice !== '21m00Tcm4TlvDq8ikWAM' && !serverSecrets.audioVoice.startsWith('en-') ? serverSecrets.audioVoice : '')))
           : (serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice || (provider === 'azure' ? 'en-US-JennyNeural' : provider === 'elevenlabs' ? '21m00Tcm4TlvDq8ikWAM' : 'alloy'));
 
         await prefetchAudio({
@@ -258,7 +258,7 @@ export function useAudiobook({
       const isVi = mode === 'vi';
       const langTag = isVi ? 'vi-VN' : 'en-US';
       const voice = isVi
-        ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : ''))
+        ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : (serverSecrets?.audioVoice && serverSecrets.audioVoice !== '21m00Tcm4TlvDq8ikWAM' && !serverSecrets.audioVoice.startsWith('en-') ? serverSecrets.audioVoice : '')))
         : (serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice || (provider === 'azure' ? 'en-US-JennyNeural' : provider === 'elevenlabs' ? '21m00Tcm4TlvDq8ikWAM' : 'alloy'));
 
       // Prefetch NEXT page audio in the background while this page is starting
