@@ -133,11 +133,24 @@
 }
 
 .progressText {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-variant-numeric: tabular-nums;
   color: #cbd5e1;
   font-size: 12px;
   padding: 0 4px;
   white-space: nowrap;
+}
+
+.langBadge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.25);
+  color: #a5b4fc;
+  text-transform: uppercase;
 }
 
 .selectGroup {

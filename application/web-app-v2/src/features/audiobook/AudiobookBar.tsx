@@ -5,6 +5,7 @@ interface AudiobookBarProps {
   isPlaying: boolean;
   currentSentenceIndex: number;
   totalSentences: number;
+  currentLang?: 'en' | 'vi' | null;
   mode: AudiobookLanguageMode;
   speed: string;
   provider: string;
@@ -22,6 +23,7 @@ export function AudiobookBar({
   isPlaying,
   currentSentenceIndex,
   totalSentences,
+  currentLang,
   mode,
   speed,
   provider,
@@ -83,7 +85,14 @@ export function AudiobookBar({
       </div>
 
       <span className={styles.progressText}>
-        {totalSentences > 0 ? `${currentSentenceIndex + 1} / ${totalSentences}` : '0 / 0'}
+        {totalSentences > 0 ? (
+          <>
+            {currentLang && <span className={styles.langBadge}>{currentLang}</span>}
+            <span>{`${currentSentenceIndex + 1} / ${totalSentences}`}</span>
+          </>
+        ) : (
+          '0 / 0'
+        )}
       </span>
 
       <div className={styles.selectGroup}>

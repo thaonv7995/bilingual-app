@@ -94,10 +94,7 @@ struct AudiobookPlayerBar: View {
                 Menu {
                     ForEach(AudiobookLanguageMode.allCases, id: \.self) { m in
                         Button(action: {
-                            manager.mode = m
-                            Task {
-                                await manager.extractSentences(viewMode: "split")
-                            }
+                            manager.changeMode(m)
                         }) {
                             HStack {
                                 Text(m.title)

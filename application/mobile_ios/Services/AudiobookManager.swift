@@ -37,6 +37,7 @@ final class AudiobookManager: ObservableObject {
 
     @Published var provider: String = "device"
     @Published var voice: String = ""
+    @Published var currentViewMode: String = "split"
 
     private var playbackTask: Task<Void, Never>?
     private weak var enWebView: WKWebView?
@@ -54,16 +55,49 @@ final class AudiobookManager: ObservableObject {
     func updateWebViews(en: WKWebView?, vi: WKWebView?, viewMode: String) {
         self.enWebView = en
         self.viWebView = vi
+        self.currentViewMode = viewMode
         Task {
             await extractSentences(viewMode: viewMode)
         }
     }
 
-    /// Extracts segmented sentences from active WKWebView DOM instances
+    func changeMode(_ newMode: AudiobookLanguageMode) {
+        pause()
+        highlightSentence(id: nil)
+        self.mode = newMode
+        self.currentSentenceIndex = 0
+        Task {
+            await extractSentences(viewMode: currentViewMode)
+            if let first = sentences.first {
+                highlightSentence(id: first.id, lang: first.lang)
+            }
+        }
+    }
+
+    /// Extracts segmented sentences from active WKWebView DOM instances with robust fallbacks
     func extractSentences(viewMode: String) async {
         let jsExtract = """
         (function() {
-            const nodes = Array.from(document.querySelectorAll('.sentence-node'));
+            let nodes = Array.from(document.querySelectorAll('.sentence-node'));
+            if (nodes.length === 0 && typeof segmentDocSentences === 'function') {
+                try {
+                    segmentDocSentences(document);
+                    nodes = Array.from(document.querySelectorAll('.sentence-node'));
+                } catch(e) {}
+            }
+            if (nodes.length === 0) {
+                const pars = Array.from(document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, .chapter-start, .section-title, .action-header, .action-title'));
+                return pars.map((p, idx) => {
+                    if (!p.dataset.sentenceId) {
+                        p.dataset.sentenceId = 'fallback-s-' + idx;
+                        p.classList.add('sentence-node');
+                    }
+                    return {
+                        id: p.dataset.sentenceId,
+                        text: (p.textContent || '').trim()
+                    };
+                }).filter(x => x.text.length > 0);
+            }
             return nodes.map(n => ({
                 id: n.dataset.sentenceId || '',
                 text: (n.textContent || '').trim()
@@ -94,18 +128,22 @@ final class AudiobookManager: ObservableObject {
 
         var combined: [AudioSentenceItem] = []
 
-        if mode == .en || (mode == .bilingual && viewMode == "en") {
+        if mode == .en {
             combined = !enItems.isEmpty ? enItems : viItems
-        } else if mode == .vi || (mode == .bilingual && viewMode == "vi") {
+        } else if mode == .vi {
             combined = !viItems.isEmpty ? viItems : enItems
-        } else if mode == .bilingual && viewMode == "split" {
-            let maxCount = max(enItems.count, viItems.count)
-            for i in 0..<maxCount {
-                if i < enItems.count { combined.append(enItems[i]) }
-                if i < viItems.count { combined.append(viItems[i]) }
+        } else if mode == .bilingual {
+            if !enItems.isEmpty && !viItems.isEmpty {
+                let maxCount = max(enItems.count, viItems.count)
+                for i in 0..<maxCount {
+                    if i < enItems.count { combined.append(enItems[i]) }
+                    if i < viItems.count { combined.append(viItems[i]) }
+                }
+            } else if !enItems.isEmpty {
+                combined = enItems
+            } else {
+                combined = viItems
             }
-        } else {
-            combined = !enItems.isEmpty ? enItems : viItems
         }
 
         self.sentences = combined
@@ -115,8 +153,15 @@ final class AudiobookManager: ObservableObject {
     }
 
     func play() {
-        guard !sentences.isEmpty else {
-            errorMessage = "Không tìm thấy văn bản trên trang."
+        if sentences.isEmpty {
+            Task {
+                await extractSentences(viewMode: currentViewMode)
+                if self.sentences.isEmpty {
+                    self.errorMessage = "Không tìm thấy văn bản trên trang."
+                } else {
+                    self.play()
+                }
+            }
             return
         }
 
@@ -137,20 +182,24 @@ final class AudiobookManager: ObservableObject {
     }
 
     func nextSentence() {
+        guard !sentences.isEmpty else { return }
         AudioProviderFactory.shared.stop()
         let nextIdx = min(sentences.count - 1, currentSentenceIndex + 1)
         currentSentenceIndex = nextIdx
-        highlightSentence(id: sentences[nextIdx].id)
+        let item = sentences[nextIdx]
+        highlightSentence(id: item.id, lang: item.lang)
         if isPlaying {
             play()
         }
     }
 
     func prevSentence() {
+        guard !sentences.isEmpty else { return }
         AudioProviderFactory.shared.stop()
         let prevIdx = max(0, currentSentenceIndex - 1)
         currentSentenceIndex = prevIdx
-        highlightSentence(id: sentences[prevIdx].id)
+        let item = sentences[prevIdx]
+        highlightSentence(id: item.id, lang: item.lang)
         if isPlaying {
             play()
         }
@@ -162,7 +211,7 @@ final class AudiobookManager: ObservableObject {
 
             currentSentenceIndex = idx
             let item = sentences[idx]
-            highlightSentence(id: item.id)
+            highlightSentence(id: item.id, lang: item.lang)
 
             do {
                 let langTag = item.lang == "vi" ? "vi-VN" : "en-US"
@@ -198,7 +247,7 @@ final class AudiobookManager: ObservableObject {
         }
     }
 
-    func highlightSentence(id: String?) {
+    func highlightSentence(id: String?, lang: String? = nil) {
         let jsHighlight: String
         if let id = id {
             jsHighlight = """
@@ -214,8 +263,12 @@ final class AudiobookManager: ObservableObject {
             jsHighlight = "window.highlightSentence && window.highlightSentence(null);"
         }
 
-        enWebView?.evaluateJavaScript(jsHighlight, completionHandler: nil)
-        viWebView?.evaluateJavaScript(jsHighlight, completionHandler: nil)
+        if lang == "en" || lang == nil {
+            enWebView?.evaluateJavaScript(jsHighlight, completionHandler: nil)
+        }
+        if lang == "vi" || lang == nil {
+            viWebView?.evaluateJavaScript(jsHighlight, completionHandler: nil)
+        }
     }
 
     func close() {

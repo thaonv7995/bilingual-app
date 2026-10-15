@@ -22,7 +22,7 @@ import {
 } from '@/lib/voca';
 import { ReaderTopbar } from './ReaderTopbar';
 import { AudiobookBar } from '@/features/audiobook/AudiobookBar';
-import { useAudiobook } from '@/features/audiobook/useAudiobook';
+import { useAudiobook, type AudiobookLanguageMode } from '@/features/audiobook/useAudiobook';
 import { ReaderNotePanel } from './ReaderNotePanel';
 import {
   type BookNotebookStatus,
@@ -418,6 +418,36 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     [page, saveProgress],
   );
 
+  const handleAudiobookModeChange = useCallback(
+    (newMode: AudiobookLanguageMode) => {
+      audiobook.changeMode(newMode);
+      if (newMode === 'vi' && viewMode === 'en') {
+        setViewMode('vi');
+      } else if (newMode === 'en' && viewMode === 'vi') {
+        setViewMode('en');
+      } else if (newMode === 'bilingual' && viewMode !== 'split') {
+        setViewMode('split');
+      }
+    },
+    [audiobook, viewMode, setViewMode],
+  );
+
+  const handleSetViewMode = useCallback(
+    (newViewMode: ViewMode) => {
+      setViewMode(newViewMode);
+      if (audiobookOpen) {
+        if (newViewMode === 'en' && audiobook.mode === 'vi') {
+          audiobook.changeMode('en');
+        } else if (newViewMode === 'vi' && audiobook.mode === 'en') {
+          audiobook.changeMode('vi');
+        } else if (newViewMode === 'split' && audiobook.mode !== 'bilingual') {
+          audiobook.changeMode('bilingual');
+        }
+      }
+    },
+    [setViewMode, audiobookOpen, audiobook],
+  );
+
   // Realtime voice lives here (ReaderView holds all reader state) so its tools
   // and page-context injection see the live page/highlights.
   const voice = useVoice({
@@ -646,7 +676,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         onHome={() => navigate('/')}
         onGoToPage={(p) => void requestPageChange(p)}
         onStep={(delta) => void requestPageChange((p) => p + delta)}
-        onSetViewMode={setViewMode}
+        onSetViewMode={handleSetViewMode}
         onSelectZoomMode={selectZoomMode}
         onAdjustZoom={adjustReaderZoom}
         onToggleChat={toggleChat}
@@ -738,6 +768,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
           isPlaying={audiobook.isPlaying}
           currentSentenceIndex={audiobook.currentSentenceIndex}
           totalSentences={audiobook.totalSentences}
+          currentLang={audiobook.currentSentence?.lang || null}
           mode={audiobook.mode}
           speed={audiobook.speed}
           provider={audiobook.provider}
@@ -746,7 +777,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
           onPause={audiobook.pause}
           onNext={audiobook.nextSentence}
           onPrev={audiobook.prevSentence}
-          onModeChange={audiobook.setMode}
+          onModeChange={handleAudiobookModeChange}
           onSpeedChange={audiobook.setSpeed}
           onClose={() => {
             audiobook.pause();

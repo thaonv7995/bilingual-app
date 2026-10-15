@@ -342,7 +342,27 @@ struct ReaderView: View {
                             }
                         }
                         .onChange(of: useDoubleSided) { readerUsesDoubleSided = $0 }
-                        .onChange(of: viewMode) { _ in readerUsesDoubleSided = useDoubleSided }
+                        .onChange(of: viewMode) { newViewMode in
+                            readerUsesDoubleSided = useDoubleSided
+                            if AudiobookManager.shared.isBarVisible {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    AudiobookManager.shared.updateWebViews(
+                                        en: findCurrentWebView(lang: "en", page: page),
+                                        vi: findCurrentWebView(lang: "vi", page: page),
+                                        viewMode: newViewMode
+                                    )
+                                }
+                            }
+                        }
+                        .onChange(of: AudiobookManager.shared.mode) { newMode in
+                            if newMode == .vi && viewMode == "en" {
+                                viewMode = "vi"
+                            } else if newMode == .en && viewMode == "vi" {
+                                viewMode = "en"
+                            } else if newMode == .bilingual && viewMode != "split" {
+                                viewMode = "split"
+                            }
+                        }
                         .onChange(of: isChatOpen) { _ in readerUsesDoubleSided = useDoubleSided }
                         // On the phone every point of width matters: always
                         // full-bleed, no shrink/offset/shadow chrome. The header
@@ -721,8 +741,12 @@ struct ReaderView: View {
     }
 
     private func findCurrentWebView(lang: String, page: Int) -> WKWebView? {
+        let preferredKey = webViewKey(lang: lang, page: page, containerMode: viewMode == "split" ? "split" : "single")
+        if let wv = webViews[preferredKey] {
+            return wv
+        }
         for (key, wv) in webViews {
-            if key.hasPrefix("\(lang)-\(page)-") {
+            if key.hasSuffix("-\(lang)-\(page)") {
                 return wv
             }
         }

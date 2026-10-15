@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { playSentenceAudio, stopCurrentAudio } from './audiobookService';
 import { useServerSecrets } from '@/features/settings/serverSecrets';
+import { segmentDocSentences } from '../reader/iframe/segmentation';
 
 export type AudiobookLanguageMode = 'en' | 'vi' | 'bilingual';
 
@@ -48,48 +49,84 @@ export function useAudiobook({
     }
   }, [serverSecrets?.speechSpeed]);
 
-  // Extract sentences from iframe DOM
-  const extractSentences = useCallback(() => {
-    const getDocSentences = (iframe: HTMLIFrameElement | null, lang: 'en' | 'vi'): SentenceItem[] => {
-      if (!iframe || !iframe.contentDocument) return [];
-      const doc = iframe.contentDocument;
-      const nodes = Array.from(doc.querySelectorAll<HTMLElement>('.sentence-node'));
-      return nodes
-        .map((node) => ({
-          id: node.dataset.sentenceId || '',
-          text: node.textContent?.trim() || '',
-          lang,
-        }))
-        .filter((item) => item.text.length > 0);
-    };
+  // Extract sentences from an iframe document with multi-tier fallback
+  const getDocSentences = useCallback((iframe: HTMLIFrameElement | null, lang: 'en' | 'vi'): SentenceItem[] => {
+    if (!iframe || !iframe.contentDocument) return [];
+    const doc = iframe.contentDocument;
 
-    const enList = getDocSentences(enIframeRef.current, 'en');
-    const viList = getDocSentences(viIframeRef.current, 'vi');
-
-    if (mode === 'en' || (mode === 'bilingual' && viewMode === 'en')) {
-      return enList.length > 0 ? enList : viList;
-    }
-    if (mode === 'vi' || (mode === 'bilingual' && viewMode === 'vi')) {
-      return viList.length > 0 ? viList : enList;
-    }
-
-    if (mode === 'bilingual' && viewMode === 'split') {
-      // Interleave EN sentence then VI sentence
-      const maxLen = Math.max(enList.length, viList.length);
-      const interleaved: SentenceItem[] = [];
-      for (let i = 0; i < maxLen; i++) {
-        if (enList[i]) interleaved.push(enList[i]!);
-        if (viList[i]) interleaved.push(viList[i]!);
+    let nodes = Array.from(doc.querySelectorAll<HTMLElement>('.sentence-node'));
+    if (nodes.length === 0) {
+      try {
+        segmentDocSentences(doc);
+        nodes = Array.from(doc.querySelectorAll<HTMLElement>('.sentence-node'));
+      } catch {
+        /* ignore fallback errors */
       }
-      return interleaved;
     }
 
-    return enList.length > 0 ? enList : viList;
-  }, [mode, viewMode, enIframeRef, viIframeRef]);
+    if (nodes.length === 0) {
+      // Fallback: collect paragraphs and headings
+      const pars = Array.from(
+        doc.querySelectorAll<HTMLElement>(
+          'p, h1, h2, h3, h4, h5, h6, li, blockquote, .chapter-start, .section-title, .action-header, .action-title',
+        ),
+      );
+      return pars
+        .map((p, idx) => {
+          if (!p.dataset.sentenceId) {
+            p.dataset.sentenceId = `fallback-${lang}-s-${idx}`;
+            p.classList.add('sentence-node');
+          }
+          return {
+            id: p.dataset.sentenceId,
+            text: p.textContent?.trim() || '',
+            lang,
+          };
+        })
+        .filter((item) => item.text.length > 0);
+    }
 
-  // Highlight and scroll sentence in iframes
+    return nodes
+      .map((node) => ({
+        id: node.dataset.sentenceId || '',
+        text: node.textContent?.trim() || '',
+        lang,
+      }))
+      .filter((item) => item.text.length > 0);
+  }, []);
+
+  // Extract sentences for a given mode
+  const extractSentencesForMode = useCallback(
+    (targetMode: AudiobookLanguageMode): SentenceItem[] => {
+      const enList = getDocSentences(enIframeRef.current, 'en');
+      const viList = getDocSentences(viIframeRef.current, 'vi');
+
+      if (targetMode === 'en') {
+        return enList.length > 0 ? enList : viList;
+      }
+      if (targetMode === 'vi') {
+        return viList.length > 0 ? viList : enList;
+      }
+      if (targetMode === 'bilingual') {
+        if (enList.length > 0 && viList.length > 0) {
+          const maxLen = Math.max(enList.length, viList.length);
+          const interleaved: SentenceItem[] = [];
+          for (let i = 0; i < maxLen; i++) {
+            if (enList[i]) interleaved.push(enList[i]!);
+            if (viList[i]) interleaved.push(viList[i]!);
+          }
+          return interleaved;
+        }
+        return enList.length > 0 ? enList : viList;
+      }
+      return enList.length > 0 ? enList : viList;
+    },
+    [getDocSentences, enIframeRef, viIframeRef],
+  );
+
+  // Highlight and scroll sentence in iframes (targeted by lang to avoid scroll conflict)
   const highlightSentence = useCallback(
-    (sentenceId: string | null) => {
+    (sentenceId: string | null, targetLang?: 'en' | 'vi') => {
       const applyToDoc = (iframe: HTMLIFrameElement | null) => {
         if (!iframe || !iframe.contentDocument) return;
         const doc = iframe.contentDocument;
@@ -104,25 +141,54 @@ export function useAudiobook({
           }
         }
       };
-      applyToDoc(enIframeRef.current);
-      applyToDoc(viIframeRef.current);
+
+      if (!targetLang || targetLang === 'en') {
+        applyToDoc(enIframeRef.current);
+      }
+      if (!targetLang || targetLang === 'vi') {
+        applyToDoc(viIframeRef.current);
+      }
     },
     [enIframeRef, viIframeRef],
   );
 
-  // Re-extract sentences when page or mode changes
+  // Atomic mode change: cleanly stop audio, switch mode, re-extract, and reset index
+  const changeMode = useCallback(
+    (newMode: AudiobookLanguageMode) => {
+      // 1. Immediately abort active playback
+      abortControllerRef.current = true;
+      playingRef.current = false;
+      setIsPlaying(false);
+      stopCurrentAudio();
+      highlightSentence(null);
+
+      // 2. Set new mode & reset index
+      setMode(newMode);
+      setCurrentSentenceIndex(0);
+      setError(null);
+
+      // 3. Extract sentences synchronously with the new mode
+      const list = extractSentencesForMode(newMode);
+      setSentences(list);
+      if (list[0]) {
+        highlightSentence(list[0].id, list[0].lang);
+      }
+    },
+    [extractSentencesForMode, highlightSentence],
+  );
+
+  // Re-extract sentences when page or viewMode changes
   useEffect(() => {
-    // Wait for iframe content to be ready
     const timer = setTimeout(() => {
-      const extracted = extractSentences();
+      const extracted = extractSentencesForMode(mode);
       setSentences(extracted);
       if (currentSentenceIndex >= extracted.length) {
         setCurrentSentenceIndex(0);
       }
-    }, 300);
+    }, 200);
 
     return () => clearTimeout(timer);
-  }, [currentPage, mode, viewMode, extractSentences]);
+  }, [currentPage, viewMode, mode, extractSentencesForMode, currentSentenceIndex]);
 
   // Main playback loop
   const playLoop = useCallback(
@@ -132,7 +198,6 @@ export function useAudiobook({
         if (autoPageTurn && currentPage < totalPage) {
           onNextPage();
           setCurrentSentenceIndex(0);
-          // Playback will continue after page load via next effect
         } else {
           setIsPlaying(false);
           playingRef.current = false;
@@ -145,7 +210,7 @@ export function useAudiobook({
       if (!item) return;
 
       setCurrentSentenceIndex(startIndex);
-      highlightSentence(item.id);
+      highlightSentence(item.id, item.lang);
       setError(null);
 
       try {
@@ -165,7 +230,7 @@ export function useAudiobook({
           return;
         }
 
-        // Brief natural pause between sentences (250ms)
+        // Natural pause between sentences (250ms)
         await new Promise((resolve) => setTimeout(resolve, 250));
 
         if (abortControllerRef.current || !playingRef.current) {
@@ -188,7 +253,7 @@ export function useAudiobook({
   const play = useCallback(() => {
     let list = sentences;
     if (list.length === 0) {
-      list = extractSentences();
+      list = extractSentencesForMode(mode);
       setSentences(list);
     }
     if (list.length === 0) {
@@ -199,7 +264,7 @@ export function useAudiobook({
     playingRef.current = true;
     abortControllerRef.current = false;
     playLoop(currentSentenceIndex, list);
-  }, [sentences, extractSentences, currentSentenceIndex, playLoop]);
+  }, [sentences, extractSentencesForMode, mode, currentSentenceIndex, playLoop]);
 
   const pause = useCallback(() => {
     setIsPlaying(false);
@@ -212,11 +277,13 @@ export function useAudiobook({
     stopCurrentAudio();
     const nextIdx = Math.min(sentences.length - 1, currentSentenceIndex + 1);
     setCurrentSentenceIndex(nextIdx);
+    const item = sentences[nextIdx];
+    if (item) {
+      highlightSentence(item.id, item.lang);
+    }
     if (isPlaying) {
       abortControllerRef.current = false;
       playLoop(nextIdx, sentences);
-    } else {
-      highlightSentence(sentences[nextIdx]?.id || null);
     }
   }, [sentences, currentSentenceIndex, isPlaying, playLoop, highlightSentence]);
 
@@ -224,11 +291,13 @@ export function useAudiobook({
     stopCurrentAudio();
     const prevIdx = Math.max(0, currentSentenceIndex - 1);
     setCurrentSentenceIndex(prevIdx);
+    const item = sentences[prevIdx];
+    if (item) {
+      highlightSentence(item.id, item.lang);
+    }
     if (isPlaying) {
       abortControllerRef.current = false;
       playLoop(prevIdx, sentences);
-    } else {
-      highlightSentence(sentences[prevIdx]?.id || null);
     }
   }, [sentences, currentSentenceIndex, isPlaying, playLoop, highlightSentence]);
 
@@ -248,7 +317,8 @@ export function useAudiobook({
     totalSentences: sentences.length,
     currentSentence: sentences[currentSentenceIndex] || null,
     mode,
-    setMode,
+    setMode: changeMode,
+    changeMode,
     speed,
     setSpeed,
     autoPageTurn,
