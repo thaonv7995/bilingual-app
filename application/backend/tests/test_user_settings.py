@@ -76,6 +76,8 @@ def test_user_settings_get_default_is_empty():
         "hasRealtimeKey": False,
         "audioProvider": "device",
         "audioVoice": "",
+        "audioVoiceEn": "",
+        "audioVoiceVi": "",
         "speechSpeed": "1.0",
         "hasAzureKey": False,
         "hasElevenLabsKey": False,
@@ -93,6 +95,8 @@ def test_audio_settings_roundtrip():
             {
                 "audioProvider": "elevenlabs",
                 "audioVoice": "rachel",
+                "audioVoiceEn": "alloy",
+                "audioVoiceVi": "hoaimy",
                 "speechSpeed": "1.25",
                 "azureApiKey": "azure-secret",
                 "elevenLabsApiKey": "eleven-secret",
@@ -105,6 +109,8 @@ def test_audio_settings_roundtrip():
 
         assert view["audioProvider"] == "elevenlabs"
         assert view["audioVoice"] == "rachel"
+        assert view["audioVoiceEn"] == "alloy"
+        assert view["audioVoiceVi"] == "hoaimy"
         assert view["speechSpeed"] == "1.25"
         assert view["hasAzureKey"] is True
         assert view["hasElevenLabsKey"] is True

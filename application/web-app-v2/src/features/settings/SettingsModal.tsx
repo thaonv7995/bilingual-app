@@ -88,6 +88,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   // Audio Provider Settings (server-side)
   const [audioProvider, setAudioProvider] = useState('device');
   const [audioVoice, setAudioVoice] = useState('');
+  const [audioVoiceEn, setAudioVoiceEn] = useState('');
+  const [audioVoiceVi, setAudioVoiceVi] = useState('');
   const [speechSpeed, setSpeechSpeed] = useState('1.0');
   const [azureApiKey, setAzureApiKey] = useState('');
   const [azureDirty, setAzureDirty] = useState(false);
@@ -114,6 +116,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         setHasVocaToken(s.hasVocaToken);
         setAudioProvider(s.audioProvider || 'device');
         setAudioVoice(s.audioVoice || '');
+        setAudioVoiceEn(s.audioVoiceEn || s.audioVoice || '');
+        setAudioVoiceVi(s.audioVoiceVi || '');
         setSpeechSpeed(s.speechSpeed || '1.0');
         setHasAzureKey(!!s.hasAzureKey);
         setHasElevenLabsKey(!!s.hasElevenLabsKey);
@@ -161,17 +165,24 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const onTestAudio = async () => {
+  const onTestAudio = async (lang: 'en' | 'vi') => {
     setAudioTesting(true);
     try {
+      const isVi = lang === 'vi';
+      const voice = isVi
+        ? (audioVoiceVi.trim() || audioVoice.trim())
+        : (audioVoiceEn.trim() || audioVoice.trim());
+      const testText = isVi
+        ? 'Xin chào, đây là âm thanh đọc thử sách bằng tiếng Việt.'
+        : 'Hello, this is a preview of your audiobook reading voice.';
       await playSentenceAudio({
-        text: 'Hello, this is a preview of your audiobook reading voice.',
+        text: testText,
         provider: audioProvider,
-        voice: audioVoice,
+        voice,
         speed: speechSpeed,
-        lang: 'en-US',
+        lang: isVi ? 'vi-VN' : 'en-US',
       });
-      toast.show('Phát âm thử thành công!', 'success');
+      toast.show(`Phát âm thử (${lang.toUpperCase()}) thành công!`, 'success');
     } catch (err: any) {
       toast.show(`Lỗi phát âm: ${err.message}`, 'danger');
     } finally {
@@ -196,7 +207,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         ...(realtimeDirty ? { realtimeApiKey: realtimeKey.trim() } : {}),
         ...(vocaTokenDirty ? { vocaToken: vocaToken.trim() } : {}),
         audioProvider,
-        audioVoice: audioVoice.trim(),
+        audioVoice: audioVoiceEn.trim() || audioVoice.trim(),
+        audioVoiceEn: audioVoiceEn.trim(),
+        audioVoiceVi: audioVoiceVi.trim(),
         speechSpeed: speechSpeed.trim() || '1.0',
         ...(azureDirty ? { azureApiKey: azureApiKey.trim() } : {}),
         ...(elevenLabsDirty ? { elevenLabsApiKey: elevenLabsApiKey.trim() } : {}),
@@ -298,19 +311,35 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
             {audioProvider !== 'device' && (
               <>
-                <Field label="Tên Voice (Giọng đọc)" full>
+                <Field label="Voice Tiếng Anh (English Voice ID)">
                   <input
                     className={styles.input}
                     type="text"
                     placeholder={
                       audioProvider === 'azure'
-                        ? 'en-US-JennyNeural (hoặc vi-VN-HoaiMyNeural)'
+                        ? 'en-US-JennyNeural'
                         : audioProvider === 'elevenlabs'
                           ? '21m00Tcm4TlvDq8ikWAM (Rachel)'
                           : 'alloy, echo, nova...'
                     }
-                    value={audioVoice}
-                    onChange={(e) => setAudioVoice(e.target.value)}
+                    value={audioVoiceEn}
+                    onChange={(e) => setAudioVoiceEn(e.target.value)}
+                  />
+                </Field>
+
+                <Field label="Voice Tiếng Việt (Vietnamese Voice ID)">
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder={
+                      audioProvider === 'azure'
+                        ? 'vi-VN-HoaiMyNeural hoặc vi-VN-NamMinhNeural'
+                        : audioProvider === 'elevenlabs'
+                          ? 'Voice ID tiếng Việt'
+                          : 'alloy, shimmer...'
+                    }
+                    value={audioVoiceVi}
+                    onChange={(e) => setAudioVoiceVi(e.target.value)}
                   />
                 </Field>
 
@@ -356,14 +385,24 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </Field>
             )}
 
-            <div className={`${styles.group} ${styles.groupFull}`}>
+            <div className={`${styles.group} ${styles.groupFull}`} style={{ display: 'flex', gap: '10px' }}>
               <button
                 type="button"
                 className={styles.btnGhost}
-                onClick={onTestAudio}
+                onClick={() => onTestAudio('en')}
                 disabled={audioTesting}
+                style={{ flex: 1 }}
               >
-                {audioTesting ? 'Đang đọc thử…' : '▶ Nghe thử giọng đọc'}
+                {audioTesting ? 'Đang đọc…' : '▶ Thử Voice Tiếng Anh'}
+              </button>
+              <button
+                type="button"
+                className={styles.btnGhost}
+                onClick={() => onTestAudio('vi')}
+                disabled={audioTesting}
+                style={{ flex: 1 }}
+              >
+                {audioTesting ? 'Đang đọc…' : '▶ Thử Voice Tiếng Việt'}
               </button>
             </div>
           </Section>

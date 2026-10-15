@@ -11,6 +11,8 @@ export interface ServerSecrets {
   hasRealtimeKey: boolean;
   audioProvider?: string;
   audioVoice?: string;
+  audioVoiceEn?: string;
+  audioVoiceVi?: string;
   speechSpeed?: string;
   hasAzureKey?: boolean;
   hasElevenLabsKey?: boolean;
@@ -34,6 +36,8 @@ export async function saveServerSecrets(patch: {
   realtimeApiKey?: string;
   audioProvider?: string;
   audioVoice?: string;
+  audioVoiceEn?: string;
+  audioVoiceVi?: string;
   speechSpeed?: string;
   azureApiKey?: string;
   elevenLabsApiKey?: string;

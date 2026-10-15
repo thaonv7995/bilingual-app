@@ -33,13 +33,16 @@ struct AISettingsView: View {
     // Audio Provider Settings (server-side)
     @State private var audioProvider: String = "device"
     @State private var audioVoice: String = ""
+    @State private var audioVoiceEn: String = ""
+    @State private var audioVoiceVi: String = ""
     @State private var speechSpeed: String = "1.0"
     @State private var azureApiKey: String = ""
     @State private var elevenLabsApiKey: String = ""
 
     @State private var hasAzureKey: Bool = false
     @State private var hasElevenLabsKey: Bool = false
-    @State private var isTestingVoice: Bool = false
+    @State private var isTestingVoiceEn: Bool = false
+    @State private var isTestingVoiceVi: Bool = false
     @State private var testVoiceError: String? = nil
     /// Read once in `loadSettings` — `AVSpeechSynthesisVoice.speechVoices()` is too heavy to
     /// call from `body`. Optimistic default so the hint never flickers.
@@ -140,6 +143,32 @@ struct AISettingsView: View {
             return "Rachel"
         case "openai":
             return "alloy"
+        default:
+            return "Default Device Voice"
+        }
+    }
+
+    private var voiceEnPlaceholderText: String {
+        switch audioProvider {
+        case "azure":
+            return "en-US-JennyNeural"
+        case "elevenlabs":
+            return "21m00Tcm4TlvDq8ikWAM (Rachel)"
+        case "openai":
+            return "alloy, echo, nova..."
+        default:
+            return "Default Device Voice"
+        }
+    }
+
+    private var voiceViPlaceholderText: String {
+        switch audioProvider {
+        case "azure":
+            return "vi-VN-HoaiMyNeural hoặc vi-VN-NamMinhNeural"
+        case "elevenlabs":
+            return "Voice ID tiếng Việt"
+        case "openai":
+            return "alloy, shimmer..."
         default:
             return "Default Device Voice"
         }
@@ -660,18 +689,24 @@ struct AISettingsView: View {
                                 .padding(.top, 2)
 
                             if shouldShowCloudVoiceFields {
-                                Text("Voice name sẽ được đồng bộ giữa Web và iPhone thông qua backend.")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(Color(hex: "94a3b8"))
-                            }
-
-                            if shouldShowCloudVoiceFields {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("Voice")
+                                    Text("Voice Tiếng Anh (English Voice ID)")
                                         .font(.system(size: 11, weight: .semibold))
                                         .foregroundColor(.gray)
 
-                                    TextField(voicePlaceholderText, text: $audioVoice)
+                                    TextField(voiceEnPlaceholderText, text: $audioVoiceEn)
+                                        .padding(12)
+                                        .background(Color.white.opacity(0.05))
+                                        .cornerRadius(10)
+                                        .foregroundColor(.white)
+                                }
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Voice Tiếng Việt (Vietnamese Voice ID)")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.gray)
+
+                                    TextField(voiceViPlaceholderText, text: $audioVoiceVi)
                                         .padding(12)
                                         .background(Color.white.opacity(0.05))
                                         .cornerRadius(10)
@@ -721,11 +756,11 @@ struct AISettingsView: View {
 
                             if audioProvider != "device" {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Preview")
+                                    Text("Preview Cấu hình")
                                         .font(.system(size: 11, weight: .semibold))
                                         .foregroundColor(.gray)
 
-                                    Text("Provider: \(audioProviderDisplayName)\nVoice: \(audioVoice.isEmpty ? voicePlaceholderText : audioVoice)\nSpeed: \(speechSpeed)")
+                                    Text("Provider: \(audioProviderDisplayName)\nVoice EN: \(audioVoiceEn.isEmpty ? voiceEnPlaceholderText : audioVoiceEn)\nVoice VI: \(audioVoiceVi.isEmpty ? voiceViPlaceholderText : audioVoiceVi)\nSpeed: \(speechSpeed)")
                                         .font(.system(size: 11))
                                         .foregroundColor(Color(hex: "94a3b8"))
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -735,40 +770,81 @@ struct AISettingsView: View {
                                 }
                             }
 
-                            Button(action: {
-                                Task {
-                                    isTestingVoice = true
-                                    testVoiceError = nil
-                                    defer { isTestingVoice = false }
-                                    do {
-                                        try await AudioProviderFactory.shared.preview(
-                                            provider: audioProvider,
-                                            voice: audioVoice.trimmingCharacters(in: .whitespacesAndNewlines),
-                                            speed: speechSpeed.trimmingCharacters(in: .whitespacesAndNewlines)
-                                        )
-                                    } catch {
-                                        testVoiceError = error.localizedDescription
+                            HStack(spacing: 8) {
+                                Button(action: {
+                                    Task {
+                                        isTestingVoiceEn = true
+                                        testVoiceError = nil
+                                        defer { isTestingVoiceEn = false }
+                                        do {
+                                            let v = audioVoiceEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                                ? audioVoice.trimmingCharacters(in: .whitespacesAndNewlines)
+                                                : audioVoiceEn.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            try await AudioProviderFactory.shared.preview(
+                                                provider: audioProvider,
+                                                voice: v,
+                                                speed: speechSpeed.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                lang: "en-US"
+                                            )
+                                        } catch {
+                                            testVoiceError = error.localizedDescription
+                                        }
                                     }
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: isTestingVoiceEn ? "waveform" : "play.circle.fill")
+                                        Text(isTestingVoiceEn ? "Đang phát..." : "Thử Voice EN")
+                                            .font(.system(size: 12, weight: .semibold))
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .foregroundColor(.white)
+                                    .padding(.vertical, 10)
+                                    .background(Color(hex: "14b8a6").opacity(0.2))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color(hex: "14b8a6").opacity(0.4), lineWidth: 1)
+                                    )
+                                    .cornerRadius(10)
                                 }
-                            }) {
-                                HStack {
-                                    Image(systemName: isTestingVoice ? "waveform" : "play.circle.fill")
-                                    Text(isTestingVoice ? "Đang phát thử..." : "Test Voice")
-                                    Spacer()
-                                    Text(audioProviderDisplayName)
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.gray)
+                                .disabled(isTestingVoiceEn || isTestingVoiceVi)
+
+                                Button(action: {
+                                    Task {
+                                        isTestingVoiceVi = true
+                                        testVoiceError = nil
+                                        defer { isTestingVoiceVi = false }
+                                        do {
+                                            let v = audioVoiceVi.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                                ? audioVoice.trimmingCharacters(in: .whitespacesAndNewlines)
+                                                : audioVoiceVi.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            try await AudioProviderFactory.shared.preview(
+                                                provider: audioProvider,
+                                                voice: v,
+                                                speed: speechSpeed.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                lang: "vi-VN"
+                                            )
+                                        } catch {
+                                            testVoiceError = error.localizedDescription
+                                        }
+                                    }
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: isTestingVoiceVi ? "waveform" : "play.circle.fill")
+                                        Text(isTestingVoiceVi ? "Đang phát..." : "Thử Voice VI")
+                                            .font(.system(size: 12, weight: .semibold))
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .foregroundColor(.white)
+                                    .padding(.vertical, 10)
+                                    .background(Color(hex: "0284c7").opacity(0.2))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color(hex: "0284c7").opacity(0.4), lineWidth: 1)
+                                    )
+                                    .cornerRadius(10)
                                 }
-                                .foregroundColor(.white)
-                                .padding(12)
-                                .background(Color(hex: "14b8a6").opacity(0.15))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color(hex: "14b8a6").opacity(0.35))
-                                )
-                                .cornerRadius(12)
+                                .disabled(isTestingVoiceEn || isTestingVoiceVi)
                             }
-                            .disabled(isTestingVoice)
 
                             if let err = testVoiceError {
                                 Text(err)
@@ -1142,6 +1218,8 @@ struct AISettingsView: View {
 
             audioProvider = secrets.audioProvider ?? "device"
             audioVoice = secrets.audioVoice ?? ""
+            audioVoiceEn = secrets.audioVoiceEn ?? (secrets.audioVoice ?? "")
+            audioVoiceVi = secrets.audioVoiceVi ?? ""
             speechSpeed = secrets.speechSpeed ?? "1.0"
             hasAzureKey = secrets.hasAzureKey ?? false
             hasElevenLabsKey = secrets.hasElevenLabsKey ?? false
@@ -1213,11 +1291,17 @@ struct AISettingsView: View {
         }
 
         do {
+            let vEn = audioVoiceEn.trimmingCharacters(in: .whitespacesAndNewlines)
+            let vVi = audioVoiceVi.trimmingCharacters(in: .whitespacesAndNewlines)
+            let vFallback = !vEn.isEmpty ? vEn : audioVoice.trimmingCharacters(in: .whitespacesAndNewlines)
+
             try await api.saveServerSecrets(
                 llmApiKey: llm.isEmpty ? nil : llm,
                 realtimeApiKey: rt.isEmpty ? nil : rt,
                 audioProvider: audioProvider,
-                audioVoice: audioVoice.trimmingCharacters(in: .whitespacesAndNewlines),
+                audioVoice: vFallback,
+                audioVoiceEn: vEn,
+                audioVoiceVi: vVi,
                 speechSpeed: speechSpeed,
                 azureApiKey: azureApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : azureApiKey.trimmingCharacters(in: .whitespacesAndNewlines),
                 elevenLabsApiKey: elevenLabsApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : elevenLabsApiKey.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1225,6 +1309,14 @@ struct AISettingsView: View {
                 // Empty means "keep what is stored" — the field is blank whenever the user
                 // has not typed a replacement.
                 vocaToken: typedVocaKey.isEmpty ? nil : typedVocaKey
+            )
+
+            AudiobookManager.shared.configure(
+                provider: audioProvider,
+                voice: vFallback,
+                speed: speechSpeed,
+                voiceEn: vEn,
+                voiceVi: vVi
             )
         } catch {
             return "Không lưu được cấu hình lên server. Kiểm tra kết nối rồi thử lại."

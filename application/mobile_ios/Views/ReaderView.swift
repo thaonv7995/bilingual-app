@@ -307,9 +307,11 @@ struct ReaderView: View {
                             readerUsesDoubleSided = useDoubleSided
                             AudiobookManager.shared.onPageTurnNeeded = {
                                 if self.page < self.book.pageCount {
+                                    AudiobookManager.shared.shouldContinuePlayingOnPageLoad = true
                                     self.page += 1
                                     self.saveProgress()
                                 } else {
+                                    AudiobookManager.shared.shouldContinuePlayingOnPageLoad = false
                                     AudiobookManager.shared.pause()
                                 }
                             }
@@ -318,7 +320,9 @@ struct ReaderView: View {
                                     AudiobookManager.shared.configure(
                                         provider: secrets.audioProvider ?? "device",
                                         voice: secrets.audioVoice ?? "",
-                                        speed: secrets.speechSpeed ?? "1.0"
+                                        speed: secrets.speechSpeed ?? "1.0",
+                                        voiceEn: secrets.audioVoiceEn ?? "",
+                                        voiceVi: secrets.audioVoiceVi ?? ""
                                     )
                                 }
                             }

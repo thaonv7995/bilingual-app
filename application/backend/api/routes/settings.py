@@ -32,11 +32,15 @@ def _public_view(s: UserSettings | None) -> dict:
     llm = (s.llm_api_key if s else "") or ""
     realtime = (s.realtime_api_key if s else "") or ""
     voca_token = (s.voca_bridge_token if s else "") or ""
+    voice_en = (s.audio_voice_en if s and s.audio_voice_en else "") or (s.audio_voice if s and s.audio_voice else "")
+    voice_vi = (s.audio_voice_vi if s and s.audio_voice_vi else "")
     return {
         "hasLlmKey": bool(llm or ENV_OPENAI),
         "hasRealtimeKey": bool(realtime or llm or ENV_OPENAI),
         "audioProvider": (s.audio_provider if s and s.audio_provider else "device"),
         "audioVoice": (s.audio_voice if s and s.audio_voice else ""),
+        "audioVoiceEn": voice_en,
+        "audioVoiceVi": voice_vi,
         "speechSpeed": (s.speech_speed if s and s.speech_speed else "1.0"),
         "hasAzureKey": bool((s.azure_api_key if s else "") or ""),
         "hasElevenLabsKey": bool((s.elevenlabs_api_key if s else "") or ""),
@@ -70,6 +74,12 @@ def put_user_settings(
 
     if payload.get("audioVoice") is not None and "audioVoice" in payload:
         s.audio_voice = str(payload["audioVoice"]).strip()
+
+    if payload.get("audioVoiceEn") is not None and "audioVoiceEn" in payload:
+        s.audio_voice_en = str(payload["audioVoiceEn"]).strip()
+
+    if payload.get("audioVoiceVi") is not None and "audioVoiceVi" in payload:
+        s.audio_voice_vi = str(payload["audioVoiceVi"]).strip()
 
     if payload.get("speechSpeed") is not None and "speechSpeed" in payload:
         s.speech_speed = str(payload["speechSpeed"]).strip()

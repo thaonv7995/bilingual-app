@@ -34,7 +34,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		0DBB0FCA2CA7DBE68673F742 /* nodeids */ = {isa = PBXFileReference; path = nodeids; sourceTree = "<group>"; };
+		0DBB0FCA2CA7DBE68673F742 /* nodeids */ = {isa = PBXFileReference; lastKnownFileType = text; path = nodeids; sourceTree = "<group>"; };
 		1102CFF2239A16DFAE29B93A /* AudioProviderFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioProviderFactory.swift; sourceTree = "<group>"; };
 		159815F66B6C0D29720BE1A9 /* BookshelfView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookshelfView.swift; sourceTree = "<group>"; };
 		1D97E70A5694862660AFD0E6 /* AISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsView.swift; sourceTree = "<group>"; };
@@ -47,7 +47,7 @@
 		7647FCD3D310CF55FDE7B947 /* RealtimeVoiceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeVoiceEngine.swift; sourceTree = "<group>"; };
 		83C106C930837C2F0DA5DB0C /* BilingualReader.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BilingualReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		93255CF95CE85C3606041551 /* AudioSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionCoordinator.swift; sourceTree = "<group>"; };
-		94539D34B57C19485BF9A6B3 /* CACHEDIR.TAG */ = {isa = PBXFileReference; path = CACHEDIR.TAG; sourceTree = "<group>"; };
+		94539D34B57C19485BF9A6B3 /* CACHEDIR.TAG */ = {isa = PBXFileReference; lastKnownFileType = text; path = CACHEDIR.TAG; sourceTree = "<group>"; };
 		9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPagerView.swift; sourceTree = "<group>"; };
 		99AF811F0CC00281EC4C8B04 /* BookCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCacheManager.swift; sourceTree = "<group>"; };
 		AB39B254369C911E5008B8A0 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
@@ -58,7 +58,7 @@
 		CEF9407A23E7E7C28184F0EE /* AudiobookPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookPlayerBar.swift; sourceTree = "<group>"; };
 		D57B156C7DBCD09A96394153 /* BilingualWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualWebView.swift; sourceTree = "<group>"; };
 		D9395964C3F86E9882D1CC48 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
-		E20A28110BBEE5B975110462 /* .gitignore */ = {isa = PBXFileReference; path = .gitignore; sourceTree = "<group>"; };
+		E20A28110BBEE5B975110462 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 		F25A14856419E8E55800C330 /* LayoutOptionButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutOptionButton.swift; sourceTree = "<group>"; };
 		FB921731167CE40A439D7728 /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -142,10 +142,6 @@
 			children = (
 				5538CACD35C531C90CC07521 /* Assets.xcassets */,
 				58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */,
-				5AC6370895AC03D4C7B9BB92 /* .pytest_cache */,
-				E662218020EDB28D9165D73D /* Models */,
-				16601F8E94BA2CEE66D8C2A2 /* Services */,
-				FBE7E929CF26843AFD2C06AD /* Views */,
 			);
 			name = mobile_ios;
 			path = .;
@@ -442,7 +438,7 @@
 				565BF9E84B077291DBC51E85 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 		AFDC2266A6E7C754B2E6869E /* Build configuration list for PBXNativeTarget "BilingualReader" */ = {
 			isa = XCConfigurationList;
@@ -451,7 +447,7 @@
 				9E9AC5FF940D9C33B395F160 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

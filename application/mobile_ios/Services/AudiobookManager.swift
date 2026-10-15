@@ -37,7 +37,10 @@ final class AudiobookManager: ObservableObject {
 
     @Published var provider: String = "device"
     @Published var voice: String = ""
+    @Published var voiceEn: String = ""
+    @Published var voiceVi: String = ""
     @Published var currentViewMode: String = "split"
+    var shouldContinuePlayingOnPageLoad: Bool = false
 
     private var playbackTask: Task<Void, Never>?
     private weak var enWebView: WKWebView?
@@ -46,9 +49,11 @@ final class AudiobookManager: ObservableObject {
 
     private init() {}
 
-    func configure(provider: String, voice: String, speed: String) {
+    func configure(provider: String, voice: String, speed: String, voiceEn: String = "", voiceVi: String = "") {
         self.provider = provider
         self.voice = voice
+        self.voiceEn = voiceEn
+        self.voiceVi = voiceVi
         self.speed = speed
     }
 
@@ -57,11 +62,33 @@ final class AudiobookManager: ObservableObject {
         self.viWebView = vi
         self.currentViewMode = viewMode
         Task {
+            // Wait briefly for DOM rendering/script execution if page just flipped
+            try? await Task.sleep(nanoseconds: 180_000_000)
             await extractSentences(viewMode: viewMode)
+
+            if self.shouldContinuePlayingOnPageLoad {
+                if !self.sentences.isEmpty {
+                    self.shouldContinuePlayingOnPageLoad = false
+                    self.currentSentenceIndex = 0
+                    self.play()
+                } else {
+                    // Retry once after additional 350ms in case WebView was still loading HTML
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    if self.shouldContinuePlayingOnPageLoad {
+                        await extractSentences(viewMode: viewMode)
+                        if !self.sentences.isEmpty && self.shouldContinuePlayingOnPageLoad {
+                            self.shouldContinuePlayingOnPageLoad = false
+                            self.currentSentenceIndex = 0
+                            self.play()
+                        }
+                    }
+                }
+            }
         }
     }
 
     func changeMode(_ newMode: AudiobookLanguageMode) {
+        shouldContinuePlayingOnPageLoad = false
         pause()
         highlightSentence(id: nil)
         self.mode = newMode
@@ -175,6 +202,7 @@ final class AudiobookManager: ObservableObject {
     }
 
     func pause() {
+        shouldContinuePlayingOnPageLoad = false
         isPlaying = false
         playbackTask?.cancel()
         playbackTask = nil
@@ -215,10 +243,13 @@ final class AudiobookManager: ObservableObject {
 
             do {
                 let langTag = item.lang == "vi" ? "vi-VN" : "en-US"
+                let selectedVoice = item.lang == "vi"
+                    ? (!voiceVi.isEmpty ? voiceVi : voice)
+                    : (!voiceEn.isEmpty ? voiceEn : voice)
                 try await AudioProviderFactory.shared.speak(
                     text: item.text,
                     provider: provider,
-                    voice: voice,
+                    voice: selectedVoice,
                     speed: speed,
                     lang: langTag
                 )
@@ -239,6 +270,7 @@ final class AudiobookManager: ObservableObject {
         // Reached end of sentences
         if isPlaying && currentSentenceIndex >= sentences.count - 1 {
             if autoPageTurn {
+                shouldContinuePlayingOnPageLoad = true
                 onPageTurnNeeded?()
             } else {
                 isPlaying = false
@@ -272,6 +304,7 @@ final class AudiobookManager: ObservableObject {
     }
 
     func close() {
+        shouldContinuePlayingOnPageLoad = false
         pause()
         highlightSentence(id: nil)
         isBarVisible = false

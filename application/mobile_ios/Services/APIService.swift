@@ -406,6 +406,8 @@ class APIService: ObservableObject {
         let hasRealtimeKey: Bool
         let audioProvider: String?
         let audioVoice: String?
+        let audioVoiceEn: String?
+        let audioVoiceVi: String?
         let speechSpeed: String?
         let hasAzureKey: Bool?
         let hasElevenLabsKey: Bool?
@@ -428,6 +430,8 @@ class APIService: ObservableObject {
         realtimeApiKey: String? = nil,
         audioProvider: String? = nil,
         audioVoice: String? = nil,
+        audioVoiceEn: String? = nil,
+        audioVoiceVi: String? = nil,
         speechSpeed: String? = nil,
         azureApiKey: String? = nil,
         elevenLabsApiKey: String? = nil,
@@ -440,6 +444,8 @@ class APIService: ObservableObject {
         if let v = realtimeApiKey { body["realtimeApiKey"] = v }
         if let v = audioProvider { body["audioProvider"] = v }
         if let v = audioVoice { body["audioVoice"] = v }
+        if let v = audioVoiceEn { body["audioVoiceEn"] = v }
+        if let v = audioVoiceVi { body["audioVoiceVi"] = v }
         if let v = speechSpeed { body["speechSpeed"] = v }
         if let v = azureApiKey { body["azureApiKey"] = v }
         if let v = elevenLabsApiKey { body["elevenLabsApiKey"] = v }

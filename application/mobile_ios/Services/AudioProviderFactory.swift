@@ -13,14 +13,16 @@ final class AudioProviderFactory: NSObject, AVAudioPlayerDelegate {
     }
 
     /// Preview a test phrase with given audio settings
-    func preview(provider: String, voice: String, speed: String) async throws {
-        let sampleText = "Hello! This is a test of your audiobook reading voice."
+    func preview(provider: String, voice: String, speed: String, lang: String = "en-US") async throws {
+        let sampleText = lang.hasPrefix("vi")
+            ? "Xin chào! Đây là âm thanh đọc thử sách bằng tiếng Việt."
+            : "Hello! This is a test of your audiobook reading voice."
         try await speak(
             text: sampleText,
             provider: provider,
             voice: voice,
             speed: speed,
-            lang: "en-US"
+            lang: lang
         )
     }
 

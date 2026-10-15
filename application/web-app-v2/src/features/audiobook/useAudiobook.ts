@@ -41,6 +41,7 @@ export function useAudiobook({
 
   const playingRef = useRef(false);
   const abortControllerRef = useRef<boolean>(false);
+  const shouldAutoPlayNextPageRef = useRef<boolean>(false);
 
   // Sync speed with server settings when loaded
   useEffect(() => {
@@ -156,6 +157,7 @@ export function useAudiobook({
   const changeMode = useCallback(
     (newMode: AudiobookLanguageMode) => {
       // 1. Immediately abort active playback
+      shouldAutoPlayNextPageRef.current = false;
       abortControllerRef.current = true;
       playingRef.current = false;
       setIsPlaying(false);
@@ -177,27 +179,14 @@ export function useAudiobook({
     [extractSentencesForMode, highlightSentence],
   );
 
-  // Re-extract sentences when page or viewMode changes
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const extracted = extractSentencesForMode(mode);
-      setSentences(extracted);
-      if (currentSentenceIndex >= extracted.length) {
-        setCurrentSentenceIndex(0);
-      }
-    }, 200);
-
-    return () => clearTimeout(timer);
-  }, [currentPage, viewMode, mode, extractSentencesForMode, currentSentenceIndex]);
-
   // Main playback loop
   const playLoop = useCallback(
     async (startIndex: number, currentList: SentenceItem[]) => {
       if (startIndex >= currentList.length) {
         // Reached end of page
         if (autoPageTurn && currentPage < totalPage) {
+          shouldAutoPlayNextPageRef.current = true;
           onNextPage();
-          setCurrentSentenceIndex(0);
         } else {
           setIsPlaying(false);
           playingRef.current = false;
@@ -215,8 +204,13 @@ export function useAudiobook({
 
       try {
         const provider = serverSecrets?.audioProvider || 'device';
-        const voice = serverSecrets?.audioVoice || '';
-        const langTag = item.lang === 'vi' ? 'vi-VN' : 'en-US';
+        const isVi = item.lang === 'vi';
+        // Language-specific voice selection with fallback
+        const voice =
+          (isVi
+            ? serverSecrets?.audioVoiceVi || serverSecrets?.audioVoice
+            : serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice) || '';
+        const langTag = isVi ? 'vi-VN' : 'en-US';
 
         await playSentenceAudio({
           text: item.text,
@@ -250,6 +244,28 @@ export function useAudiobook({
     [autoPageTurn, currentPage, totalPage, onNextPage, highlightSentence, serverSecrets, speed],
   );
 
+  // Re-extract sentences when page or viewMode changes, and auto-continue playback on page change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const extracted = extractSentencesForMode(mode);
+      setSentences(extracted);
+      if (shouldAutoPlayNextPageRef.current) {
+        shouldAutoPlayNextPageRef.current = false;
+        if (extracted.length > 0) {
+          setCurrentSentenceIndex(0);
+          setIsPlaying(true);
+          playingRef.current = true;
+          abortControllerRef.current = false;
+          playLoop(0, extracted);
+        }
+      } else if (currentSentenceIndex >= extracted.length) {
+        setCurrentSentenceIndex(0);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [currentPage, viewMode, mode, extractSentencesForMode, currentSentenceIndex, playLoop]);
+
   const play = useCallback(() => {
     let list = sentences;
     if (list.length === 0) {
@@ -263,10 +279,12 @@ export function useAudiobook({
     setIsPlaying(true);
     playingRef.current = true;
     abortControllerRef.current = false;
+    shouldAutoPlayNextPageRef.current = false;
     playLoop(currentSentenceIndex, list);
   }, [sentences, extractSentencesForMode, mode, currentSentenceIndex, playLoop]);
 
   const pause = useCallback(() => {
+    shouldAutoPlayNextPageRef.current = false;
     setIsPlaying(false);
     playingRef.current = false;
     abortControllerRef.current = true;
@@ -301,7 +319,7 @@ export function useAudiobook({
     }
   }, [sentences, currentSentenceIndex, isPlaying, playLoop, highlightSentence]);
 
-  // Clean up on unmount or page change
+  // Clean up on unmount
   useEffect(() => {
     return () => {
       abortControllerRef.current = true;
@@ -309,7 +327,7 @@ export function useAudiobook({
       stopCurrentAudio();
       highlightSentence(null);
     };
-  }, [currentPage, highlightSentence]);
+  }, [highlightSentence]);
 
   return {
     isPlaying,

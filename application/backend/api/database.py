@@ -134,6 +134,8 @@ class UserSettings(Base):
     # Audiobook / TTS settings
     audio_provider = Column(String, nullable=True, default="device")
     audio_voice = Column(String, nullable=True, default="")
+    audio_voice_en = Column(String, nullable=True, default="")
+    audio_voice_vi = Column(String, nullable=True, default="")
     azure_api_key = Column(String, nullable=True, default="")
     elevenlabs_api_key = Column(String, nullable=True, default="")
     speech_speed = Column(String, nullable=True, default="1.0")
@@ -214,6 +216,8 @@ def _migrate_add_audio_settings():
     cols_to_add = [
         ("audio_provider", "TEXT DEFAULT 'device'"),
         ("audio_voice", "TEXT DEFAULT ''"),
+        ("audio_voice_en", "TEXT DEFAULT ''"),
+        ("audio_voice_vi", "TEXT DEFAULT ''"),
         ("azure_api_key", "TEXT DEFAULT ''"),
         ("elevenlabs_api_key", "TEXT DEFAULT ''"),
         ("speech_speed", "TEXT DEFAULT '1.0'"),
