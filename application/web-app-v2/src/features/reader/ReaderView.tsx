@@ -21,6 +21,8 @@ import {
   syncVocaCards,
 } from '@/lib/voca';
 import { ReaderTopbar } from './ReaderTopbar';
+import { AudiobookBar } from '@/features/audiobook/AudiobookBar';
+import { useAudiobook } from '@/features/audiobook/useAudiobook';
 import { ReaderNotePanel } from './ReaderNotePanel';
 import {
   type BookNotebookStatus,
@@ -139,6 +141,18 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     });
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [audiobookOpen, setAudiobookOpen] = useState(false);
+  const enIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const viIframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  const audiobook = useAudiobook({
+    currentPage: page,
+    totalPage: book.pageCount,
+    viewMode,
+    enIframeRef,
+    viIframeRef,
+    onNextPage: () => void requestPageChange((p) => p + 1),
+  });
 
   // Refresh the local Voca mirror once per open so lookups answer from cache.
   // Incremental + throttled: costs one tiny request when nothing changed.
@@ -644,6 +658,8 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
           })
         }
         onOpenSettings={() => setSettingsOpen(true)}
+        audiobookOpen={audiobookOpen}
+        onToggleAudiobook={() => setAudiobookOpen((v) => !v)}
         onLogout={logout}
       />
 
@@ -655,6 +671,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
               <div className="iframe-wrapper">
                 <div className="iframe-stage">
                   <iframe
+                    ref={enIframeRef}
                     className="reader-iframe en-pane-iframe"
                     src={enPageUrl}
                     key={`en-${page}`}
@@ -673,6 +690,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
               <div className="iframe-wrapper">
                 <div className="iframe-stage">
                   <iframe
+                    ref={viIframeRef}
                     className="reader-iframe vi-pane-iframe"
                     src={viPageUrl}
                     key={`vi-${page}`}
@@ -714,6 +732,28 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         status={notebookStatus}
         onRefreshStatus={refreshNotebookStatus}
       />
+
+      {audiobookOpen && (
+        <AudiobookBar
+          isPlaying={audiobook.isPlaying}
+          currentSentenceIndex={audiobook.currentSentenceIndex}
+          totalSentences={audiobook.totalSentences}
+          mode={audiobook.mode}
+          speed={audiobook.speed}
+          provider={audiobook.provider}
+          error={audiobook.error}
+          onPlay={audiobook.play}
+          onPause={audiobook.pause}
+          onNext={audiobook.nextSentence}
+          onPrev={audiobook.prevSentence}
+          onModeChange={audiobook.setMode}
+          onSpeedChange={audiobook.setSpeed}
+          onClose={() => {
+            audiobook.pause();
+            setAudiobookOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

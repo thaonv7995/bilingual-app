@@ -29,6 +29,18 @@ struct AISettingsView: View {
     /// `auto | voca | device` — see `VocaAudioSource`. Kept as the raw string like every other
     /// preference in this view.
     @State private var audioSource: String = VocaAudioSource.auto.rawValue
+
+    // Audio Provider Settings (server-side)
+    @State private var audioProvider: String = "device"
+    @State private var audioVoice: String = ""
+    @State private var speechSpeed: String = "1.0"
+    @State private var azureApiKey: String = ""
+    @State private var elevenLabsApiKey: String = ""
+
+    @State private var hasAzureKey: Bool = false
+    @State private var hasElevenLabsKey: Bool = false
+    @State private var isTestingVoice: Bool = false
+    @State private var testVoiceError: String? = nil
     /// Read once in `loadSettings` — `AVSpeechSynthesisVoice.speechVoices()` is too heavy to
     /// call from `body`. Optimistic default so the hint never flickers.
     @State private var deviceVoiceReady: Bool = true
@@ -53,6 +65,118 @@ struct AISettingsView: View {
         (VocaAudioSource.voca.rawValue, "Chỉ Voca", "Báo lỗi nếu không có audio"),
         (VocaAudioSource.device.rawValue, "Giọng máy", "Nhanh, chạy ngoại tuyến"),
     ]
+
+    /// New Audiobook/TTS providers (stored server-side and shared by Web + iOS)
+    private let audioProviderOptions: [(id: String, label: String)] = [
+        ("device", "iOS Offline"),
+        ("azure", "Azure Speech"),
+        ("openai", "OpenAI TTS"),
+        ("elevenlabs", "ElevenLabs")
+    ]
+
+    private var audioProviderSummary: String {
+        switch audioProvider {
+        case "azure":
+            return hasAzureKey ? "Azure key đã cấu hình" : "Chưa cấu hình Azure key"
+        case "elevenlabs":
+            return hasElevenLabsKey ? "ElevenLabs key đã cấu hình" : "Chưa cấu hình ElevenLabs key"
+        case "openai":
+            return "Sử dụng OpenAI TTS"
+        default:
+            return "Sử dụng AVSpeechSynthesizer trên thiết bị"
+        }
+    }
+
+    private var audioProviderDisplayName: String {
+        audioProviderOptions.first(where: { $0.id == audioProvider })?.label ?? "Unknown"
+    }
+
+    private var audioSettingsDescription: String {
+        """
+        Audio Provider: \(audioProviderDisplayName)
+
+        \(audioProviderSummary)
+        """
+    }
+
+    private var shouldShowAzureFields: Bool {
+        audioProvider == "azure"
+    }
+
+    private var shouldShowElevenLabsFields: Bool {
+        audioProvider == "elevenlabs"
+    }
+
+    private var shouldShowCloudVoiceFields: Bool {
+        audioProvider != "device"
+    }
+
+    private var providerStatusText: String {
+        switch audioProvider {
+        case "azure":
+            return hasAzureKey ? "✅ Azure Speech đã sẵn sàng" : "⚠️ Chưa cấu hình Azure Speech Key"
+        case "elevenlabs":
+            return hasElevenLabsKey ? "✅ ElevenLabs đã sẵn sàng" : "⚠️ Chưa cấu hình ElevenLabs Key"
+        case "openai":
+            return "✅ Sử dụng OpenAI TTS thông qua AI provider hiện tại"
+        default:
+            return deviceVoiceReady ? "✅ Voice thiết bị khả dụng" : "⚠️ Không tìm thấy voice phù hợp trên thiết bị"
+        }
+    }
+
+    private var audiobookSectionTitle: String {
+        "Audiobook & Voice"
+    }
+
+    private var audiobookSectionSubtitle: String {
+        providerStatusText
+    }
+
+    private var voicePlaceholderText: String {
+        switch audioProvider {
+        case "azure":
+            return "en-US-JennyNeural"
+        case "elevenlabs":
+            return "Rachel"
+        case "openai":
+            return "alloy"
+        default:
+            return "Default Device Voice"
+        }
+    }
+
+    private var audioProviderHelpText: String {
+        switch audioProvider {
+        case "azure":
+            return "Sử dụng Azure Speech cho audiobook chất lượng cao."
+        case "elevenlabs":
+            return "Sử dụng ElevenLabs với voice cloning và expressive speech."
+        case "openai":
+            return "Sử dụng OpenAI Text-To-Speech."
+        default:
+            return "Đọc bằng giọng hệ thống của iPhone, hoạt động offline."
+        }
+    }
+
+    private var audioProviderConfigured: Bool {
+        switch audioProvider {
+        case "azure":
+            return hasAzureKey
+        case "elevenlabs":
+            return hasElevenLabsKey
+        default:
+            return true
+        }
+    }
+
+    private var audioProviderBadgeText: String {
+        audioProviderConfigured ? "READY" : "SETUP REQUIRED"
+    }
+
+    private var audioProviderBadgeColor: Color {
+        audioProviderConfigured ? .green : .orange
+    }
+
     var body: some View {
         NavigationView {
             ZStack {
@@ -474,6 +598,193 @@ struct AISettingsView: View {
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
 
+                        // Section: Audiobook & Voice Provider
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "waveform")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(hex: "14b8a6"))
+                                Text("Audiobook & Voice")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.9))
+
+                                Spacer()
+
+                                Text(audioProviderBadgeText)
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(audioProviderBadgeColor)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(audioProviderBadgeColor.opacity(0.12))
+                                    .clipShape(Capsule())
+                            }
+
+                            Text(providerStatusText)
+                                .font(.system(size: 11))
+                                .foregroundColor(Color(hex: "94a3b8"))
+
+                            Text(audioProviderHelpText)
+                                .font(.system(size: 10))
+                                .foregroundColor(.gray)
+
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(audioProviderConfigured ? Color.green : Color.orange)
+                                    .frame(width: 8, height: 8)
+
+                                Text(audioProviderConfigured ? "Provider đã được cấu hình" : "Provider chưa được cấu hình hoàn chỉnh")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(audioProviderConfigured ? .green : .orange)
+
+                                Spacer()
+
+                                Text(audioProviderBadgeText)
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(audioProviderBadgeColor)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(audioProviderBadgeColor.opacity(0.12))
+                                    .clipShape(Capsule())
+                            }
+
+                            Picker("Provider", selection: $audioProvider) {
+                                ForEach(audioProviderOptions, id: \.id) { option in
+                                    Text(option.label).tag(option.id)
+                                }
+                            }
+                            .pickerStyle(.menu)
+
+                            Text(audioSettingsDescription)
+                                .font(.system(size: 10))
+                                .foregroundColor(Color(hex: "94a3b8"))
+                                .padding(.top, 2)
+
+                            if shouldShowCloudVoiceFields {
+                                Text("Voice name sẽ được đồng bộ giữa Web và iPhone thông qua backend.")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color(hex: "94a3b8"))
+                            }
+
+                            if shouldShowCloudVoiceFields {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Voice")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.gray)
+
+                                    TextField(voicePlaceholderText, text: $audioVoice)
+                                        .padding(12)
+                                        .background(Color.white.opacity(0.05))
+                                        .cornerRadius(10)
+                                        .foregroundColor(.white)
+                                }
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Speed")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.gray)
+
+                                    TextField("1.0", text: $speechSpeed)
+                                        .padding(12)
+                                        .background(Color.white.opacity(0.05))
+                                        .cornerRadius(10)
+                                        .foregroundColor(.white)
+                                }
+                            }
+
+                            if shouldShowAzureFields {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Azure Speech Key")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.gray)
+
+                                    SecureField("Azure Key", text: $azureApiKey)
+                                        .padding(12)
+                                        .background(Color.white.opacity(0.05))
+                                        .cornerRadius(10)
+                                        .foregroundColor(.white)
+                                }
+                            }
+
+                            if shouldShowElevenLabsFields {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("ElevenLabs Key")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.gray)
+
+                                    SecureField("ElevenLabs Key", text: $elevenLabsApiKey)
+                                        .padding(12)
+                                        .background(Color.white.opacity(0.05))
+                                        .cornerRadius(10)
+                                        .foregroundColor(.white)
+                                }
+                            }
+
+                            if audioProvider != "device" {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Preview")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.gray)
+
+                                    Text("Provider: \(audioProviderDisplayName)\nVoice: \(audioVoice.isEmpty ? voicePlaceholderText : audioVoice)\nSpeed: \(speechSpeed)")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color(hex: "94a3b8"))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(10)
+                                        .background(Color.white.opacity(0.03))
+                                        .cornerRadius(10)
+                                }
+                            }
+
+                            Button(action: {
+                                Task {
+                                    isTestingVoice = true
+                                    testVoiceError = nil
+                                    defer { isTestingVoice = false }
+                                    do {
+                                        try await AudioProviderFactory.shared.preview(
+                                            provider: audioProvider,
+                                            voice: audioVoice.trimmingCharacters(in: .whitespacesAndNewlines),
+                                            speed: speechSpeed.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        )
+                                    } catch {
+                                        testVoiceError = error.localizedDescription
+                                    }
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: isTestingVoice ? "waveform" : "play.circle.fill")
+                                    Text(isTestingVoice ? "Đang phát thử..." : "Test Voice")
+                                    Spacer()
+                                    Text(audioProviderDisplayName)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.gray)
+                                }
+                                .foregroundColor(.white)
+                                .padding(12)
+                                .background(Color(hex: "14b8a6").opacity(0.15))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color(hex: "14b8a6").opacity(0.35))
+                                )
+                                .cornerRadius(12)
+                            }
+                            .disabled(isTestingVoice)
+
+                            if let err = testVoiceError {
+                                Text(err)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.red)
+                                    .padding(.top, 2)
+                            }
+                        }
+                        .padding()
+                        .background(Color.white.opacity(0.04))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+
                         // Section: Companion Voice
                         VStack(alignment: .leading, spacing: 16) {
                             HStack(spacing: 8) {
@@ -828,6 +1139,13 @@ struct AISettingsView: View {
         defer { isLoadingVocaSettings = false }
         do {
             let secrets = try await api.fetchServerSecrets()
+
+            audioProvider = secrets.audioProvider ?? "device"
+            audioVoice = secrets.audioVoice ?? ""
+            speechSpeed = secrets.speechSpeed ?? "1.0"
+            hasAzureKey = secrets.hasAzureKey ?? false
+            hasElevenLabsKey = secrets.hasElevenLabsKey ?? false
+
             vocaConfiguredOnServer = secrets.hasVocaToken
             vocaApiOrigin = secrets.vocaOrigin.isEmpty ? VocaService.defaultOrigin : secrets.vocaOrigin
             vocaApiKey = ""
@@ -898,6 +1216,11 @@ struct AISettingsView: View {
             try await api.saveServerSecrets(
                 llmApiKey: llm.isEmpty ? nil : llm,
                 realtimeApiKey: rt.isEmpty ? nil : rt,
+                audioProvider: audioProvider,
+                audioVoice: audioVoice.trimmingCharacters(in: .whitespacesAndNewlines),
+                speechSpeed: speechSpeed,
+                azureApiKey: azureApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : azureApiKey.trimmingCharacters(in: .whitespacesAndNewlines),
+                elevenLabsApiKey: elevenLabsApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : elevenLabsApiKey.trimmingCharacters(in: .whitespacesAndNewlines),
                 vocaOrigin: originToSend,
                 // Empty means "keep what is stored" — the field is blank whenever the user
                 // has not typed a replacement.

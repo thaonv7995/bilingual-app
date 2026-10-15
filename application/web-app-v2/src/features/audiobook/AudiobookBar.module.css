@@ -1,0 +1,198 @@
+.container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  color: #f8fafc;
+  font-family: inherit;
+  font-size: 13px;
+  user-select: none;
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: calc(100vw - 32px);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.providerBadge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  text-transform: capitalize;
+}
+
+.waveBox {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 12px;
+}
+
+.waveBar {
+  width: 2px;
+  height: 100%;
+  background: #38bdf8;
+  border-radius: 1px;
+  animation: wave 1s ease-in-out infinite alternate;
+}
+
+.waveBar:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.waveBar:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes wave {
+  from {
+    height: 3px;
+  }
+  to {
+    height: 12px;
+  }
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btnAction {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btnAction:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.btnAction:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btnPlay {
+  width: 36px;
+  height: 36px;
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+  transition: all 0.15s ease;
+}
+
+.btnPlay:hover {
+  background: #1d4ed8;
+  transform: scale(1.05);
+}
+
+.btnPlay:active {
+  transform: scale(0.95);
+}
+
+.progressText {
+  font-variant-numeric: tabular-nums;
+  color: #cbd5e1;
+  font-size: 12px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.selectGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  padding-left: 10px;
+}
+
+.select {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #f1f5f9;
+  font-size: 11px;
+  padding: 4px 6px;
+  outline: none;
+  cursor: pointer;
+}
+
+.select option {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+.btnClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  margin-left: 4px;
+  transition: color 0.15s ease;
+}
+
+.btnClose:hover {
+  color: #ffffff;
+}
+
+.errorBanner {
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(239, 68, 68, 0.95);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}

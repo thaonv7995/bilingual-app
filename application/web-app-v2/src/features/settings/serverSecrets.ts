@@ -9,6 +9,11 @@ import { consumeLegacySecrets } from './settingsStore';
 export interface ServerSecrets {
   hasLlmKey: boolean;
   hasRealtimeKey: boolean;
+  audioProvider?: string;
+  audioVoice?: string;
+  speechSpeed?: string;
+  hasAzureKey?: boolean;
+  hasElevenLabsKey?: boolean;
   vocaOrigin: string;
   hasVocaToken: boolean;
 }
@@ -27,6 +32,11 @@ export function useServerSecrets() {
 export async function saveServerSecrets(patch: {
   llmApiKey?: string;
   realtimeApiKey?: string;
+  audioProvider?: string;
+  audioVoice?: string;
+  speechSpeed?: string;
+  azureApiKey?: string;
+  elevenLabsApiKey?: string;
   vocaOrigin?: string;
   vocaToken?: string;
 }): Promise<ServerSecrets> {

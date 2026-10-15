@@ -35,6 +35,11 @@ def _public_view(s: UserSettings | None) -> dict:
     return {
         "hasLlmKey": bool(llm or ENV_OPENAI),
         "hasRealtimeKey": bool(realtime or llm or ENV_OPENAI),
+        "audioProvider": (s.audio_provider if s and s.audio_provider else "device"),
+        "audioVoice": (s.audio_voice if s and s.audio_voice else ""),
+        "speechSpeed": (s.speech_speed if s and s.speech_speed else "1.0"),
+        "hasAzureKey": bool((s.azure_api_key if s else "") or ""),
+        "hasElevenLabsKey": bool((s.elevenlabs_api_key if s else "") or ""),
         "vocaOrigin": (s.voca_bridge_origin if s and s.voca_bridge_origin else ""),
         "hasVocaToken": bool(voca_token or ENV_VOCA_TOKEN),
     }
@@ -59,6 +64,22 @@ def put_user_settings(
         s.llm_api_key = str(payload["llmApiKey"]).strip()
     if payload.get("realtimeApiKey") is not None and "realtimeApiKey" in payload:
         s.realtime_api_key = str(payload["realtimeApiKey"]).strip()
+
+    if payload.get("audioProvider") is not None and "audioProvider" in payload:
+        s.audio_provider = str(payload["audioProvider"]).strip()
+
+    if payload.get("audioVoice") is not None and "audioVoice" in payload:
+        s.audio_voice = str(payload["audioVoice"]).strip()
+
+    if payload.get("speechSpeed") is not None and "speechSpeed" in payload:
+        s.speech_speed = str(payload["speechSpeed"]).strip()
+
+    if payload.get("azureApiKey") is not None and "azureApiKey" in payload:
+        s.azure_api_key = str(payload["azureApiKey"]).strip()
+
+    if payload.get("elevenLabsApiKey") is not None and "elevenLabsApiKey" in payload:
+        s.elevenlabs_api_key = str(payload["elevenLabsApiKey"]).strip()
+
     if payload.get("vocaOrigin") is not None and "vocaOrigin" in payload:
         # Store the normalised form so the proxy never has to trust what it reads
         # back (and so the user sees the https:// it will actually be called on).

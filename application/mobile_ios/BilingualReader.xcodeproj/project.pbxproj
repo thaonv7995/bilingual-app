@@ -23,12 +23,19 @@
 		83039E648CE6CD6CFEEBAA03 /* LayoutOptionButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = F25A14856419E8E55800C330 /* LayoutOptionButton.swift */; };
 		88CBC4EE202827D2947AE3C3 /* AISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D97E70A5694862660AFD0E6 /* AISettingsView.swift */; };
 		8CBD3ECD5460D98952AEEDCF /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AD4860B8B690109EFB9878A /* LoginView.swift */; };
+		9F5FD65A5AFA72B4FB5CC725 /* AudiobookPlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF9407A23E7E7C28184F0EE /* AudiobookPlayerBar.swift */; };
 		A0827BBC64B63C39E54883D2 /* Book.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD24421EAA5774ABB6536580 /* Book.swift */; };
 		A80052D358A61956D1231899 /* BookPagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */; };
+		A8AD6E07B73B99AEF2E8B226 /* CACHEDIR.TAG in Resources */ = {isa = PBXBuildFile; fileRef = 94539D34B57C19485BF9A6B3 /* CACHEDIR.TAG */; };
 		B73ADA8B14F6A58D0A2C0728 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB39B254369C911E5008B8A0 /* APIService.swift */; };
+		D9398D0DC1592AC81A4D0629 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = D9395964C3F86E9882D1CC48 /* README.md */; };
+		E949095D116E25F7B4F22DBE /* AudioProviderFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1102CFF2239A16DFAE29B93A /* AudioProviderFactory.swift */; };
+		FB25A85629F6682A83BAAB8A /* AudiobookManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE2895CB7679054FC29368E /* AudiobookManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0DBB0FCA2CA7DBE68673F742 /* nodeids */ = {isa = PBXFileReference; path = nodeids; sourceTree = "<group>"; };
+		1102CFF2239A16DFAE29B93A /* AudioProviderFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioProviderFactory.swift; sourceTree = "<group>"; };
 		159815F66B6C0D29720BE1A9 /* BookshelfView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookshelfView.swift; sourceTree = "<group>"; };
 		1D97E70A5694862660AFD0E6 /* AISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsView.swift; sourceTree = "<group>"; };
 		5538CACD35C531C90CC07521 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -40,13 +47,18 @@
 		7647FCD3D310CF55FDE7B947 /* RealtimeVoiceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeVoiceEngine.swift; sourceTree = "<group>"; };
 		83C106C930837C2F0DA5DB0C /* BilingualReader.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BilingualReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		93255CF95CE85C3606041551 /* AudioSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionCoordinator.swift; sourceTree = "<group>"; };
+		94539D34B57C19485BF9A6B3 /* CACHEDIR.TAG */ = {isa = PBXFileReference; path = CACHEDIR.TAG; sourceTree = "<group>"; };
 		9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPagerView.swift; sourceTree = "<group>"; };
 		99AF811F0CC00281EC4C8B04 /* BookCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCacheManager.swift; sourceTree = "<group>"; };
 		AB39B254369C911E5008B8A0 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		ACE2895CB7679054FC29368E /* AudiobookManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookManager.swift; sourceTree = "<group>"; };
 		C40877450721082DC886E1E1 /* DeviceSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSpeech.swift; sourceTree = "<group>"; };
 		CD187585ACF36B2446D4B9C2 /* CompanionVoiceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionVoiceViewModel.swift; sourceTree = "<group>"; };
 		CD24421EAA5774ABB6536580 /* Book.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Book.swift; sourceTree = "<group>"; };
+		CEF9407A23E7E7C28184F0EE /* AudiobookPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookPlayerBar.swift; sourceTree = "<group>"; };
 		D57B156C7DBCD09A96394153 /* BilingualWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualWebView.swift; sourceTree = "<group>"; };
+		D9395964C3F86E9882D1CC48 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		E20A28110BBEE5B975110462 /* .gitignore */ = {isa = PBXFileReference; path = .gitignore; sourceTree = "<group>"; };
 		F25A14856419E8E55800C330 /* LayoutOptionButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutOptionButton.swift; sourceTree = "<group>"; };
 		FB921731167CE40A439D7728 /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -56,6 +68,8 @@
 			isa = PBXGroup;
 			children = (
 				AB39B254369C911E5008B8A0 /* APIService.swift */,
+				ACE2895CB7679054FC29368E /* AudiobookManager.swift */,
+				1102CFF2239A16DFAE29B93A /* AudioProviderFactory.swift */,
 				93255CF95CE85C3606041551 /* AudioSessionCoordinator.swift */,
 				99AF811F0CC00281EC4C8B04 /* BookCacheManager.swift */,
 				5B06E32B69C6455CD7DD73EA /* CompanionToolHandler.swift */,
@@ -68,15 +82,43 @@
 			path = Services;
 			sourceTree = "<group>";
 		};
+		57E1740F3A06A6F65C0ECBEF /* v */ = {
+			isa = PBXGroup;
+			children = (
+				71F8F116B4F2F7C2BBB60806 /* cache */,
+			);
+			path = v;
+			sourceTree = "<group>";
+		};
+		5AC6370895AC03D4C7B9BB92 /* .pytest_cache */ = {
+			isa = PBXGroup;
+			children = (
+				E20A28110BBEE5B975110462 /* .gitignore */,
+				94539D34B57C19485BF9A6B3 /* CACHEDIR.TAG */,
+				D9395964C3F86E9882D1CC48 /* README.md */,
+				57E1740F3A06A6F65C0ECBEF /* v */,
+			);
+			path = .pytest_cache;
+			sourceTree = "<group>";
+		};
 		6D0C9525AD7FE81B5C310375 = {
 			isa = PBXGroup;
 			children = (
+				5AC6370895AC03D4C7B9BB92 /* .pytest_cache */,
 				FBB9406F9D44F9F6BE5E67C2 /* mobile_ios */,
 				E662218020EDB28D9165D73D /* Models */,
 				16601F8E94BA2CEE66D8C2A2 /* Services */,
 				FBE7E929CF26843AFD2C06AD /* Views */,
 				D884728168BD97641DCC9F4C /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		71F8F116B4F2F7C2BBB60806 /* cache */ = {
+			isa = PBXGroup;
+			children = (
+				0DBB0FCA2CA7DBE68673F742 /* nodeids */,
+			);
+			path = cache;
 			sourceTree = "<group>";
 		};
 		D884728168BD97641DCC9F4C /* Products */ = {
@@ -100,6 +142,10 @@
 			children = (
 				5538CACD35C531C90CC07521 /* Assets.xcassets */,
 				58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */,
+				5AC6370895AC03D4C7B9BB92 /* .pytest_cache */,
+				E662218020EDB28D9165D73D /* Models */,
+				16601F8E94BA2CEE66D8C2A2 /* Services */,
+				FBE7E929CF26843AFD2C06AD /* Views */,
 			);
 			name = mobile_ios;
 			path = .;
@@ -109,6 +155,7 @@
 			isa = PBXGroup;
 			children = (
 				1D97E70A5694862660AFD0E6 /* AISettingsView.swift */,
+				CEF9407A23E7E7C28184F0EE /* AudiobookPlayerBar.swift */,
 				D57B156C7DBCD09A96394153 /* BilingualWebView.swift */,
 				9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */,
 				159815F66B6C0D29720BE1A9 /* BookshelfView.swift */,
@@ -179,6 +226,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				34A892B65037498539E88D18 /* Assets.xcassets in Resources */,
+				A8AD6E07B73B99AEF2E8B226 /* CACHEDIR.TAG in Resources */,
+				D9398D0DC1592AC81A4D0629 /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -191,7 +240,10 @@
 			files = (
 				88CBC4EE202827D2947AE3C3 /* AISettingsView.swift in Sources */,
 				B73ADA8B14F6A58D0A2C0728 /* APIService.swift in Sources */,
+				E949095D116E25F7B4F22DBE /* AudioProviderFactory.swift in Sources */,
 				2A2513DF281B01DF471C65D9 /* AudioSessionCoordinator.swift in Sources */,
+				FB25A85629F6682A83BAAB8A /* AudiobookManager.swift in Sources */,
+				9F5FD65A5AFA72B4FB5CC725 /* AudiobookPlayerBar.swift in Sources */,
 				46E6F6DD0BC8E058BC652705 /* BilingualReaderApp.swift in Sources */,
 				45013FC446C2D70BCB2CD11E /* BilingualWebView.swift in Sources */,
 				A0827BBC64B63C39E54883D2 /* Book.swift in Sources */,
@@ -223,7 +275,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSAppTransportSecurity = "[\"NSAllowsArbitraryLoads\": true]";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AI Companion cần quyền truy cập microphone để hội thoại bằng giọng nói với bạn về cuốn sách đang đọc.";
-				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageRespectsSafeAreaInsets\": false, \"UIImageName\": \"SplashIcon\", \"UIColorName\": \"SplashBackground\"]";
+				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageName\": \"SplashIcon\", \"UIImageRespectsSafeAreaInsets\": false, \"UIColorName\": \"SplashBackground\"]";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -365,7 +417,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSAppTransportSecurity = "[\"NSAllowsArbitraryLoads\": true]";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AI Companion cần quyền truy cập microphone để hội thoại bằng giọng nói với bạn về cuốn sách đang đọc.";
-				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageRespectsSafeAreaInsets\": false, \"UIImageName\": \"SplashIcon\", \"UIColorName\": \"SplashBackground\"]";
+				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageName\": \"SplashIcon\", \"UIImageRespectsSafeAreaInsets\": false, \"UIColorName\": \"SplashBackground\"]";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -390,7 +442,7 @@
 				565BF9E84B077291DBC51E85 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		AFDC2266A6E7C754B2E6869E /* Build configuration list for PBXNativeTarget "BilingualReader" */ = {
 			isa = XCConfigurationList;
@@ -399,7 +451,7 @@
 				9E9AC5FF940D9C33B395F160 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};

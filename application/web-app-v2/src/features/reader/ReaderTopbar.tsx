@@ -31,6 +31,8 @@ export function ReaderTopbar({
   onToggleChat,
   onToggleNotePanel,
   onToggleFinished,
+  audiobookOpen,
+  onToggleAudiobook,
   onOpenSettings,
   onLogout,
 }: {
@@ -56,6 +58,8 @@ export function ReaderTopbar({
   onToggleChat: () => void;
   onToggleNotePanel: () => void;
   onToggleFinished: () => void;
+  audiobookOpen?: boolean;
+  onToggleAudiobook?: () => void;
   onOpenSettings: () => void;
   onLogout: () => void;
 }) {
@@ -190,6 +194,17 @@ export function ReaderTopbar({
           )}
           {noteCount > 0 && <span className="reader-notes-badge">{noteCount}</span>}
         </button>
+
+        {onToggleAudiobook && (
+          <button
+            className={`btn-icon ${audiobookOpen ? 'active' : ''}`}
+            onClick={onToggleAudiobook}
+            title="Audiobook (Đọc sách bằng giọng nói)"
+            aria-label="Audiobook"
+          >
+            <HeadphonesIcon />
+          </button>
+        )}
 
         <button
           className={`btn-icon ${chatOpen ? 'active' : ''}`}
@@ -365,6 +380,15 @@ function MiniPinIcon() {
     <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <line x1="12" y1="17" x2="12" y2="22" />
       <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a3 3 0 0 0-6 0v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function HeadphonesIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+      <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
     </svg>
   );
 }

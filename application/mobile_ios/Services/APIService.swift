@@ -404,6 +404,11 @@ class APIService: ObservableObject {
     struct ServerSecrets: Codable {
         let hasLlmKey: Bool
         let hasRealtimeKey: Bool
+        let audioProvider: String?
+        let audioVoice: String?
+        let speechSpeed: String?
+        let hasAzureKey: Bool?
+        let hasElevenLabsKey: Bool?
         let vocaOrigin: String
         let hasVocaToken: Bool
     }
@@ -421,6 +426,11 @@ class APIService: ObservableObject {
     func saveServerSecrets(
         llmApiKey: String? = nil,
         realtimeApiKey: String? = nil,
+        audioProvider: String? = nil,
+        audioVoice: String? = nil,
+        speechSpeed: String? = nil,
+        azureApiKey: String? = nil,
+        elevenLabsApiKey: String? = nil,
         vocaOrigin: String? = nil,
         vocaToken: String? = nil
     ) async throws {
@@ -428,6 +438,11 @@ class APIService: ObservableObject {
         var body: [String: Any] = [:]
         if let v = llmApiKey { body["llmApiKey"] = v }
         if let v = realtimeApiKey { body["realtimeApiKey"] = v }
+        if let v = audioProvider { body["audioProvider"] = v }
+        if let v = audioVoice { body["audioVoice"] = v }
+        if let v = speechSpeed { body["speechSpeed"] = v }
+        if let v = azureApiKey { body["azureApiKey"] = v }
+        if let v = elevenLabsApiKey { body["elevenLabsApiKey"] = v }
         if let v = vocaOrigin { body["vocaOrigin"] = v }
         if let v = vocaToken { body["vocaToken"] = v }
         var request = URLRequest(url: url)
@@ -438,5 +453,32 @@ class APIService: ObservableObject {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
+    }
+
+    func synthesizeAudio(
+        text: String,
+        provider: String? = nil,
+        voice: String? = nil,
+        speed: String? = nil,
+        lang: String? = nil
+    ) async throws -> Data {
+        guard let url = URL(string: "\(serverUrl)/api/audio/synthesize") else { throw URLError(.badURL) }
+        var body: [String: Any] = ["text": text]
+        if let provider = provider { body["provider"] = provider }
+        if let voice = voice { body["voice"] = voice }
+        if let speed = speed { body["speed"] = speed }
+        if let lang = lang { body["lang"] = lang }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await sendRequest(request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let errorText = String(data: data, encoding: .utf8) ?? "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 500)"
+            throw NSError(domain: "AudioSynthesis", code: (response as? HTTPURLResponse)?.statusCode ?? 500, userInfo: [NSLocalizedDescriptionKey: errorText])
+        }
+        return data
     }
 }

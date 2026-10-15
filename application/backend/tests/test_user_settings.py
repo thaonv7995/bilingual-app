@@ -74,9 +74,46 @@ def test_user_settings_get_default_is_empty():
     assert view == {
         "hasLlmKey": False,
         "hasRealtimeKey": False,
+        "audioProvider": "device",
+        "audioVoice": "",
+        "speechSpeed": "1.0",
+        "hasAzureKey": False,
+        "hasElevenLabsKey": False,
         "vocaOrigin": "",
         "hasVocaToken": False,
     }
+
+
+def test_audio_settings_roundtrip():
+    uid = _make_user("audio_settings")
+    user = SimpleNamespace(id=uid)
+    db = SessionLocal()
+    try:
+        put_user_settings(
+            {
+                "audioProvider": "elevenlabs",
+                "audioVoice": "rachel",
+                "speechSpeed": "1.25",
+                "azureApiKey": "azure-secret",
+                "elevenLabsApiKey": "eleven-secret",
+            },
+            current_user=user,
+            db=db,
+        )
+
+        view = get_user_settings(current_user=user, db=db)
+
+        assert view["audioProvider"] == "elevenlabs"
+        assert view["audioVoice"] == "rachel"
+        assert view["speechSpeed"] == "1.25"
+        assert view["hasAzureKey"] is True
+        assert view["hasElevenLabsKey"] is True
+
+        row = db.query(UserSettings).filter(UserSettings.user_id == uid).first()
+        assert row.azure_api_key == "azure-secret"
+        assert row.elevenlabs_api_key == "eleven-secret"
+    finally:
+        db.close()
 
 
 def test_put_sets_secret_and_get_never_leaks_it():

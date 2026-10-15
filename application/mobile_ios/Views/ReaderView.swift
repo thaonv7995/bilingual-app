@@ -305,6 +305,41 @@ struct ReaderView: View {
                                 isReadyToRender = true
                             }
                             readerUsesDoubleSided = useDoubleSided
+                            AudiobookManager.shared.onPageTurnNeeded = {
+                                if self.page < self.book.pageCount {
+                                    self.page += 1
+                                    self.saveProgress()
+                                } else {
+                                    AudiobookManager.shared.pause()
+                                }
+                            }
+                            Task {
+                                if let secrets = try? await api.fetchServerSecrets() {
+                                    AudiobookManager.shared.configure(
+                                        provider: secrets.audioProvider ?? "device",
+                                        voice: secrets.audioVoice ?? "",
+                                        speed: secrets.speechSpeed ?? "1.0"
+                                    )
+                                }
+                            }
+                        }
+                        .onChange(of: page) { newPage in
+                            if AudiobookManager.shared.isBarVisible {
+                                AudiobookManager.shared.updateWebViews(
+                                    en: findCurrentWebView(lang: "en", page: newPage),
+                                    vi: findCurrentWebView(lang: "vi", page: newPage),
+                                    viewMode: viewMode
+                                )
+                            }
+                        }
+                        .onChange(of: AudiobookManager.shared.isBarVisible) { isVisible in
+                            if isVisible {
+                                AudiobookManager.shared.updateWebViews(
+                                    en: findCurrentWebView(lang: "en", page: page),
+                                    vi: findCurrentWebView(lang: "vi", page: page),
+                                    viewMode: viewMode
+                                )
+                            }
                         }
                         .onChange(of: useDoubleSided) { readerUsesDoubleSided = $0 }
                         .onChange(of: viewMode) { _ in readerUsesDoubleSided = useDoubleSided }
@@ -420,6 +455,15 @@ struct ReaderView: View {
                     if companionVM.phase != .idle && (companionVM.isMinimized || !isChatOpen) {
                         FloatingVoiceWidgetView(companionVM: companionVM, isChatOpen: $isChatOpen)
                             .padding(.horizontal, isPhone && isLandscape ? phoneHorizontalInset : 0)
+                    }
+
+                    if AudiobookManager.shared.isBarVisible {
+                        VStack {
+                            Spacer()
+                            AudiobookPlayerBar()
+                        }
+                        .padding(.horizontal, isPhone && isLandscape ? phoneHorizontalInset : 0)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
             )
@@ -676,6 +720,15 @@ struct ReaderView: View {
         bumpSelectionOverlayRevision()
     }
 
+    private func findCurrentWebView(lang: String, page: Int) -> WKWebView? {
+        for (key, wv) in webViews {
+            if key.hasPrefix("\(lang)-\(page)-") {
+                return wv
+            }
+        }
+        return nil
+    }
+
     private func registerWebView(_ webView: WKWebView, lang: String, page: Int, containerMode: String) {
         DispatchQueue.main.async {
             let key = webViewKey(lang: lang, page: page, containerMode: containerMode)
@@ -684,6 +737,13 @@ struct ReaderView: View {
             }
             if vocaPanelLang == lang, vocaPanelPage == page, vocaPanelContainerMode == containerMode, vocaPanelWebView == nil {
                 vocaPanelWebView = webView
+            }
+            if AudiobookManager.shared.isBarVisible, page == self.page {
+                AudiobookManager.shared.updateWebViews(
+                    en: self.findCurrentWebView(lang: "en", page: self.page),
+                    vi: self.findCurrentWebView(lang: "vi", page: self.page),
+                    viewMode: self.viewMode
+                )
             }
         }
     }
@@ -3467,6 +3527,15 @@ struct ReaderHeaderView: View {
                 )
             }
 
+            Button(action: {
+                AudiobookManager.shared.isBarVisible.toggle()
+            }) {
+                Image(systemName: "headphones")
+                    .foregroundColor(AudiobookManager.shared.isBarVisible ? Color(hex: "38bdf8") : .white)
+                    .font(.system(size: 14))
+                    .frame(width: 28, height: 28)
+            }
+
             Button(action: { isChatOpen.toggle() }) {
                 Image(systemName: "bubble.left.and.bubble.right.fill")
                     .foregroundColor(.white)
@@ -3599,6 +3668,14 @@ struct ReaderHeaderView: View {
                     .font(.system(size: 15))
             }
             
+            Button(action: {
+                AudiobookManager.shared.isBarVisible.toggle()
+            }) {
+                Image(systemName: "headphones")
+                    .foregroundColor(AudiobookManager.shared.isBarVisible ? Color(hex: "38bdf8") : .white)
+                    .font(.system(size: 15))
+            }
+
             Button(action: { isChatOpen.toggle() }) {
                 Image(systemName: "bubble.left.and.bubble.right.fill")
                     .foregroundColor(.white)

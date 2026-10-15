@@ -4,6 +4,7 @@ import { useToast } from '@/components/Toast';
 import type { LayoutMode } from '@/features/reader/readerConstants';
 import { apiJson } from '@/lib/api-client';
 import { deviceSpeechAvailable } from '@/lib/speech';
+import { playSentenceAudio } from '@/features/audiobook/audiobookService';
 import { syncVocaCards } from '@/lib/vocaCards';
 import { checkVocaHealth } from '@/lib/vocaClient';
 import { useSettingsStore, type AudioSource, type Settings } from './settingsStore';
@@ -84,6 +85,17 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [vocaToken, setVocaToken] = useState('');
   const [hasVocaToken, setHasVocaToken] = useState(false);
   const [vocaTokenDirty, setVocaTokenDirty] = useState(false);
+  // Audio Provider Settings (server-side)
+  const [audioProvider, setAudioProvider] = useState('device');
+  const [audioVoice, setAudioVoice] = useState('');
+  const [speechSpeed, setSpeechSpeed] = useState('1.0');
+  const [azureApiKey, setAzureApiKey] = useState('');
+  const [azureDirty, setAzureDirty] = useState(false);
+  const [hasAzureKey, setHasAzureKey] = useState(false);
+  const [elevenLabsApiKey, setElevenLabsApiKey] = useState('');
+  const [elevenLabsDirty, setElevenLabsDirty] = useState(false);
+  const [hasElevenLabsKey, setHasElevenLabsKey] = useState(false);
+  const [audioTesting, setAudioTesting] = useState(false);
   // The non-secret Voca origin is the one field we READ back, so a failed load
   // must not let a save write the empty box over it (that wiped the origin).
   const [secretsLoaded, setSecretsLoaded] = useState(false);
@@ -100,6 +112,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         setHasRealtimeKey(s.hasRealtimeKey);
         setVocaOrigin(s.vocaOrigin || '');
         setHasVocaToken(s.hasVocaToken);
+        setAudioProvider(s.audioProvider || 'device');
+        setAudioVoice(s.audioVoice || '');
+        setSpeechSpeed(s.speechSpeed || '1.0');
+        setHasAzureKey(!!s.hasAzureKey);
+        setHasElevenLabsKey(!!s.hasElevenLabsKey);
         setSecretsLoaded(true);
       })
       .catch(() => {
@@ -144,6 +161,24 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const onTestAudio = async () => {
+    setAudioTesting(true);
+    try {
+      await playSentenceAudio({
+        text: 'Hello, this is a preview of your audiobook reading voice.',
+        provider: audioProvider,
+        voice: audioVoice,
+        speed: speechSpeed,
+        lang: 'en-US',
+      });
+      toast.show('Phát âm thử thành công!', 'success');
+    } catch (err: any) {
+      toast.show(`Lỗi phát âm: ${err.message}`, 'danger');
+    } finally {
+      setAudioTesting(false);
+    }
+  };
+
   const onSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (vocaTokenError) {
@@ -160,6 +195,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         ...(llmDirty ? { llmApiKey: llmKey.trim() } : {}),
         ...(realtimeDirty ? { realtimeApiKey: realtimeKey.trim() } : {}),
         ...(vocaTokenDirty ? { vocaToken: vocaToken.trim() } : {}),
+        audioProvider,
+        audioVoice: audioVoice.trim(),
+        speechSpeed: speechSpeed.trim() || '1.0',
+        ...(azureDirty ? { azureApiKey: azureApiKey.trim() } : {}),
+        ...(elevenLabsDirty ? { elevenLabsApiKey: elevenLabsApiKey.trim() } : {}),
       });
       await queryClient.invalidateQueries({ queryKey: USER_SETTINGS_KEY });
     } catch {
@@ -237,6 +277,95 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 ))}
               </select>
             </Field>
+          </Section>
+
+          <Section
+            title="Audiobook &amp; Voice"
+            hint="Cấu hình nguồn đọc và giọng đọc cho tính năng Audiobook. Đồng bộ dùng chung giữa Web và iOS."
+          >
+            <Field label="Nguồn phát Audio" full>
+              <select
+                className={styles.input}
+                value={audioProvider}
+                onChange={(e) => setAudioProvider(e.target.value)}
+              >
+                <option value="device">Trình duyệt / Thiết bị Offline (Miễn phí)</option>
+                <option value="openai">OpenAI TTS (Dùng API Key của Companion)</option>
+                <option value="azure">Azure Speech (Neural TTS chất lượng cao)</option>
+                <option value="elevenlabs">ElevenLabs (Giọng đọc biểu cảm cao cấp)</option>
+              </select>
+            </Field>
+
+            {audioProvider !== 'device' && (
+              <>
+                <Field label="Tên Voice (Giọng đọc)" full>
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder={
+                      audioProvider === 'azure'
+                        ? 'en-US-JennyNeural (hoặc vi-VN-HoaiMyNeural)'
+                        : audioProvider === 'elevenlabs'
+                          ? '21m00Tcm4TlvDq8ikWAM (Rachel)'
+                          : 'alloy, echo, nova...'
+                    }
+                    value={audioVoice}
+                    onChange={(e) => setAudioVoice(e.target.value)}
+                  />
+                </Field>
+
+                <Field label="Tốc độ đọc mặc định">
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="1.0"
+                    value={speechSpeed}
+                    onChange={(e) => setSpeechSpeed(e.target.value)}
+                  />
+                </Field>
+              </>
+            )}
+
+            {audioProvider === 'azure' && (
+              <Field label="Azure Speech Key" full>
+                <input
+                  className={styles.input}
+                  type="password"
+                  placeholder={hasAzureKey ? savedPlaceholder : 'Nhập Azure Speech Key (hoặc key@region)'}
+                  value={azureApiKey}
+                  onChange={(e) => {
+                    setAzureApiKey(e.target.value);
+                    setAzureDirty(true);
+                  }}
+                />
+              </Field>
+            )}
+
+            {audioProvider === 'elevenlabs' && (
+              <Field label="ElevenLabs Key" full>
+                <input
+                  className={styles.input}
+                  type="password"
+                  placeholder={hasElevenLabsKey ? savedPlaceholder : 'Nhập ElevenLabs API Key'}
+                  value={elevenLabsApiKey}
+                  onChange={(e) => {
+                    setElevenLabsApiKey(e.target.value);
+                    setElevenLabsDirty(true);
+                  }}
+                />
+              </Field>
+            )}
+
+            <div className={`${styles.group} ${styles.groupFull}`}>
+              <button
+                type="button"
+                className={styles.btnGhost}
+                onClick={onTestAudio}
+                disabled={audioTesting}
+              >
+                {audioTesting ? 'Đang đọc thử…' : '▶ Nghe thử giọng đọc'}
+              </button>
+            </div>
           </Section>
 
           <Section title="Voca API" hint="API key nhập ở đây được lưu an toàn phía server (không lưu trên trình duyệt). Voca tự chạy LLM và TTS, nên phần này không dùng API Key phía trên.">

@@ -130,6 +130,14 @@ class UserSettings(Base):
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
     llm_api_key = Column(String, nullable=True, default="")
     realtime_api_key = Column(String, nullable=True, default="")
+
+    # Audiobook / TTS settings
+    audio_provider = Column(String, nullable=True, default="device")
+    audio_voice = Column(String, nullable=True, default="")
+    azure_api_key = Column(String, nullable=True, default="")
+    elevenlabs_api_key = Column(String, nullable=True, default="")
+    speech_speed = Column(String, nullable=True, default="1.0")
+
     voca_bridge_origin = Column(String, nullable=True, default="")
     voca_bridge_token = Column(String, nullable=True, default="")
     updated_at = Column(Integer, default=lambda: int(time.time()))
@@ -196,10 +204,33 @@ def _migrate_add_book_created_at():
     except Exception as e:  # pragma: no cover - defensive
         print(f"[Migration] books.created_at skipped: {e}")
 
+def _migrate_add_audio_settings():
+    """Idempotent: add audio provider/voice/speed/key columns to user_settings if missing."""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    if "user_settings" not in insp.get_table_names():
+        return
+    existing_cols = {col["name"] for col in insp.get_columns("user_settings")}
+    cols_to_add = [
+        ("audio_provider", "TEXT DEFAULT 'device'"),
+        ("audio_voice", "TEXT DEFAULT ''"),
+        ("azure_api_key", "TEXT DEFAULT ''"),
+        ("elevenlabs_api_key", "TEXT DEFAULT ''"),
+        ("speech_speed", "TEXT DEFAULT '1.0'"),
+    ]
+    with engine.begin() as conn:
+        for col_name, col_type in cols_to_add:
+            if col_name not in existing_cols:
+                try:
+                    conn.execute(text(f"ALTER TABLE user_settings ADD COLUMN {col_name} {col_type}"))
+                except Exception as e:
+                    print(f"[Migration] user_settings.{col_name} skipped: {e}")
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_voca_config_to_user_settings()
     _migrate_add_book_created_at()
+    _migrate_add_audio_settings()
 
 def get_db():
     db = SessionLocal()
