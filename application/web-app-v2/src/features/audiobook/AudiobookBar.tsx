@@ -40,7 +40,7 @@ export function AudiobookBar({
     <div className={styles.container} role="region" aria-label="Audiobook Player">
       {error && <div className={styles.errorBanner}>{error}</div>}
 
-      <div className={styles.providerBadge} title={`Nguồn đọc: ${provider}`}>
+      <div className={styles.providerBadge} title={`Nguồn đọc: ${provider === 'device' ? 'Thiết bị (Offline)' : provider}`}>
         {isPlaying ? (
           <div className={styles.waveBox}>
             <span className={styles.waveBar} />
@@ -50,7 +50,6 @@ export function AudiobookBar({
         ) : (
           <span>🎧</span>
         )}
-        <span>{provider === 'device' ? 'Offline' : provider}</span>
       </div>
 
       <div className={styles.controls}>
@@ -102,9 +101,9 @@ export function AudiobookBar({
           onChange={(e) => onModeChange(e.target.value as AudiobookLanguageMode)}
           title="Chế độ đọc ngôn ngữ"
         >
-          <option value="en">Chỉ Tiếng Anh</option>
-          <option value="vi">Chỉ Tiếng Việt</option>
-          <option value="bilingual">Lặp song ngữ (EN · VI)</option>
+          <option value="en">EN (Tiếng Anh)</option>
+          <option value="vi">VI (Tiếng Việt)</option>
+          <option value="bilingual">Song ngữ (EN · VI)</option>
         </select>
 
         <select

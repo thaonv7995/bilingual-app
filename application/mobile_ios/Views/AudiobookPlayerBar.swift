@@ -17,8 +17,8 @@ struct AudiobookPlayerBar: View {
             }
 
             HStack(spacing: 12) {
-                // Provider Badge
-                HStack(spacing: 4) {
+                // Audio Status Icon
+                ZStack {
                     if manager.isPlaying {
                         Image(systemName: "waveform")
                             .font(.system(size: 11, weight: .semibold))
@@ -28,15 +28,10 @@ struct AudiobookPlayerBar: View {
                             .font(.system(size: 11))
                             .foregroundColor(.gray)
                     }
-
-                    Text(manager.provider == "device" ? "Offline" : manager.provider.capitalized)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.8))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .frame(width: 24, height: 24)
                 .background(Color.white.opacity(0.08))
-                .cornerRadius(12)
+                .clipShape(Circle())
 
                 // Navigation & Play Controls
                 HStack(spacing: 8) {
@@ -81,8 +76,8 @@ struct AudiobookPlayerBar: View {
                     .disabled(manager.currentSentenceIndex >= manager.sentences.count - 1)
                 }
 
-                // Sentence Progress
-                Text(manager.sentences.isEmpty ? "0 / 0" : "\(manager.currentSentenceIndex + 1) / \(manager.sentences.count)")
+                // Sentence Progress (câu hiện tại / tổng câu trang này)
+                Text(manager.sentences.isEmpty ? "0/0" : "\(manager.currentSentenceIndex + 1)/\(manager.sentences.count)")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundColor(Color(hex: "cbd5e1"))
 
@@ -92,26 +87,42 @@ struct AudiobookPlayerBar: View {
 
                 // Mode Menu
                 Menu {
-                    ForEach(AudiobookLanguageMode.allCases, id: \.self) { m in
-                        Button(action: {
-                            manager.changeMode(m)
-                        }) {
-                            HStack {
-                                Text(m.title)
-                                if manager.mode == m {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
+                    Button(action: { manager.changeMode(.en) }) {
+                        HStack {
+                            Text("EN (Tiếng Anh)")
+                            if manager.mode == .en { Image(systemName: "checkmark") }
+                        }
+                    }
+                    Button(action: { manager.changeMode(.vi) }) {
+                        HStack {
+                            Text("VI (Tiếng Việt)")
+                            if manager.mode == .vi { Image(systemName: "checkmark") }
+                        }
+                    }
+                    Button(action: { manager.changeMode(.bilingual) }) {
+                        HStack {
+                            Image(systemName: "rectangle.split.2x1")
+                            Text("Song ngữ (EN · VI)")
+                            if manager.mode == .bilingual { Image(systemName: "checkmark") }
                         }
                     }
                 } label: {
-                    Text(manager.mode.title)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.08))
-                        .cornerRadius(6)
+                    HStack(spacing: 3) {
+                        if manager.mode == .bilingual {
+                            Image(systemName: "rectangle.split.2x1")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text("Song ngữ")
+                                .font(.system(size: 11, weight: .semibold))
+                        } else {
+                            Text(manager.mode == .en ? "EN" : "VI")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(6)
                 }
 
                 // Speed Menu

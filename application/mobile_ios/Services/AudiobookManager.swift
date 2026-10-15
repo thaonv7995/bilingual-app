@@ -15,9 +15,9 @@ enum AudiobookLanguageMode: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .en: return "Chỉ EN"
-        case .vi: return "Chỉ VI"
-        case .bilingual: return "Lặp Song Ngữ"
+        case .en: return "EN"
+        case .vi: return "VI"
+        case .bilingual: return "Song ngữ"
         }
     }
 }
