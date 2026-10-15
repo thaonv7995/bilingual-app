@@ -57,6 +57,23 @@ final class AudiobookManager: ObservableObject {
         self.speed = speed
     }
 
+    func voiceFor(lang: String) -> String {
+        let isVi = lang.hasPrefix("vi")
+        if isVi {
+            if !voiceVi.isEmpty { return voiceVi }
+            if provider == "azure" { return "vi-VN-HoaiMyNeural" }
+            if provider == "openai" { return "alloy" }
+            return voice
+        } else {
+            if !voiceEn.isEmpty { return voiceEn }
+            if !voice.isEmpty { return voice }
+            if provider == "azure" { return "en-US-JennyNeural" }
+            if provider == "elevenlabs" { return "21m00Tcm4TlvDq8ikWAM" }
+            if provider == "openai" { return "alloy" }
+            return ""
+        }
+    }
+
     func updateWebViews(en: WKWebView?, vi: WKWebView?, viewMode: String) {
         self.enWebView = en
         self.viWebView = vi
@@ -88,6 +105,7 @@ final class AudiobookManager: ObservableObject {
     }
 
     func changeMode(_ newMode: AudiobookLanguageMode) {
+        let wasPlaying = isPlaying
         shouldContinuePlayingOnPageLoad = false
         pause()
         highlightSentence(id: nil)
@@ -97,6 +115,9 @@ final class AudiobookManager: ObservableObject {
             await extractSentences(viewMode: currentViewMode)
             if let first = sentences.first {
                 highlightSentence(id: first.id, lang: first.lang)
+            }
+            if wasPlaying && !sentences.isEmpty {
+                self.play()
             }
         }
     }
@@ -156,9 +177,9 @@ final class AudiobookManager: ObservableObject {
         var combined: [AudioSentenceItem] = []
 
         if mode == .en {
-            combined = !enItems.isEmpty ? enItems : viItems
+            combined = !enItems.isEmpty ? enItems : viItems.map { AudioSentenceItem(id: $0.id, text: $0.text, lang: "en") }
         } else if mode == .vi {
-            combined = !viItems.isEmpty ? viItems : enItems
+            combined = !viItems.isEmpty ? viItems : enItems.map { AudioSentenceItem(id: $0.id, text: $0.text, lang: "vi") }
         } else if mode == .bilingual {
             if !enItems.isEmpty && !viItems.isEmpty {
                 let maxCount = max(enItems.count, viItems.count)
@@ -195,6 +216,26 @@ final class AudiobookManager: ObservableObject {
         isPlaying = true
         errorMessage = nil
         playbackTask?.cancel()
+
+        // Prefetch upcoming sentences immediately
+        if provider != "device" {
+            for lookahead in 0...2 {
+                let idx = currentSentenceIndex + lookahead
+                if idx < sentences.count {
+                    let nextItem = sentences[idx]
+                    let nextIsVi = (mode == .vi) || (mode == .bilingual && nextItem.lang == "vi")
+                    let nextLangTag = nextIsVi ? "vi-VN" : "en-US"
+                    let nextVoice = voiceFor(lang: nextLangTag)
+                    AudioProviderFactory.shared.prefetch(
+                        text: nextItem.text,
+                        provider: provider,
+                        voice: nextVoice,
+                        speed: speed,
+                        lang: nextLangTag
+                    )
+                }
+            }
+        }
 
         playbackTask = Task {
             await runPlaybackLoop(from: currentSentenceIndex)
@@ -241,11 +282,30 @@ final class AudiobookManager: ObservableObject {
             let item = sentences[idx]
             highlightSentence(id: item.id, lang: item.lang)
 
+            // Lookahead prefetch next 1-2 sentences in the background
+            if provider != "device" {
+                for lookahead in 1...2 {
+                    let nextIdx = idx + lookahead
+                    if nextIdx < sentences.count {
+                        let nextItem = sentences[nextIdx]
+                        let nextIsVi = (mode == .vi) || (mode == .bilingual && nextItem.lang == "vi")
+                        let nextLangTag = nextIsVi ? "vi-VN" : "en-US"
+                        let nextVoice = voiceFor(lang: nextLangTag)
+                        AudioProviderFactory.shared.prefetch(
+                            text: nextItem.text,
+                            provider: provider,
+                            voice: nextVoice,
+                            speed: speed,
+                            lang: nextLangTag
+                        )
+                    }
+                }
+            }
+
             do {
-                let langTag = item.lang == "vi" ? "vi-VN" : "en-US"
-                let selectedVoice = item.lang == "vi"
-                    ? (!voiceVi.isEmpty ? voiceVi : voice)
-                    : (!voiceEn.isEmpty ? voiceEn : voice)
+                let isVi = (mode == .vi) || (mode == .bilingual && item.lang == "vi")
+                let langTag = isVi ? "vi-VN" : "en-US"
+                let selectedVoice = voiceFor(lang: langTag)
                 try await AudioProviderFactory.shared.speak(
                     text: item.text,
                     provider: provider,
@@ -254,8 +314,8 @@ final class AudiobookManager: ObservableObject {
                     lang: langTag
                 )
 
-                // Brief natural pause (250ms)
-                try await Task.sleep(nanoseconds: 250_000_000)
+                // Natural pause between sentences (200ms)
+                try await Task.sleep(nanoseconds: 200_000_000)
             } catch is CancellationError {
                 break
             } catch {

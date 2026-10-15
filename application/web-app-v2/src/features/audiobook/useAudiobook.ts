@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { playSentenceAudio, stopCurrentAudio } from './audiobookService';
+import { playSentenceAudio, prefetchSentenceAudio, stopCurrentAudio } from './audiobookService';
 import { useServerSecrets } from '@/features/settings/serverSecrets';
 import { segmentDocSentences } from '../reader/iframe/segmentation';
 
@@ -103,10 +103,10 @@ export function useAudiobook({
       const viList = getDocSentences(viIframeRef.current, 'vi');
 
       if (targetMode === 'en') {
-        return enList.length > 0 ? enList : viList;
+        return enList.length > 0 ? enList : viList.map((item) => ({ ...item, lang: 'en' as const }));
       }
       if (targetMode === 'vi') {
-        return viList.length > 0 ? viList : enList;
+        return viList.length > 0 ? viList : enList.map((item) => ({ ...item, lang: 'vi' as const }));
       }
       if (targetMode === 'bilingual') {
         if (enList.length > 0 && viList.length > 0) {
@@ -204,13 +204,32 @@ export function useAudiobook({
 
       try {
         const provider = serverSecrets?.audioProvider || 'device';
-        const isVi = item.lang === 'vi';
-        // Language-specific voice selection with fallback
-        const voice =
-          (isVi
-            ? serverSecrets?.audioVoiceVi || serverSecrets?.audioVoice
-            : serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice) || '';
+        const isVi = (mode === 'vi') || (mode === 'bilingual' && item.lang === 'vi');
         const langTag = isVi ? 'vi-VN' : 'en-US';
+        const voice = isVi
+          ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : ''))
+          : (serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice || (provider === 'azure' ? 'en-US-JennyNeural' : provider === 'elevenlabs' ? '21m00Tcm4TlvDq8ikWAM' : 'alloy'));
+
+        // Prefetch upcoming 1-2 sentences in the background for smooth zero-delay playback
+        if (provider !== 'device') {
+          for (let lookahead = 1; lookahead <= 2; lookahead++) {
+            const nextIdx = startIndex + lookahead;
+            const nextItem = currentList[nextIdx];
+            if (!nextItem) continue;
+            const nextIsVi = (mode === 'vi') || (mode === 'bilingual' && nextItem.lang === 'vi');
+            const nextLangTag = nextIsVi ? 'vi-VN' : 'en-US';
+            const nextVoice = nextIsVi
+              ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : ''))
+              : (serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice || (provider === 'azure' ? 'en-US-JennyNeural' : provider === 'elevenlabs' ? '21m00Tcm4TlvDq8ikWAM' : 'alloy'));
+            prefetchSentenceAudio({
+              text: nextItem.text,
+              provider,
+              voice: nextVoice,
+              speed,
+              lang: nextLangTag,
+            }).catch(() => {});
+          }
+        }
 
         await playSentenceAudio({
           text: item.text,
@@ -224,8 +243,8 @@ export function useAudiobook({
           return;
         }
 
-        // Natural pause between sentences (250ms)
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        // Natural pause between sentences (200ms)
+        await new Promise((resolve) => setTimeout(resolve, 200));
 
         if (abortControllerRef.current || !playingRef.current) {
           return;
@@ -280,6 +299,29 @@ export function useAudiobook({
     playingRef.current = true;
     abortControllerRef.current = false;
     shouldAutoPlayNextPageRef.current = false;
+
+    // Prefetch immediately for the upcoming sentences
+    const provider = serverSecrets?.audioProvider || 'device';
+    if (provider !== 'device') {
+      for (let lookahead = 0; lookahead <= 2; lookahead++) {
+        const idx = currentSentenceIndex + lookahead;
+        const nextItem = list[idx];
+        if (!nextItem) continue;
+        const nextIsVi = (mode === 'vi') || (mode === 'bilingual' && nextItem.lang === 'vi');
+        const nextLangTag = nextIsVi ? 'vi-VN' : 'en-US';
+        const nextVoice = nextIsVi
+          ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : ''))
+          : (serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice || (provider === 'azure' ? 'en-US-JennyNeural' : provider === 'elevenlabs' ? '21m00Tcm4TlvDq8ikWAM' : 'alloy'));
+        prefetchSentenceAudio({
+          text: nextItem.text,
+          provider,
+          voice: nextVoice,
+          speed,
+          lang: nextLangTag,
+        }).catch(() => {});
+      }
+    }
+
     playLoop(currentSentenceIndex, list);
   }, [sentences, extractSentencesForMode, mode, currentSentenceIndex, playLoop]);
 

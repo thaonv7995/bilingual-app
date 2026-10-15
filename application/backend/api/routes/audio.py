@@ -96,7 +96,16 @@ async def synthesize_speech(
     # Provider resolution
     provider = (req.provider or (s.audio_provider if s and s.audio_provider else "") or "openai").lower().strip()
     speed = req.speed or (s.speech_speed if s and s.speech_speed else "1.0")
-    voice = req.voice or (s.audio_voice if s and s.audio_voice else "")
+
+    is_vi = (req.lang or "").lower().startswith("vi")
+    if is_vi:
+        voice = req.voice or (s.audio_voice_vi if s and s.audio_voice_vi else "")
+        if not voice or voice.startswith("en-"):
+            voice = (s.audio_voice_vi if s and s.audio_voice_vi else "") or ("vi-VN-HoaiMyNeural" if provider == "azure" else (s.audio_voice if s and s.audio_voice else ""))
+    else:
+        voice = req.voice or (s.audio_voice_en if s and s.audio_voice_en else "") or (s.audio_voice if s and s.audio_voice else "")
+        if not voice or voice.startswith("vi-"):
+            voice = (s.audio_voice_en if s and s.audio_voice_en else "") or ("en-US-JennyNeural" if provider == "azure" else (s.audio_voice if s and s.audio_voice else ""))
 
     if provider == "device":
         raise HTTPException(

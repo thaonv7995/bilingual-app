@@ -1,4 +1,5 @@
 import { speakWithDevice } from '@/lib/speech';
+import { apiFetch } from '@/lib/api-client';
 
 export interface SynthesizeOptions {
   text: string;
@@ -10,6 +11,7 @@ export interface SynthesizeOptions {
 
 // In-memory cache for synthesized audio Object URLs to prevent redundant network downloads
 const audioBlobCache = new Map<string, string>();
+const ongoingPrefetches = new Map<string, Promise<string>>();
 let currentAudioElement: HTMLAudioElement | null = null;
 
 export function stopCurrentAudio(): void {
@@ -21,6 +23,59 @@ export function stopCurrentAudio(): void {
     currentAudioElement.currentTime = 0;
     currentAudioElement = null;
   }
+}
+
+export function clearAudioCache(): void {
+  for (const url of audioBlobCache.values()) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {}
+  }
+  audioBlobCache.clear();
+  ongoingPrefetches.clear();
+}
+
+/**
+ * Prefetches synthesized audio in the background and caches the Object URL.
+ */
+export async function prefetchSentenceAudio(options: SynthesizeOptions): Promise<void> {
+  const { text, provider = 'device', voice = '', speed = '1.0', lang = 'en-US' } = options;
+  const trimmed = text.trim();
+  if (!trimmed || provider === 'device') return;
+
+  const cacheKey = `${provider}:${voice}:${speed}:${lang}:${trimmed}`;
+  if (audioBlobCache.has(cacheKey) || ongoingPrefetches.has(cacheKey)) {
+    return;
+  }
+
+  const prefetchPromise = (async () => {
+    try {
+      const res = await apiFetch('/api/audio/synthesize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: trimmed,
+          provider,
+          voice,
+          speed,
+          lang: lang.startsWith('vi') ? 'vi' : 'en',
+        }),
+      });
+      if (!res.ok) return '';
+      const blob = await res.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      audioBlobCache.set(cacheKey, audioUrl);
+      return audioUrl;
+    } catch {
+      return '';
+    } finally {
+      ongoingPrefetches.delete(cacheKey);
+    }
+  })();
+
+  ongoingPrefetches.set(cacheKey, prefetchPromise);
 }
 
 /**
@@ -40,11 +95,15 @@ export async function playSentenceAudio(options: SynthesizeOptions): Promise<voi
   }
 
   // 2. Cloud Providers via Backend Proxy (/api/audio/synthesize)
-  const cacheKey = `${provider}:${voice}:${speed}:${trimmed}`;
+  const cacheKey = `${provider}:${voice}:${speed}:${lang}:${trimmed}`;
   let audioUrl = audioBlobCache.get(cacheKey);
 
+  if (!audioUrl && ongoingPrefetches.has(cacheKey)) {
+    audioUrl = await ongoingPrefetches.get(cacheKey);
+  }
+
   if (!audioUrl) {
-    const res = await fetch('/api/audio/synthesize', {
+    const res = await apiFetch('/api/audio/synthesize', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
