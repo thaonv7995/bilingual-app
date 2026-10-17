@@ -1,17 +1,16 @@
 import { create } from 'zustand';
-import { readJSON, readString, writeJSON } from '@/lib/storage';
+import { readJSON, readString, remove } from '@/lib/storage';
 import { STORAGE_KEYS } from '@/lib/storageKeys';
 import type { LayoutMode } from '@/features/reader/readerConstants';
 
 /**
- * User AI/voca settings persisted in localStorage. NOTE: secrets do NOT live here
- * anymore — the LLM key, realtime key and Voca API key are stored server-side
- * (see `serverSecrets.ts` + `/api/user/settings`) so an XSS payload can't read them.
- * Only non-secret config (provider, base URL, model, layout, …) is kept locally.
+ * Runtime projection of the canonical settings stored on the server.
  *
- * `ttsModel` is the only TTS knob left: Voca 2.0 synthesises audio itself, so the
- * client just names the voice (v1 also carried a TTS endpoint + an "use the API
- * for TTS" toggle, both dead once TTS moved server-side).
+ * This store exists so feature code can synchronously consume settings after the
+ * authenticated bootstrap has completed. It is not a persistence layer:
+ * - server data hydrates the store;
+ * - successful server updates replace or patch the store;
+ * - localStorage is read only once to migrate legacy data, then removed.
  */
 
 /**
@@ -58,7 +57,10 @@ export const DEFAULT_SETTINGS: Settings = {
 
 interface SettingsState {
   settings: Settings;
+  hydrated: boolean;
   setSettings: (patch: Partial<Settings>) => void;
+  replaceSettings: (settings: Settings) => void;
+  resetSettings: () => void;
 }
 
 /**
@@ -78,7 +80,7 @@ export function consumeLegacySecrets(): LegacySecrets {
   return out;
 }
 
-// Migrate v1's standalone layoutMode key into settings if present.
+// Legacy preferences are captured once so App can migrate them to the server.
 const legacyLayout = readString(STORAGE_KEYS.layoutMode) as LayoutMode | null;
 
 // Secret keys that older versions wrote into the localStorage settings blob. We
@@ -91,39 +93,54 @@ const DEAD_SETTING_KEYS = ['vocaBridgeOrigin', 'ttsEndpoint', 'useApiTts'];
 
 const persisted = readJSON<Record<string, unknown>>(STORAGE_KEYS.settings, {});
 const captured: LegacySecrets = {};
-let hadLegacySecret = false;
 for (const k of LEGACY_SECRET_KEYS) {
   const v = persisted[k];
   if (typeof v === 'string' && v) {
     captured[k] = v;
-    hadLegacySecret = true;
   }
-  delete persisted[k];
 }
-if (hadLegacySecret) legacySecrets = captured;
+legacySecrets = captured;
 
-let hadDeadKey = false;
-for (const k of DEAD_SETTING_KEYS) {
-  if (k in persisted) {
-    delete persisted[k];
-    hadDeadKey = true;
-  }
+export const LEGACY_PUBLIC_SETTINGS: Partial<Settings> = {
+  ...(legacyLayout ? { layoutMode: legacyLayout } : {}),
+  ...(persisted as Partial<Settings>),
+};
+for (const key of [
+  ...LEGACY_SECRET_KEYS,
+  ...DEAD_SETTING_KEYS,
+] as string[]) {
+  delete (LEGACY_PUBLIC_SETTINGS as Record<string, unknown>)[key];
 }
 
 const initialSettings: Settings = {
   ...DEFAULT_SETTINGS,
-  ...(legacyLayout ? { layoutMode: legacyLayout } : {}),
-  ...(persisted as Partial<Settings>),
+  ...LEGACY_PUBLIC_SETTINGS,
 };
-// Rewrite storage without the stripped secrets/dead config so they don't linger.
-if (hadLegacySecret || hadDeadKey) writeJSON(STORAGE_KEYS.settings, initialSettings);
+
+// Settings must no longer survive locally. Remove all former persistence keys
+// after capturing migration data.
+remove(STORAGE_KEYS.settings);
+remove(STORAGE_KEYS.layoutMode);
 
 export const useSettingsStore = create<SettingsState>((set) => ({
   settings: initialSettings,
+  hydrated: false,
   setSettings: (patch) =>
     set((s) => {
       const next = { ...s.settings, ...patch };
-      writeJSON(STORAGE_KEYS.settings, next);
       return { settings: next };
+    }),
+  replaceSettings: (settings) =>
+    set({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        ...settings,
+      },
+      hydrated: true,
+    }),
+  resetSettings: () =>
+    set({
+      settings: DEFAULT_SETTINGS,
+      hydrated: false,
     }),
 }));

@@ -90,7 +90,9 @@ class APIService: ObservableObject {
     }
     
     func login(usernameInput: String, passwordInput: String) async throws -> Bool {
-        let cleanUrl = serverUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanUrl = serverUrl
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard var urlComponents = URLComponents(string: "\(cleanUrl)/api/auth/login") else {
             throw URLError(.badURL)
         }
@@ -122,11 +124,12 @@ class APIService: ObservableObject {
         self.username = result.username
         self.isAdmin = result.isAdmin
         self.isAuthenticated = true
+        self.serverUrl = cleanUrl
         
         // Save to UserDefaults
         UserDefaults.standard.set(self.token, forKey: "token")
         UserDefaults.standard.set(self.refreshToken, forKey: "refreshToken")
-        UserDefaults.standard.set(self.serverUrl, forKey: "serverUrl")
+        UserDefaults.standard.set(cleanUrl, forKey: "serverUrl")
         UserDefaults.standard.set(self.username, forKey: "username")
         UserDefaults.standard.set(self.isAdmin, forKey: "isAdmin")
         
@@ -398,33 +401,112 @@ class APIService: ObservableObject {
         throw NSError(domain: "APIService", code: 500, userInfo: [NSLocalizedDescriptionKey: "Malformed AI response"])
     }
 
-    // --- Per-user AI secrets (server-side) ---
-    // Secrets live on the backend (user_settings) and are attached by the /api/chat
-    // and /api/voca proxies. GET returns only booleans, never the raw secret.
-    struct ServerSecrets: Codable {
+    // MARK: - Unified user settings
+
+    /// Canonical settings shared by Web and Mobile.
+    ///
+    /// Public preferences are returned in full. Secret values remain on the
+    /// backend; clients receive only availability flags.
+    struct ServerSettings: Codable {
+        let provider: String
+        let baseURL: String
+        let model: String
+        let realtimeModel: String
+        let realtimeVoice: String
         let hasLlmKey: Bool
         let hasRealtimeKey: Bool
-        let audioProvider: String?
-        let audioVoice: String?
-        let audioVoiceEn: String?
-        let audioVoiceVi: String?
-        let speechSpeed: String?
-        let hasAzureKey: Bool?
-        let hasElevenLabsKey: Bool?
+        let audioProvider: String
+        let audioSource: String
+        let audioVoice: String
+        let audioVoiceEn: String
+        let audioVoiceVi: String
+        let ttsModel: String
+        let speechSpeed: String
+        let hasAzureKey: Bool
+        let hasElevenLabsKey: Bool
+        let layoutMode: String
+        let hideFinishedBooks: Bool
         let vocaOrigin: String
         let hasVocaToken: Bool
     }
 
-    func fetchServerSecrets() async throws -> ServerSecrets {
+    typealias ServerSecrets = ServerSettings
+
+    func fetchServerSettings() async throws -> ServerSettings {
         guard let url = URL(string: "\(serverUrl)/api/user/settings") else { throw URLError(.badURL) }
         let (data, response) = try await sendRequest(URLRequest(url: url))
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
-        return try JSONDecoder().decode(ServerSecrets.self, from: data)
+        return try JSONDecoder().decode(ServerSettings.self, from: data)
     }
 
-    /// Upsert secrets on the server. Pass nil to leave a field unchanged, "" to clear.
+    func fetchServerSecrets() async throws -> ServerSettings {
+        try await fetchServerSettings()
+    }
+
+    /// Saves public preferences and optional secret replacements on the server.
+    ///
+    /// Passing nil keeps the current value. For secret fields, pass an empty
+    /// string only when the user explicitly wants to clear the stored value.
+    @discardableResult
+    func saveServerSettings(
+        provider: String? = nil,
+        baseURL: String? = nil,
+        model: String? = nil,
+        realtimeModel: String? = nil,
+        realtimeVoice: String? = nil,
+        llmApiKey: String? = nil,
+        realtimeApiKey: String? = nil,
+        audioProvider: String? = nil,
+        audioSource: String? = nil,
+        audioVoice: String? = nil,
+        audioVoiceEn: String? = nil,
+        audioVoiceVi: String? = nil,
+        ttsModel: String? = nil,
+        speechSpeed: String? = nil,
+        azureApiKey: String? = nil,
+        elevenLabsApiKey: String? = nil,
+        layoutMode: String? = nil,
+        hideFinishedBooks: Bool? = nil,
+        vocaOrigin: String? = nil,
+        vocaToken: String? = nil
+    ) async throws -> ServerSettings {
+        guard let url = URL(string: "\(serverUrl)/api/user/settings") else { throw URLError(.badURL) }
+        var body: [String: Any] = [:]
+        if let v = provider { body["provider"] = v }
+        if let v = baseURL { body["baseURL"] = v }
+        if let v = model { body["model"] = v }
+        if let v = realtimeModel { body["realtimeModel"] = v }
+        if let v = realtimeVoice { body["realtimeVoice"] = v }
+        if let v = llmApiKey { body["llmApiKey"] = v }
+        if let v = realtimeApiKey { body["realtimeApiKey"] = v }
+        if let v = audioProvider { body["audioProvider"] = v }
+        if let v = audioSource { body["audioSource"] = v }
+        if let v = audioVoice { body["audioVoice"] = v }
+        if let v = audioVoiceEn { body["audioVoiceEn"] = v }
+        if let v = audioVoiceVi { body["audioVoiceVi"] = v }
+        if let v = ttsModel { body["ttsModel"] = v }
+        if let v = speechSpeed { body["speechSpeed"] = v }
+        if let v = azureApiKey { body["azureApiKey"] = v }
+        if let v = elevenLabsApiKey { body["elevenLabsApiKey"] = v }
+        if let v = layoutMode { body["layoutMode"] = v }
+        if let v = hideFinishedBooks { body["hideFinishedBooks"] = v }
+        if let v = vocaOrigin { body["vocaOrigin"] = v }
+        if let v = vocaToken { body["vocaToken"] = v }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await sendRequest(request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(ServerSettings.self, from: data)
+    }
+
+    /// Compatibility wrapper for callers being migrated to unified settings.
+    @discardableResult
     func saveServerSecrets(
         llmApiKey: String? = nil,
         realtimeApiKey: String? = nil,
@@ -437,28 +519,20 @@ class APIService: ObservableObject {
         elevenLabsApiKey: String? = nil,
         vocaOrigin: String? = nil,
         vocaToken: String? = nil
-    ) async throws {
-        guard let url = URL(string: "\(serverUrl)/api/user/settings") else { throw URLError(.badURL) }
-        var body: [String: Any] = [:]
-        if let v = llmApiKey { body["llmApiKey"] = v }
-        if let v = realtimeApiKey { body["realtimeApiKey"] = v }
-        if let v = audioProvider { body["audioProvider"] = v }
-        if let v = audioVoice { body["audioVoice"] = v }
-        if let v = audioVoiceEn { body["audioVoiceEn"] = v }
-        if let v = audioVoiceVi { body["audioVoiceVi"] = v }
-        if let v = speechSpeed { body["speechSpeed"] = v }
-        if let v = azureApiKey { body["azureApiKey"] = v }
-        if let v = elevenLabsApiKey { body["elevenLabsApiKey"] = v }
-        if let v = vocaOrigin { body["vocaOrigin"] = v }
-        if let v = vocaToken { body["vocaToken"] = v }
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        let (_, response) = try await sendRequest(request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+    ) async throws -> ServerSettings {
+        try await saveServerSettings(
+            llmApiKey: llmApiKey,
+            realtimeApiKey: realtimeApiKey,
+            audioProvider: audioProvider,
+            audioVoice: audioVoice,
+            audioVoiceEn: audioVoiceEn,
+            audioVoiceVi: audioVoiceVi,
+            speechSpeed: speechSpeed,
+            azureApiKey: azureApiKey,
+            elevenLabsApiKey: elevenLabsApiKey,
+            vocaOrigin: vocaOrigin,
+            vocaToken: vocaToken
+        )
     }
 
     func synthesizeAudio(

@@ -26,6 +26,7 @@ struct AISettingsView: View {
     @State private var vocaHealthOK: Bool = false
     @State private var isCheckingVocaHealth: Bool = false
     @State private var isSavingSettings: Bool = false
+    @State private var visibleCachedBookCount: Int = 3
     /// `auto | voca | device` — see `VocaAudioSource`. Kept as the raw string like every other
     /// preference in this view.
     @State private var audioSource: String = VocaAudioSource.auto.rawValue
@@ -48,20 +49,6 @@ struct AISettingsView: View {
     /// call from `body`. Optimistic default so the hint never flickers.
     @State private var deviceVoiceReady: Bool = true
 
-    // Companion Voice Settings
-    @State private var realtimeApiKey: String = ""
-    @State private var realtimeModel: String = "gpt-realtime-mini"
-    @State private var realtimeVoice: String = "marin"
-    @State private var companionAutoUpdateContext: Bool = true
-    @State private var companionLanguage: String = "vi"
-    @State private var companionAgentName: String = "Jarvis"
-    
-    private let voiceOptions = ["marin", "cedar", "alloy", "echo", "shimmer", "verse", "coral", "sage"]
-    private let languageOptions: [(id: String, label: String, desc: String)] = [
-        ("vi", "Tiếng Việt", "AI nói tiếng Việt"),
-        ("en", "English", "AI speaks English"),
-        ("bilingual", "Song ngữ", "AI tự chọn theo user"),
-    ]
     /// Same three values, and the same wording, as the web app's "Nguồn phát âm".
     private let audioSourceOptions: [(id: String, label: String, desc: String)] = [
         (VocaAudioSource.auto.rawValue, "Tự động", "Voca trước, lỗi thì giọng máy"),
@@ -212,13 +199,12 @@ struct AISettingsView: View {
                 Color(hex: "0f172a").ignoresSafeArea()
                 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 12) {
                         // Header note
-                        Text("Cấu hình API Key và nhà cung cấp dịch vụ AI để sử dụng Companion Agent — phân tích, thảo luận và khám phá nội dung sách.")
-                            .font(.system(size: 13))
+                        Text("Cấu hình AI, giọng đọc và hiển thị.")
+                            .font(.system(size: 11))
                             .foregroundColor(Color(hex: "94a3b8"))
-                            .lineSpacing(4)
-                            .padding(.bottom, 5)
+                            .lineSpacing(2)
 
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Thư viện")
@@ -236,16 +222,16 @@ struct AISettingsView: View {
                             }
                             .tint(Color(hex: "14b8a6"))
                         }
-                        .padding()
+                        .padding(12)
                         .background(Color.white.opacity(0.04))
-                        .cornerRadius(16)
+                        .cornerRadius(12)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 16)
+                            RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
                         
                         // Section 1: Provider Picker
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 8) {
                             Text("Nhà cung cấp")
                                 .font(.system(size: 13, weight: .bold))
                                 .foregroundColor(.white.opacity(0.9))
@@ -287,11 +273,11 @@ struct AISettingsView: View {
                                     .stroke(Color.white.opacity(0.08), lineWidth: 1)
                             )
                         }
-                        .padding()
+                        .padding(12)
                         .background(Color.white.opacity(0.04))
-                        .cornerRadius(16)
+                        .cornerRadius(12)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 16)
+                            RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
                         
@@ -570,7 +556,7 @@ struct AISettingsView: View {
                         // Deliberately its OWN card rather than a row inside the Voca section
                         // above: that one is disabled without a session, and device speech is
                         // exactly what still works when there is no session and no network.
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 8) {
                                 Image(systemName: "speaker.wave.2.fill")
                                     .font(.system(size: 13))
@@ -619,16 +605,16 @@ struct AISettingsView: View {
                             .background(Color.white.opacity(0.03))
                             .cornerRadius(12)
                         }
-                        .padding()
+                        .padding(12)
                         .background(Color.white.opacity(0.04))
-                        .cornerRadius(16)
+                        .cornerRadius(12)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 16)
+                            RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
 
                         // Section: Audiobook & Voice Provider
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 8) {
                                 Image(systemName: "waveform")
                                     .font(.system(size: 13))
@@ -676,12 +662,46 @@ struct AISettingsView: View {
                                     .clipShape(Capsule())
                             }
 
-                            Picker("Provider", selection: $audioProvider) {
+                            Menu {
                                 ForEach(audioProviderOptions, id: \.id) { option in
-                                    Text(option.label).tag(option.id)
+                                    Button {
+                                        audioProvider = option.id
+                                    } label: {
+                                        if audioProvider == option.id {
+                                            Label(option.label, systemImage: "checkmark")
+                                        } else {
+                                            Text(option.label)
+                                        }
+                                    }
                                 }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(
+                                        audioProviderOptions.first(where: { $0.id == audioProvider })?.label
+                                            ?? "Chọn provider"
+                                    )
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.9))
+                                    .lineLimit(1)
+
+                                    Spacer(minLength: 8)
+
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(Color(hex: "94a3b8"))
+                                        .padding(.trailing, 2)
+                                }
+                                .padding(.leading, 11)
+                                .padding(.trailing, 8)
+                                .frame(height: 36)
+                                .background(Color.white.opacity(0.05))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 9)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
+                                .cornerRadius(9)
                             }
-                            .pickerStyle(.menu)
+                            .buttonStyle(.plain)
 
                             Text(audioSettingsDescription)
                                 .font(.system(size: 10))
@@ -853,15 +873,16 @@ struct AISettingsView: View {
                                     .padding(.top, 2)
                             }
                         }
-                        .padding()
+                        .padding(12)
                         .background(Color.white.opacity(0.04))
-                        .cornerRadius(16)
+                        .cornerRadius(14)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 16)
+                            RoundedRectangle(cornerRadius: 14)
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
 
-                        // Section: Companion Voice
+                        /*
+                        // Companion Voice (Realtime) đã được loại bỏ.
                         VStack(alignment: .leading, spacing: 16) {
                             HStack(spacing: 8) {
                                 Image(systemName: "mic.fill")
@@ -1029,13 +1050,14 @@ struct AISettingsView: View {
                             }
                             .tint(Color(hex: "14b8a6"))
                         }
-                        .padding()
+                        .padding(12)
                         .background(Color.white.opacity(0.04))
-                        .cornerRadius(16)
+                        .cornerRadius(12)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 16)
+                            RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
+                        */
                         
                         // Section 3: Bilingual Layout Mode
                         VStack(alignment: .leading, spacing: 12) {
@@ -1065,6 +1087,7 @@ struct AISettingsView: View {
                                 .foregroundColor(.white.opacity(0.9))
                             
                             let downloadedBooks = books.filter { cacheManager.isDownloaded(slug: $0.slug) }
+                            let visibleDownloadedBooks = Array(downloadedBooks.prefix(visibleCachedBookCount))
                             
                             if downloadedBooks.isEmpty {
                                 Text("Chưa có sách nào được tải về thiết bị.")
@@ -1073,7 +1096,7 @@ struct AISettingsView: View {
                                     .padding(.vertical, 8)
                             } else {
                                 VStack(spacing: 8) {
-                                    ForEach(downloadedBooks) { book in
+                                    ForEach(visibleDownloadedBooks) { book in
                                         HStack {
                                             VStack(alignment: .leading, spacing: 2) {
                                                 Text(book.title)
@@ -1102,8 +1125,31 @@ struct AISettingsView: View {
                                         }
                                         .padding(.vertical, 6)
                                         
-                                        if book.id != downloadedBooks.last?.id {
+                                        if book.id != visibleDownloadedBooks.last?.id {
                                             Divider().background(Color.white.opacity(0.06))
+                                        }
+                                    }
+
+                                    if visibleDownloadedBooks.count < downloadedBooks.count {
+                                        Button(action: {
+                                            withAnimation {
+                                                visibleCachedBookCount = min(
+                                                    visibleCachedBookCount + 3,
+                                                    downloadedBooks.count
+                                                )
+                                            }
+                                        }) {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "chevron.down")
+                                                    .font(.system(size: 10, weight: .bold))
+                                                Text("Xem thêm (\(downloadedBooks.count - visibleDownloadedBooks.count))")
+                                                    .font(.system(size: 12, weight: .semibold))
+                                            }
+                                            .foregroundColor(Color(hex: "38bdf8"))
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 8)
+                                            .background(Color(hex: "38bdf8").opacity(0.08))
+                                            .cornerRadius(8)
                                         }
                                     }
                                     
@@ -1165,6 +1211,7 @@ struct AISettingsView: View {
             }
             .navigationTitle("Cấu hình AI & Voca")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Hủy") {
@@ -1177,7 +1224,7 @@ struct AISettingsView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .onAppear {
                 loadSettings()
-                Task { await loadVocaFromServer() }
+                Task { await loadSettingsFromServer() }
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
@@ -1194,44 +1241,54 @@ struct AISettingsView: View {
         self.audioSource = VocaAudioSource.current.rawValue
         self.deviceVoiceReady = DeviceSpeech.shared.isAvailable
         // Voca is NOT read from the device any more — see `loadVocaFromServer`.
-        self.realtimeApiKey = UserDefaults.standard.string(forKey: "realtimeApiKey") ?? ""
-        self.realtimeModel = UserDefaults.standard.string(forKey: "realtimeModel") ?? "gpt-realtime-mini"
-        self.realtimeVoice = UserDefaults.standard.string(forKey: "realtimeVoice") ?? "marin"
-        self.companionAutoUpdateContext = UserDefaults.standard.object(forKey: "companionAutoUpdateContext") as? Bool ?? true
-        self.companionLanguage = UserDefaults.standard.string(forKey: "companionLanguage") ?? "vi"
-        self.companionAgentName = UserDefaults.standard.string(forKey: "companionAgentName") ?? "Jarvis"
     }
     
-    /// Reads the real Voca state from `GET /api/user/settings`: the origin comes back as
-    /// stored, the key only as a boolean (`hasVocaToken`) — which is why the key field is
-    /// never populated.
+    /// Loads the canonical settings shared by Web and Mobile.
+    ///
+    /// Public preferences are returned in full. Secret fields remain empty because
+    /// the server exposes only availability flags for stored credentials.
     @MainActor
-    private func loadVocaFromServer() async {
+    private func loadSettingsFromServer() async {
         guard api.isAuthenticated else {
             vocaConfiguredOnServer = false
+            vocaSectionNote = "Đăng nhập để tải và đồng bộ cài đặt từ server."
             return
         }
         isLoadingVocaSettings = true
         defer { isLoadingVocaSettings = false }
         do {
-            let secrets = try await api.fetchServerSecrets()
+            let settings = try await api.fetchServerSettings()
 
-            audioProvider = secrets.audioProvider ?? "device"
-            audioVoice = secrets.audioVoice ?? ""
-            audioVoiceEn = secrets.audioVoiceEn ?? (secrets.audioVoice ?? "")
-            audioVoiceVi = secrets.audioVoiceVi ?? ""
-            speechSpeed = secrets.speechSpeed ?? "1.0"
-            hasAzureKey = secrets.hasAzureKey ?? false
-            hasElevenLabsKey = secrets.hasElevenLabsKey ?? false
+            aiProvider = settings.provider
+            aiBaseURL = settings.baseURL
+            aiModel = settings.model
+            bilingualLayoutMode = settings.layoutMode
+            hideFinishedBooks = settings.hideFinishedBooks
 
-            vocaConfiguredOnServer = secrets.hasVocaToken
-            vocaApiOrigin = secrets.vocaOrigin.isEmpty ? VocaService.defaultOrigin : secrets.vocaOrigin
+            audioProvider = settings.audioProvider
+            audioSource = settings.audioSource
+            audioVoice = settings.audioVoice
+            audioVoiceEn = settings.audioVoiceEn.isEmpty
+                ? settings.audioVoice
+                : settings.audioVoiceEn
+            audioVoiceVi = settings.audioVoiceVi
+            speechSpeed = settings.speechSpeed
+            hasAzureKey = settings.hasAzureKey
+            hasElevenLabsKey = settings.hasElevenLabsKey
+
+            vocaConfiguredOnServer = settings.hasVocaToken
+            vocaApiOrigin = settings.vocaOrigin.isEmpty
+                ? VocaService.defaultOrigin
+                : settings.vocaOrigin
             vocaApiKey = ""
-            vocaSectionNote = nil
-            // The lookup path caches this answer for the session; keep the two in step.
-            VocaService.noteConfiguration(hasVocaToken: secrets.hasVocaToken)
+            vocaSectionNote = "Cài đặt đang được đồng bộ từ server."
+            VocaService.noteConfiguration(
+                hasVocaToken: settings.hasVocaToken
+            )
         } catch {
-            vocaSectionNote = "Không tải được cấu hình Voca từ server. Kiểm tra kết nối rồi mở lại."
+            let server = api.serverUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+            vocaSectionNote =
+                "Không tải được cài đặt từ \(server): \(error.localizedDescription)"
         }
     }
 
@@ -1255,39 +1312,19 @@ struct AISettingsView: View {
         }
     }
 
-    /// Writes the device-local preferences, then pushes the secrets to the server.
-    /// Returns a message when the server write failed (so the sheet stays open), `nil` on success.
+    /// Saves the complete cross-platform settings contract on the server.
+    ///
+    /// UserDefaults is no longer the persistence layer for shared settings.
+    /// A failed server write keeps this screen open.
     @MainActor
     private func saveSettings() async -> String? {
-        UserDefaults.standard.set(aiProvider, forKey: "aiProvider")
-        UserDefaults.standard.set(aiBaseURL, forKey: "aiBaseURL")
-        UserDefaults.standard.set(aiApiKey, forKey: "aiApiKey")
-        UserDefaults.standard.set(aiModel, forKey: "aiModel")
-        UserDefaults.standard.set(bilingualLayoutMode, forKey: "bilingualLayoutMode")
-        UserDefaults.standard.set(hideFinishedBooks, forKey: "hideFinishedBooks")
-        UserDefaults.standard.set(
-            (VocaAudioSource(rawValue: audioSource) ?? .auto).rawValue,
-            forKey: VocaAudioSource.defaultsKey
-        )
-        UserDefaults.standard.set(realtimeApiKey.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "realtimeApiKey")
-        UserDefaults.standard.set(realtimeModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "realtimeModel")
-        UserDefaults.standard.set(realtimeVoice, forKey: "realtimeVoice")
-        UserDefaults.standard.set(companionAutoUpdateContext, forKey: "companionAutoUpdateContext")
-        UserDefaults.standard.set(companionLanguage, forKey: "companionLanguage")
-        UserDefaults.standard.set(companionAgentName.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "companionAgentName")
-
-        // The secrets live in `user_settings` on the backend (see /api/user/settings) and are
-        // attached by the /api/chat and /api/voca proxies. Nothing about the Voca key is
-        // written to the device: it is not in UserDefaults and no longer in the Keychain.
         let llm = aiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rt = realtimeApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let origin = VocaService.normalizedOrigin(vocaApiOrigin)
         let originToSend = origin.isEmpty ? VocaService.defaultOrigin : origin
         let typedVocaKey = vocaApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard api.isAuthenticated else {
-            // Local preferences are saved; the secrets have nowhere to go.
-            return "Chưa đăng nhập nên chưa lưu được key lên server. Đăng nhập rồi lưu lại."
+            return "Chưa đăng nhập nên không thể lưu cài đặt lên server."
         }
 
         do {
@@ -1295,41 +1332,57 @@ struct AISettingsView: View {
             let vVi = audioVoiceVi.trimmingCharacters(in: .whitespacesAndNewlines)
             let vFallback = !vEn.isEmpty ? vEn : audioVoice.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            try await api.saveServerSecrets(
+            let saved = try await api.saveServerSettings(
+                provider: aiProvider,
+                baseURL: aiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                model: aiModel.trimmingCharacters(in: .whitespacesAndNewlines),
                 llmApiKey: llm.isEmpty ? nil : llm,
-                realtimeApiKey: rt.isEmpty ? nil : rt,
                 audioProvider: audioProvider,
+                audioSource: (VocaAudioSource(rawValue: audioSource) ?? .auto).rawValue,
                 audioVoice: vFallback,
                 audioVoiceEn: vEn,
                 audioVoiceVi: vVi,
+                ttsModel: vEn,
                 speechSpeed: speechSpeed,
                 azureApiKey: azureApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : azureApiKey.trimmingCharacters(in: .whitespacesAndNewlines),
                 elevenLabsApiKey: elevenLabsApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : elevenLabsApiKey.trimmingCharacters(in: .whitespacesAndNewlines),
+                layoutMode: bilingualLayoutMode,
+                hideFinishedBooks: hideFinishedBooks,
                 vocaOrigin: originToSend,
-                // Empty means "keep what is stored" — the field is blank whenever the user
-                // has not typed a replacement.
                 vocaToken: typedVocaKey.isEmpty ? nil : typedVocaKey
             )
 
+            aiProvider = saved.provider
+            aiBaseURL = saved.baseURL
+            aiModel = saved.model
+            bilingualLayoutMode = saved.layoutMode
+            hideFinishedBooks = saved.hideFinishedBooks
+            audioProvider = saved.audioProvider
+            audioSource = saved.audioSource
+            audioVoice = saved.audioVoice
+            audioVoiceEn = saved.audioVoiceEn
+            audioVoiceVi = saved.audioVoiceVi
+            speechSpeed = saved.speechSpeed
+            hasAzureKey = saved.hasAzureKey
+            hasElevenLabsKey = saved.hasElevenLabsKey
+            vocaConfiguredOnServer = saved.hasVocaToken
+
             AudiobookManager.shared.configure(
-                provider: audioProvider,
-                voice: vFallback,
-                speed: speechSpeed,
-                voiceEn: vEn,
-                voiceVi: vVi
+                provider: saved.audioProvider,
+                voice: saved.audioVoice,
+                speed: saved.speechSpeed,
+                voiceEn: saved.audioVoiceEn,
+                voiceVi: saved.audioVoiceVi
             )
         } catch {
-            return "Không lưu được cấu hình lên server. Kiểm tra kết nối rồi thử lại."
+            return "Không lưu được cài đặt lên server. Kiểm tra kết nối rồi thử lại."
         }
 
         // Reflect what was actually sent, and drop anything cached from the old config: a new
         // key/origin can mean a different Voca account entirely.
         vocaApiOrigin = originToSend
         vocaApiKey = ""
-        if !typedVocaKey.isEmpty {
-            vocaConfiguredOnServer = true
-            VocaService.noteConfiguration(hasVocaToken: true)
-        }
+        VocaService.noteConfiguration(hasVocaToken: vocaConfiguredOnServer)
         VocaService.clearCardsCache()
         return nil
     }

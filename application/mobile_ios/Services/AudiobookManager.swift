@@ -150,7 +150,23 @@ final class AudiobookManager: ObservableObject {
             AudioProviderFactory.shared.clearCache()
         }
 
-        if isNewBook || (isNewPage && !isPlaying && !shouldContinuePlayingOnPageLoad) {
+        // A page selected manually must immediately stop the audio that belongs
+        // to the previous page. Automatic audiobook page turns set
+        // shouldContinuePlayingOnPageLoad before changing the reader page, so
+        // they are still allowed to continue seamlessly.
+        if isNewPage && isPlaying && !shouldContinuePlayingOnPageLoad {
+            isPlaying = false
+            isPausedOnCurrentPage = false
+            playbackTask?.cancel()
+            playbackTask = nil
+            stopTimeTracking()
+            endBackgroundTransitionTask()
+            AudioProviderFactory.shared.stop()
+            highlightSentence(id: nil)
+            currentSentenceIndex = 0
+        }
+
+        if isNewBook || (isNewPage && !shouldContinuePlayingOnPageLoad) {
             self.currentPage = currentPage
             isPausedOnCurrentPage = false
             AudioProviderFactory.shared.stop()
@@ -194,6 +210,22 @@ final class AudiobookManager: ObservableObject {
         self.enWebView = en
         self.viWebView = vi
         self.currentViewMode = viewMode
+
+        // When the player is opened, immediately derive its reading language
+        // from the page currently visible in the reader. Split mode keeps the
+        // user's most recently selected audiobook language.
+        let visibleMode: AudiobookLanguageMode? = {
+            switch viewMode {
+            case "en": return .en
+            case "vi": return .vi
+            default: return nil
+            }
+        }()
+
+        if let visibleMode, mode != visibleMode {
+            changeMode(visibleMode)
+            return
+        }
 
         if self.currentPage != page || self.sentences.isEmpty {
             self.currentPage = page
@@ -322,15 +354,62 @@ final class AudiobookManager: ObservableObject {
     func extractSentences(viewMode: String) async {
         let jsExtract = """
         (function() {
-            let nodes = Array.from(document.querySelectorAll('.sentence-node'));
+            const excludedSelector = [
+                'script', 'style', 'noscript', 'template', 'head',
+                'nav', 'footer', '.book-footer', '.running-header',
+                '[hidden]', '[aria-hidden="true"]',
+                '[data-audiobook-ignore="true"]'
+            ].join(',');
+
+            const isReadable = (element) => {
+                if (!element || element.closest(excludedSelector)) return false;
+                const style = window.getComputedStyle(element);
+                if (style.display === 'none' || style.visibility === 'hidden') return false;
+                if (Number(style.opacity) === 0) return false;
+                return element.getClientRects().length > 0;
+            };
+
+            const orderedListMarker = (element) => {
+                if (element.tagName !== 'LI') return '';
+
+                const list = element.parentElement;
+                if (!list || list.tagName !== 'OL') return '';
+
+                const explicitValue = Number.parseInt(element.getAttribute('value') || '', 10);
+                if (Number.isFinite(explicitValue)) return explicitValue + '. ';
+
+                const start = Number.parseInt(list.getAttribute('start') || '1', 10);
+                const reversed = list.hasAttribute('reversed');
+                const siblings = Array.from(list.children).filter(child => child.tagName === 'LI');
+                const index = siblings.indexOf(element);
+                const initial = Number.isFinite(start)
+                    ? start
+                    : (reversed ? siblings.length : 1);
+                const number = reversed ? initial - index : initial + index;
+                return number + '. ';
+            };
+
+            const visibleText = (element) => {
+                const text = (element.innerText || '')
+                    .replace(/\\s+/g, ' ')
+                    .trim();
+                return orderedListMarker(element) + text;
+            };
+
+            let nodes = Array.from(document.querySelectorAll('.sentence-node'))
+                .filter(isReadable);
             if (nodes.length === 0 && typeof segmentDocSentences === 'function') {
                 try {
                     segmentDocSentences(document);
-                    nodes = Array.from(document.querySelectorAll('.sentence-node'));
+                    nodes = Array.from(document.querySelectorAll('.sentence-node'))
+                        .filter(isReadable);
                 } catch(e) {}
             }
             if (nodes.length === 0) {
-                const pars = Array.from(document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, .chapter-start, .section-title, .action-header, .action-title'));
+                const root = document.querySelector('article') || document.querySelector('main') || document.body;
+                const pars = Array.from(root.querySelectorAll(
+                    'p, h1, h2, h3, h4, h5, h6, li, blockquote, dt, dd, figcaption, th, td, pre, .chapter-start, .section-title, .action-header, .action-title'
+                )).filter(isReadable);
                 return pars.map((p, idx) => {
                     if (!p.dataset.sentenceId) {
                         p.dataset.sentenceId = 'fallback-s-' + idx;
@@ -338,13 +417,13 @@ final class AudiobookManager: ObservableObject {
                     }
                     return {
                         id: p.dataset.sentenceId,
-                        text: (p.textContent || '').trim()
+                        text: visibleText(p)
                     };
                 }).filter(x => x.text.length > 0);
             }
             return nodes.map(n => ({
                 id: n.dataset.sentenceId || '',
-                text: (n.textContent || '').trim()
+                text: visibleText(n)
             })).filter(x => x.text.length > 0);
         })();
         """
@@ -418,7 +497,41 @@ final class AudiobookManager: ObservableObject {
     }
 
     private func parseHtmlToSentenceItems(html: String, lang: String) -> [AudioSentenceItem] {
-        let nsHtml = html as NSString
+        // Background parsing cannot inspect computed styles, so first remove
+        // document configuration and restrict extraction to the semantic book
+        // container. This prevents CSS/JavaScript/JSON and page chrome from
+        // being included in synthesized speech.
+        var contentHtml = html
+        let removablePatterns = [
+            #"(?is)<!DOCTYPE[\s\S]*?>"#,
+            #"(?is)<head\b[^>]*>[\s\S]*?</head>"#,
+            #"(?is)<script\b[^>]*>[\s\S]*?</script>"#,
+            #"(?is)<style\b[^>]*>[\s\S]*?</style>"#,
+            #"(?is)<noscript\b[^>]*>[\s\S]*?</noscript>"#,
+            #"(?is)<template\b[^>]*>[\s\S]*?</template>"#,
+            #"(?is)<nav\b[^>]*>[\s\S]*?</nav>"#,
+            #"(?is)<footer\b[^>]*>[\s\S]*?</footer>"#,
+            #"(?is)<!--[\s\S]*?-->"#
+        ]
+        for pattern in removablePatterns {
+            contentHtml = contentHtml.replacingOccurrences(
+                of: pattern,
+                with: " ",
+                options: .regularExpression
+            )
+        }
+
+        if let article = firstHtmlContainer(named: "article", in: contentHtml) {
+            contentHtml = article
+        } else if let main = firstHtmlContainer(named: "main", in: contentHtml) {
+            contentHtml = main
+        } else if let body = firstHtmlContainer(named: "body", in: contentHtml) {
+            contentHtml = body
+        }
+
+        contentHtml = addOrderedListMarkers(to: contentHtml)
+
+        let nsHtml = contentHtml as NSString
         var results: [AudioSentenceItem] = []
 
         // 1. Try finding .sentence-node with data-sentence-id
@@ -426,7 +539,10 @@ final class AudiobookManager: ObservableObject {
             pattern: #"<[^>]+class="[^"]*sentence-node[^"]*"[^>]*data-sentence-id="([^"]+)"[^>]*>([\s\S]*?)</[^>]+>"#,
             options: .caseInsensitive
         )
-        if let matches = sentenceNodeRegex?.matches(in: html, range: NSRange(location: 0, length: nsHtml.length)), !matches.isEmpty {
+        if let matches = sentenceNodeRegex?.matches(
+            in: contentHtml,
+            range: NSRange(location: 0, length: nsHtml.length)
+        ), !matches.isEmpty {
             for match in matches {
                 guard match.numberOfRanges >= 3 else { continue }
                 let id = nsHtml.substring(with: match.range(at: 1))
@@ -442,10 +558,13 @@ final class AudiobookManager: ObservableObject {
 
         // 2. Fallback: extract paragraphs, headings, list items
         let blockRegex = try? NSRegularExpression(
-            pattern: #"<(p|h[1-6]|li|blockquote|dt|dd)[^>]*>([\s\S]*?)</\1>"#,
+            pattern: #"<(p|h[1-6]|li|blockquote|dt|dd|figcaption|th|td|pre)[^>]*>([\s\S]*?)</\1>"#,
             options: .caseInsensitive
         )
-        if let blockMatches = blockRegex?.matches(in: html, range: NSRange(location: 0, length: nsHtml.length)), !blockMatches.isEmpty {
+        if let blockMatches = blockRegex?.matches(
+            in: contentHtml,
+            range: NSRange(location: 0, length: nsHtml.length)
+        ), !blockMatches.isEmpty {
             for (idx, match) in blockMatches.enumerated() {
                 guard match.numberOfRanges >= 3 else { continue }
                 let rawText = nsHtml.substring(with: match.range(at: 2))
@@ -459,12 +578,134 @@ final class AudiobookManager: ObservableObject {
         if !results.isEmpty { return results }
 
         // 3. Fallback: plain text stripped from entire page
-        let fullText = stripHtmlToText(html)
+        let fullText = stripHtmlToText(contentHtml)
         if !fullText.isEmpty {
             results.append(AudioSentenceItem(id: "fallback-\(lang)-s-0", text: fullText, lang: lang))
         }
 
         return results
+    }
+
+    /// HTML list markers are generated by the browser and therefore are not
+    /// part of `textContent`. Add them explicitly when parsing cached HTML so
+    /// ordered steps such as 1, 2, 3 are also spoken by the audiobook.
+    private func addOrderedListMarkers(to html: String) -> String {
+        guard let orderedListRegex = try? NSRegularExpression(
+            pattern: #"(?is)<ol\b([^>]*)>([\s\S]*?)</ol>"#
+        ) else {
+            return html
+        }
+
+        let source = html as NSString
+        let matches = orderedListRegex.matches(
+            in: html,
+            range: NSRange(location: 0, length: source.length)
+        )
+
+        var result = html
+
+        // Replace from the end so earlier NSRange values remain valid.
+        for listMatch in matches.reversed() {
+            guard listMatch.numberOfRanges >= 3 else { continue }
+
+            let attributes = source.substring(with: listMatch.range(at: 1))
+            let listBody = source.substring(with: listMatch.range(at: 2))
+            let isReversed = attributes.range(
+                of: #"\breversed\b"#,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil
+
+            let startValue: Int? = {
+                guard let regex = try? NSRegularExpression(
+                    pattern: #"\bstart\s*=\s*["']?(-?\d+)"#,
+                    options: .caseInsensitive
+                ) else {
+                    return nil
+                }
+                let nsAttributes = attributes as NSString
+                guard let match = regex.firstMatch(
+                    in: attributes,
+                    range: NSRange(location: 0, length: nsAttributes.length)
+                ), match.numberOfRanges >= 2 else {
+                    return nil
+                }
+                return Int(nsAttributes.substring(with: match.range(at: 1)))
+            }()
+
+            guard let listItemRegex = try? NSRegularExpression(
+                pattern: #"(?is)<li\b([^>]*)>([\s\S]*?)</li>"#
+            ) else {
+                continue
+            }
+
+            let nsListBody = listBody as NSString
+            let itemMatches = listItemRegex.matches(
+                in: listBody,
+                range: NSRange(location: 0, length: nsListBody.length)
+            )
+
+            var numberedBody = listBody
+            let defaultStart = startValue ?? (isReversed ? itemMatches.count : 1)
+
+            for (offset, itemMatch) in itemMatches.enumerated().reversed() {
+                guard itemMatch.numberOfRanges >= 3 else { continue }
+
+                let itemAttributes = nsListBody.substring(with: itemMatch.range(at: 1))
+                let itemContent = nsListBody.substring(with: itemMatch.range(at: 2))
+
+                let explicitValue: Int? = {
+                    guard let regex = try? NSRegularExpression(
+                        pattern: #"\bvalue\s*=\s*["']?(-?\d+)"#,
+                        options: .caseInsensitive
+                    ) else {
+                        return nil
+                    }
+                    let nsAttributes = itemAttributes as NSString
+                    guard let match = regex.firstMatch(
+                        in: itemAttributes,
+                        range: NSRange(location: 0, length: nsAttributes.length)
+                    ), match.numberOfRanges >= 2 else {
+                        return nil
+                    }
+                    return Int(nsAttributes.substring(with: match.range(at: 1)))
+                }()
+
+                let number = explicitValue ??
+                    (isReversed ? defaultStart - offset : defaultStart + offset)
+                let replacement = "<li\(itemAttributes)>\(number). \(itemContent)</li>"
+
+                guard let swiftRange = Range(itemMatch.range, in: numberedBody) else {
+                    continue
+                }
+                numberedBody.replaceSubrange(swiftRange, with: replacement)
+            }
+
+            let replacement = "<ol\(attributes)>\(numberedBody)</ol>"
+            guard let swiftRange = Range(listMatch.range, in: result) else {
+                continue
+            }
+            result.replaceSubrange(swiftRange, with: replacement)
+        }
+
+        return result
+    }
+
+    private func firstHtmlContainer(named tag: String, in html: String) -> String? {
+        let escapedTag = NSRegularExpression.escapedPattern(for: tag)
+        let pattern = "(?is)<\(escapedTag)\\b[^>]*>([\\s\\S]*?)</\(escapedTag)>"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return nil
+        }
+
+        let nsHtml = html as NSString
+        guard let match = regex.firstMatch(
+            in: html,
+            range: NSRange(location: 0, length: nsHtml.length)
+        ), match.numberOfRanges >= 2 else {
+            return nil
+        }
+
+        return nsHtml.substring(with: match.range(at: 1))
     }
 
     private func updateSentenceOffsets(_ items: [AudioSentenceItem]) {

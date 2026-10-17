@@ -63,6 +63,7 @@ export function useAudiobook({
   const cumulativeOffsetsRef = useRef<number[]>([]);
   const totalCharsRef = useRef<number>(0);
   const activePageRef = useRef<number>(currentPage);
+  const previousPageRef = useRef<number>(currentPage);
   activePageRef.current = currentPage;
 
   // In-memory cache for parsed page sentences
@@ -80,23 +81,86 @@ export function useAudiobook({
     if (!iframe || !iframe.contentDocument) return [];
     const doc = iframe.contentDocument;
 
-    let nodes = Array.from(doc.querySelectorAll<HTMLElement>('.sentence-node'));
+    const excludedSelector = [
+      'script',
+      'style',
+      'noscript',
+      'template',
+      'head',
+      'nav',
+      'footer',
+      '.book-footer',
+      '.running-header',
+      '[hidden]',
+      '[aria-hidden="true"]',
+      '[data-audiobook-ignore="true"]',
+    ].join(',');
+
+    const isReadable = (element: HTMLElement): boolean => {
+      if (element.closest(excludedSelector)) return false;
+
+      const style = iframe.contentWindow?.getComputedStyle(element);
+      if (style) {
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        if (Number(style.opacity) === 0) return false;
+      }
+
+      return element.getClientRects().length > 0;
+    };
+
+    const orderedListMarker = (element: HTMLElement): string => {
+      if (element.tagName !== 'LI') return '';
+
+      const list = element.parentElement;
+      if (!list || list.tagName !== 'OL') return '';
+
+      const explicitValue = Number.parseInt(element.getAttribute('value') || '', 10);
+      if (Number.isFinite(explicitValue)) return `${explicitValue}. `;
+
+      const siblings = Array.from(list.children).filter((child) => child.tagName === 'LI');
+      const index = siblings.indexOf(element);
+      const reversed = list.hasAttribute('reversed');
+      const parsedStart = Number.parseInt(list.getAttribute('start') || '', 10);
+      const start = Number.isFinite(parsedStart)
+        ? parsedStart
+        : reversed
+          ? siblings.length
+          : 1;
+      const number = reversed ? start - index : start + index;
+
+      return `${number}. `;
+    };
+
+    const visibleText = (element: HTMLElement): string => {
+      const text = (element.innerText || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return `${orderedListMarker(element)}${text}`;
+    };
+
+    let nodes = Array.from(doc.querySelectorAll<HTMLElement>('.sentence-node')).filter(isReadable);
     if (nodes.length === 0) {
       try {
         segmentDocSentences(doc);
-        nodes = Array.from(doc.querySelectorAll<HTMLElement>('.sentence-node'));
+        nodes = Array.from(doc.querySelectorAll<HTMLElement>('.sentence-node')).filter(isReadable);
       } catch {
         /* ignore fallback errors */
       }
     }
 
     if (nodes.length === 0) {
-      // Fallback: collect paragraphs and headings
+      // Fallback: collect all readable semantic content from the visible book
+      // container. This includes definition lists, tables, captions and code
+      // blocks that were previously omitted from audiobook narration.
+      const root =
+        doc.querySelector<HTMLElement>('article') ||
+        doc.querySelector<HTMLElement>('main') ||
+        doc.body;
       const pars = Array.from(
-        doc.querySelectorAll<HTMLElement>(
-          'p, h1, h2, h3, h4, h5, h6, li, blockquote, .chapter-start, .section-title, .action-header, .action-title',
+        root.querySelectorAll<HTMLElement>(
+          'p, h1, h2, h3, h4, h5, h6, li, blockquote, dt, dd, figcaption, th, td, pre, .chapter-start, .section-title, .action-header, .action-title',
         ),
-      );
+      ).filter(isReadable);
       return pars
         .map((p, idx) => {
           if (!p.dataset.sentenceId) {
@@ -105,7 +169,7 @@ export function useAudiobook({
           }
           return {
             id: p.dataset.sentenceId,
-            text: p.textContent?.trim() || '',
+            text: visibleText(p),
             lang,
           };
         })
@@ -115,7 +179,7 @@ export function useAudiobook({
     return nodes
       .map((node) => ({
         id: node.dataset.sentenceId || '',
-        text: node.textContent?.trim() || '',
+        text: visibleText(node),
         lang,
       }))
       .filter((item) => item.text.length > 0);
@@ -135,18 +199,56 @@ export function useAudiobook({
         if (!res.ok) return [];
         const html = await res.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        let nodes = Array.from(doc.querySelectorAll<HTMLElement>('.sentence-node'));
+
+        doc
+          .querySelectorAll(
+            'script, style, noscript, template, head, nav, footer, .book-footer, .running-header, [hidden], [aria-hidden="true"], [data-audiobook-ignore="true"]',
+          )
+          .forEach((element) => element.remove());
+
+        const root =
+          doc.querySelector<HTMLElement>('article') ||
+          doc.querySelector<HTMLElement>('main') ||
+          doc.body;
+
+        let nodes = Array.from(root.querySelectorAll<HTMLElement>('.sentence-node'));
         if (nodes.length === 0) {
           nodes = Array.from(
-            doc.querySelectorAll<HTMLElement>(
-              'p, h1, h2, h3, h4, h5, h6, li, blockquote, .chapter-start, .section-title, .action-header, .action-title',
+            root.querySelectorAll<HTMLElement>(
+              'p, h1, h2, h3, h4, h5, h6, li, blockquote, dt, dd, figcaption, th, td, pre, .chapter-start, .section-title, .action-header, .action-title',
             ),
           );
         }
         const items = nodes
           .map((n, idx) => ({
             id: n.dataset?.sentenceId || `fallback-${targetMode}-s-${idx}`,
-            text: n.textContent?.trim() || '',
+            text: (() => {
+              const content = (n.textContent || '').replace(/\s+/g, ' ').trim();
+              if (n.tagName !== 'LI' || n.parentElement?.tagName !== 'OL') {
+                return content;
+              }
+
+              const list = n.parentElement;
+              const explicitValue = Number.parseInt(n.getAttribute('value') || '', 10);
+              if (Number.isFinite(explicitValue)) {
+                return `${explicitValue}. ${content}`;
+              }
+
+              const siblings = Array.from(list.children).filter(
+                (child) => child.tagName === 'LI',
+              );
+              const itemIndex = siblings.indexOf(n);
+              const reversed = list.hasAttribute('reversed');
+              const parsedStart = Number.parseInt(list.getAttribute('start') || '', 10);
+              const start = Number.isFinite(parsedStart)
+                ? parsedStart
+                : reversed
+                  ? siblings.length
+                  : 1;
+              const number = reversed ? start - itemIndex : start + itemIndex;
+
+              return `${number}. ${content}`;
+            })(),
             lang: targetMode,
           }))
           .filter((item) => item.text.length > 0);
@@ -575,6 +677,22 @@ export function useAudiobook({
   // Re-extract sentences when page or viewMode changes, and auto-continue playback on page change
   useEffect(() => {
     let cancelled = false;
+    const pageChanged = previousPageRef.current !== currentPage;
+    const shouldContinueOnNewPage = shouldAutoPlayNextPageRef.current;
+    previousPageRef.current = currentPage;
+
+    // A page changed directly from the reader controls must never keep playing
+    // audio synthesized for the previous page. Automatic audiobook page turns
+    // are the only page transition allowed to continue playback.
+    if (pageChanged && !shouldContinueOnNewPage) {
+      playingRef.current = false;
+      setIsPlaying(false);
+      stopCurrentAudio();
+      setMediaSessionPlaybackState('paused');
+      highlightSentence(null);
+      currentSentenceIndexRef.current = 0;
+      setCurrentSentenceIndex(0);
+    }
 
     // Check memory cache first
     const cached = pageSentencesCacheRef.current.get(currentPage);

@@ -8,7 +8,11 @@ import { playSentenceAudio } from '@/features/audiobook/audiobookService';
 import { syncVocaCards } from '@/lib/vocaCards';
 import { checkVocaHealth } from '@/lib/vocaClient';
 import { useSettingsStore, type AudioSource, type Settings } from './settingsStore';
-import { saveServerSecrets, USER_SETTINGS_KEY, type ServerSecrets } from './serverSecrets';
+import {
+  saveServerSettings,
+  USER_SETTINGS_KEY,
+  type ServerSettings,
+} from './serverSecrets';
 import styles from './settings.module.css';
 
 const PROVIDERS: { value: string; label: string; baseURL?: string; model?: string }[] = [
@@ -20,17 +24,6 @@ const PROVIDERS: { value: string; label: string; baseURL?: string; model?: strin
     model: 'gemini-2.0-flash',
   },
   { value: 'custom', label: 'Custom (Ollama / Local)' },
-];
-
-const VOICES: { value: string; label: string }[] = [
-  { value: 'alloy', label: 'Alloy (Mặc định)' },
-  { value: 'ash', label: 'Ash' },
-  { value: 'ballad', label: 'Ballad' },
-  { value: 'coral', label: 'Coral' },
-  { value: 'echo', label: 'Echo' },
-  { value: 'sage', label: 'Sage' },
-  { value: 'shimmer', label: 'Shimmer' },
-  { value: 'verse', label: 'Verse' },
 ];
 
 const AUDIO_SOURCES: { value: AudioSource; label: string }[] = [
@@ -65,21 +58,18 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const settings = useSettingsStore((s) => s.settings);
-  const setSettings = useSettingsStore((s) => s.setSettings);
+  const replaceSettings = useSettingsStore((s) => s.replaceSettings);
   const [form, setForm] = useState<Settings>(settings);
   // Some embedded WebViews ship no Web Speech API at all — say so here instead of
   // letting the fallback fail silently on the first word.
   const deviceVoiceReady = deviceSpeechAvailable();
 
-  // Secrets (LLM key, realtime key, Voca API key) live server-side and never come
+  // Secrets (LLM key and Voca API key) live server-side and never come
   // back to the browser — the modal only learns whether each is set, and inputs
   // are write-only (blank = keep existing). Loaded from /api/user/settings on open.
   const [llmKey, setLlmKey] = useState('');
   const [llmDirty, setLlmDirty] = useState(false);
   const [hasLlmKey, setHasLlmKey] = useState(false);
-  const [realtimeKey, setRealtimeKey] = useState('');
-  const [realtimeDirty, setRealtimeDirty] = useState(false);
-  const [hasRealtimeKey, setHasRealtimeKey] = useState(false);
   const [vocaOrigin, setVocaOrigin] = useState('');
   const [vocaOriginDirty, setVocaOriginDirty] = useState(false);
   const [vocaToken, setVocaToken] = useState('');
@@ -107,11 +97,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     let cancelled = false;
-    apiJson<ServerSecrets>('/api/user/settings')
+    apiJson<ServerSettings>('/api/user/settings')
       .then((s) => {
         if (cancelled) return;
         setHasLlmKey(s.hasLlmKey);
-        setHasRealtimeKey(s.hasRealtimeKey);
         setVocaOrigin(s.vocaOrigin || '');
         setHasVocaToken(s.hasVocaToken);
         setAudioProvider(s.audioProvider || 'device');
@@ -196,15 +185,17 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       toast.show(vocaTokenError, 'danger');
       return;
     }
-    setSettings(form);
-    // Persist secrets/config to the backend. Only send a secret field when the
-    // user actually typed one, so a blank field keeps the existing server value —
-    // and only send the origin once we know what the server currently holds.
     try {
-      await saveServerSecrets({
+      const saved = await saveServerSettings({
+        provider: form.provider,
+        baseURL: form.baseURL.trim(),
+        model: form.model.trim(),
+        ttsModel: form.ttsModel.trim(),
+        audioSource: form.audioSource,
+        layoutMode: form.layoutMode,
+        hideFinishedBooks: form.hideFinishedBooks,
         ...(secretsLoaded || vocaOriginDirty ? { vocaOrigin: normalizeVocaOrigin(vocaOrigin) } : {}),
         ...(llmDirty ? { llmApiKey: llmKey.trim() } : {}),
-        ...(realtimeDirty ? { realtimeApiKey: realtimeKey.trim() } : {}),
         ...(vocaTokenDirty ? { vocaToken: vocaToken.trim() } : {}),
         audioProvider,
         audioVoice: audioVoiceEn.trim() || audioVoice.trim(),
@@ -214,12 +205,19 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         ...(azureDirty ? { azureApiKey: azureApiKey.trim() } : {}),
         ...(elevenLabsDirty ? { elevenLabsApiKey: elevenLabsApiKey.trim() } : {}),
       });
-      await queryClient.invalidateQueries({ queryKey: USER_SETTINGS_KEY });
-    } catch {
-      /* non-fatal: local (non-secret) settings are still saved */
+
+      replaceSettings(saved);
+      queryClient.setQueryData<ServerSettings>(USER_SETTINGS_KEY, saved);
+      toast.show('Đã lưu và đồng bộ cài đặt trên server', 'success');
+      onClose();
+    } catch (error) {
+      toast.show(
+        error instanceof Error
+          ? `Không thể lưu cài đặt: ${error.message}`
+          : 'Không thể lưu cài đặt lên server.',
+        'danger',
+      );
     }
-    toast.show('Đã lưu cấu hình', 'success');
-    onClose();
   };
 
   const savedPlaceholder = '•••••••••••• (đã lưu ở server — để trống nếu giữ nguyên)';
@@ -228,15 +226,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     <div className={styles.backdrop} onMouseDown={onClose}>
       <form className={styles.panel} onMouseDown={(e) => e.stopPropagation()} onSubmit={onSave}>
         <div className={styles.header}>
-          <h3>Cấu hình Companion Agent &amp; Voca</h3>
+          <div>
+            <h3>Cài đặt</h3>
+            <p className={styles.sectionHint}>
+              Mọi thay đổi được lưu trên server và đồng bộ giữa Web và Mobile.
+            </p>
+          </div>
           <button type="button" className={styles.close} onClick={onClose} aria-label="Đóng">
             ✕
           </button>
         </div>
 
         <div className={styles.body}>
-          <Section title="Companion Reader Agent">
-            <Field label="API Provider" full>
+          <Section title="Cấu hình">
+            <Field label="API Provider">
               <select className={styles.input} value={form.provider} onChange={(e) => onProviderChange(e.target.value)}>
                 {PROVIDERS.map((p) => (
                   <option key={p.value} value={p.value}>
@@ -245,7 +248,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 ))}
               </select>
             </Field>
-            <Field label="API Base URL" full>
+            <Field label="API Base URL">
               <input className={styles.input} type="text" required value={form.baseURL} onChange={(e) => patch({ baseURL: e.target.value })} />
             </Field>
             <Field label="API Key">
@@ -265,38 +268,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             </Field>
           </Section>
 
-          <Section title="Companion Voice (Realtime)" hint="Cấu hình cuộc gọi giọng nói trực tiếp (WebRTC).">
-            <Field label="Realtime API Key" full>
-              <input
-                className={styles.input}
-                type="password"
-                placeholder={hasRealtimeKey ? savedPlaceholder : 'Mặc định dùng chung API Key chính ở trên'}
-                value={realtimeKey}
-                onChange={(e) => {
-                  setRealtimeKey(e.target.value);
-                  setRealtimeDirty(true);
-                }}
-              />
-            </Field>
-            <Field label="Realtime Model Name">
-              <input className={styles.input} type="text" placeholder="gpt-realtime-mini" value={form.realtimeModel} onChange={(e) => patch({ realtimeModel: e.target.value })} />
-            </Field>
-            <Field label="AI Voice">
-              <select className={styles.input} value={form.realtimeVoice} onChange={(e) => patch({ realtimeVoice: e.target.value })}>
-                {VOICES.map((v) => (
-                  <option key={v.value} value={v.value}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </Section>
-
           <Section
             title="Audiobook &amp; Voice"
-            hint="Cấu hình nguồn đọc và giọng đọc cho tính năng Audiobook. Đồng bộ dùng chung giữa Web và iOS."
+            hint="Cấu hình giọng đọc, đồng bộ giữa Web và iOS."
           >
-            <Field label="Nguồn phát Audio" full>
+            <Field label="Nguồn phát Audio">
               <select
                 className={styles.input}
                 value={audioProvider}
@@ -385,30 +361,32 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </Field>
             )}
 
-            <div className={`${styles.group} ${styles.groupFull}`} style={{ display: 'flex', gap: '10px' }}>
+            <div className={`${styles.group} ${styles.voiceTestRow}`}>
               <button
                 type="button"
-                className={styles.btnGhost}
+                className={`${styles.btnGhost} ${styles.voiceTestButton}`}
                 onClick={() => onTestAudio('en')}
                 disabled={audioTesting}
-                style={{ flex: 1 }}
+                title="Nghe thử giọng tiếng Anh"
               >
-                {audioTesting ? 'Đang đọc…' : '▶ Thử Voice Tiếng Anh'}
+                <span aria-hidden="true">▶</span>
+                <span>{audioTesting ? 'Đang đọc…' : 'English'}</span>
               </button>
               <button
                 type="button"
-                className={styles.btnGhost}
+                className={`${styles.btnGhost} ${styles.voiceTestButton}`}
                 onClick={() => onTestAudio('vi')}
                 disabled={audioTesting}
-                style={{ flex: 1 }}
+                title="Nghe thử giọng tiếng Việt"
               >
-                {audioTesting ? 'Đang đọc…' : '▶ Thử Voice Tiếng Việt'}
+                <span aria-hidden="true">▶</span>
+                <span>{audioTesting ? 'Đang đọc…' : 'Tiếng Việt'}</span>
               </button>
             </div>
           </Section>
 
-          <Section title="Voca API" hint="API key nhập ở đây được lưu an toàn phía server (không lưu trên trình duyệt). Voca tự chạy LLM và TTS, nên phần này không dùng API Key phía trên.">
-            <Field label="Voca API URL" full>
+          <Section title="Voca API" hint="API key được lưu an toàn trên server và chỉ dùng cho Voca.">
+            <Field label="Voca API URL">
               <input
                 className={styles.input}
                 type="url"
@@ -420,7 +398,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 }}
               />
             </Field>
-            <Field label="Voca API Key" full>
+            <Field label="Voca API Key">
               <input
                 className={styles.input}
                 type="password"
@@ -433,7 +411,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               />
               {vocaTokenError && <p className={styles.sectionHint}>{vocaTokenError}</p>}
             </Field>
-            <Field label="Nguồn phát âm" full>
+            <Field label="Nguồn phát âm">
               <select
                 className={styles.input}
                 value={form.audioSource}
@@ -447,7 +425,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </select>
               <p className={styles.sectionHint}>
                 {deviceVoiceReady
-                  ? 'Giọng thiết bị chất lượng thấp hơn Voca nhưng miễn phí, chạy ngoại tuyến và luôn dùng được.'
+                  ? 'Giọng thiết bị miễn phí và dùng ngoại tuyến.'
                   : 'Trình duyệt này không có giọng thiết bị — chỉ dùng được nguồn Voca.'}
               </p>
             </Field>
@@ -483,7 +461,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             </div>
           </Section>
 
-          <Section title="Liên kết Notebook Studio" hint="Địa chỉ Notebook Studio để liên kết ghi chép và mở nhanh sổ tay thông minh.">
+          <Section title="Liên kết Notebook Studio" hint="Liên kết để mở nhanh sổ tay.">
             <Field label="Notebook Studio URL" full>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input
@@ -532,7 +510,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             Hủy
           </button>
           <button type="submit" className={styles.btnPrimary}>
-            Lưu Cấu Hình
+            Lưu &amp; Đồng Bộ
           </button>
         </div>
       </form>

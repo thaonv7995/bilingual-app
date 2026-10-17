@@ -166,6 +166,7 @@ struct BookshelfView: View {
             }
             .navigationTitle("Tủ Sách Song Ngữ")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .modifier(CompactLibrarySearchModifier(
                 text: $searchText,
                 enabled: horizontalSizeClass != .regular

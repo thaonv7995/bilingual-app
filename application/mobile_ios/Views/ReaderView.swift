@@ -179,11 +179,6 @@ struct ReaderView: View {
                                             self.page = newPage
                                             self.saveProgress()
                                             self.clearSelectionState()
-                                            // Update AI companion with new page context
-                                            if self.companionVM.phase == .live,
-                                               UserDefaults.standard.object(forKey: "companionAutoUpdateContext") as? Bool ?? true {
-                                                self.updateCompanionAfterPageChange(newPage: newPage)
-                                            }
                                         }
                                     }
                                 )
@@ -498,7 +493,6 @@ struct ReaderView: View {
             .onAppear {
                 loadProgress()
                 fetchHighlights()
-                setupCompanionVM()
             }
             .onChange(of: viewMode) { _ in
                 saveProgress()
@@ -516,11 +510,6 @@ struct ReaderView: View {
                     }
                     ReaderVocaOverlayView(progressWord: vocaProgressWord, toast: vocaToast)
                     
-                    if companionVM.phase != .idle && (companionVM.isMinimized || !isChatOpen) {
-                        FloatingVoiceWidgetView(companionVM: companionVM, isChatOpen: $isChatOpen)
-                            .padding(.horizontal, isPhone && isLandscape ? phoneHorizontalInset : 0)
-                    }
-
                     if audiobookManager.isBarVisible {
                         GeometryReader { proxy in
                             let compactSize: CGFloat = 64
@@ -2580,26 +2569,6 @@ struct ReaderChatPanelView: View {
                 
                 Spacer()
                 
-                // Voice Mode Toggle
-                Button(action: {
-                    toggleVoiceMode()
-                }) {
-                    ZStack {
-                        Image(systemName: companionVM.phase != .idle ? "waveform.circle.fill" : "mic.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(companionVM.phase != .idle ? Color(hex: "14b8a6") : .white.opacity(0.8))
-                            .frame(width: 32, height: 32)
-                            .background(companionVM.phase != .idle ? Color(hex: "14b8a6").opacity(0.2) : Color.white.opacity(0.08))
-                            .clipShape(Circle())
-                        
-                        if companionVM.phase != .idle {
-                            Circle()
-                                .stroke(Color(hex: "14b8a6").opacity(0.5), lineWidth: 1.5)
-                                .frame(width: 36, height: 36)
-                        }
-                    }
-                }
-                
                 // Settings Toggle
                 Button(action: {
                     withAnimation(.spring()) {
@@ -2642,10 +2611,6 @@ struct ReaderChatPanelView: View {
             if isAISettingsOpen {
                 aiSettingsForm()
                     .transition(.move(edge: .trailing))
-            } else if companionVM.phase != .idle {
-                // Voice Mode UI
-                voiceModeContent()
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
             } else {
                 // Messages List
                 ScrollViewReader { proxy in

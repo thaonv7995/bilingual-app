@@ -28,22 +28,49 @@ VOCA_TOKEN_PREFIX = "voca_"
 
 
 def _public_view(s: UserSettings | None) -> dict:
-    """Never expose raw secrets — only whether each one is set (env counts)."""
+    """Return shared public preferences plus secret availability flags."""
     llm = (s.llm_api_key if s else "") or ""
     realtime = (s.realtime_api_key if s else "") or ""
     voca_token = (s.voca_bridge_token if s else "") or ""
     voice_en = (s.audio_voice_en if s and s.audio_voice_en else "") or (s.audio_voice if s and s.audio_voice else "")
     voice_vi = (s.audio_voice_vi if s and s.audio_voice_vi else "")
     return {
+        "provider": (s.ai_provider if s and s.ai_provider else "openai"),
+        "baseURL": (
+            s.ai_base_url
+            if s and s.ai_base_url
+            else "https://api.openai.com/v1"
+        ),
+        "model": (s.ai_model if s and s.ai_model else "gpt-4o-mini"),
+        "realtimeModel": (
+            s.realtime_model
+            if s and s.realtime_model
+            else "gpt-realtime-mini"
+        ),
+        "realtimeVoice": (
+            s.realtime_voice if s and s.realtime_voice else "alloy"
+        ),
         "hasLlmKey": bool(llm or ENV_OPENAI),
         "hasRealtimeKey": bool(realtime or llm or ENV_OPENAI),
         "audioProvider": (s.audio_provider if s and s.audio_provider else "device"),
+        "audioSource": (s.audio_source if s and s.audio_source else "auto"),
         "audioVoice": (s.audio_voice if s and s.audio_voice else ""),
         "audioVoiceEn": voice_en,
         "audioVoiceVi": voice_vi,
+        "ttsModel": (
+            s.tts_model
+            if s and s.tts_model
+            else "edge-tts/en-US-SteffanNeural"
+        ),
         "speechSpeed": (s.speech_speed if s and s.speech_speed else "1.0"),
         "hasAzureKey": bool((s.azure_api_key if s else "") or ""),
         "hasElevenLabsKey": bool((s.elevenlabs_api_key if s else "") or ""),
+        "layoutMode": (s.layout_mode if s and s.layout_mode else "en-vi"),
+        "hideFinishedBooks": (
+            s.hide_finished_books
+            if s and s.hide_finished_books is not None
+            else True
+        ),
         "vocaOrigin": (s.voca_bridge_origin if s and s.voca_bridge_origin else ""),
         "hasVocaToken": bool(voca_token or ENV_VOCA_TOKEN),
     }
@@ -64,25 +91,39 @@ def put_user_settings(
     db: Session = Depends(get_db),
 ):
     s = get_or_create_user_settings(db, current_user.id)
+
+    public_fields = {
+        "provider": ("ai_provider", "openai"),
+        "baseURL": ("ai_base_url", "https://api.openai.com/v1"),
+        "model": ("ai_model", "gpt-4o-mini"),
+        "realtimeModel": ("realtime_model", "gpt-realtime-mini"),
+        "realtimeVoice": ("realtime_voice", "alloy"),
+        "audioProvider": ("audio_provider", "device"),
+        "audioSource": ("audio_source", "auto"),
+        "audioVoice": ("audio_voice", ""),
+        "audioVoiceEn": ("audio_voice_en", ""),
+        "audioVoiceVi": ("audio_voice_vi", ""),
+        "ttsModel": ("tts_model", "edge-tts/en-US-SteffanNeural"),
+        "speechSpeed": ("speech_speed", "1.0"),
+        "layoutMode": ("layout_mode", "en-vi"),
+    }
+    for payload_key, (attribute_name, default_value) in public_fields.items():
+        if payload_key in payload and payload[payload_key] is not None:
+            value = str(payload[payload_key]).strip()
+            setattr(s, attribute_name, value or default_value)
+
+    if "hideFinishedBooks" in payload and payload["hideFinishedBooks"] is not None:
+        if not isinstance(payload["hideFinishedBooks"], bool):
+            raise HTTPException(
+                status_code=422,
+                detail="hideFinishedBooks must be a boolean",
+            )
+        s.hide_finished_books = payload["hideFinishedBooks"]
+
     if payload.get("llmApiKey") is not None and "llmApiKey" in payload:
         s.llm_api_key = str(payload["llmApiKey"]).strip()
     if payload.get("realtimeApiKey") is not None and "realtimeApiKey" in payload:
         s.realtime_api_key = str(payload["realtimeApiKey"]).strip()
-
-    if payload.get("audioProvider") is not None and "audioProvider" in payload:
-        s.audio_provider = str(payload["audioProvider"]).strip()
-
-    if payload.get("audioVoice") is not None and "audioVoice" in payload:
-        s.audio_voice = str(payload["audioVoice"]).strip()
-
-    if payload.get("audioVoiceEn") is not None and "audioVoiceEn" in payload:
-        s.audio_voice_en = str(payload["audioVoiceEn"]).strip()
-
-    if payload.get("audioVoiceVi") is not None and "audioVoiceVi" in payload:
-        s.audio_voice_vi = str(payload["audioVoiceVi"]).strip()
-
-    if payload.get("speechSpeed") is not None and "speechSpeed" in payload:
-        s.speech_speed = str(payload["speechSpeed"]).strip()
 
     if payload.get("azureApiKey") is not None and "azureApiKey" in payload:
         s.azure_api_key = str(payload["azureApiKey"]).strip()

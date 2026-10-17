@@ -72,15 +72,24 @@ def test_user_settings_get_default_is_empty():
     finally:
         db.close()
     assert view == {
+        "provider": "openai",
+        "baseURL": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini",
+        "realtimeModel": "gpt-realtime-mini",
+        "realtimeVoice": "alloy",
         "hasLlmKey": False,
         "hasRealtimeKey": False,
         "audioProvider": "device",
+        "audioSource": "auto",
         "audioVoice": "",
         "audioVoiceEn": "",
         "audioVoiceVi": "",
+        "ttsModel": "edge-tts/en-US-SteffanNeural",
         "speechSpeed": "1.0",
         "hasAzureKey": False,
         "hasElevenLabsKey": False,
+        "layoutMode": "en-vi",
+        "hideFinishedBooks": True,
         "vocaOrigin": "",
         "hasVocaToken": False,
     }

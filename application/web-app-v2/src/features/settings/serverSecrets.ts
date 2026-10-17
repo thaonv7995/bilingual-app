@@ -1,55 +1,87 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiJson } from '@/lib/api-client';
 import { consumeLegacySecrets } from './settingsStore';
+import type { AudioSource, Settings } from './settingsStore';
+import type { LayoutMode } from '@/features/reader/readerConstants';
 
 /**
- * Server-held secret status. The backend never returns raw secrets — only whether
- * each one is configured — so the browser learns "is a key set?" without holding it.
+ * Canonical settings response shared by web and mobile.
+ *
+ * Public preferences are returned in full. Secret values are never returned;
+ * clients only receive availability flags and may replace or clear a secret
+ * explicitly through PUT.
  */
-export interface ServerSecrets {
+export interface ServerSettings extends Settings {
   hasLlmKey: boolean;
   hasRealtimeKey: boolean;
-  audioProvider?: string;
-  audioVoice?: string;
-  audioVoiceEn?: string;
-  audioVoiceVi?: string;
-  speechSpeed?: string;
-  hasAzureKey?: boolean;
-  hasElevenLabsKey?: boolean;
+  audioProvider: string;
+  audioVoice: string;
+  audioVoiceEn: string;
+  audioVoiceVi: string;
+  speechSpeed: string;
+  hasAzureKey: boolean;
+  hasElevenLabsKey: boolean;
   vocaOrigin: string;
   hasVocaToken: boolean;
 }
 
 export const USER_SETTINGS_KEY = ['user-settings'] as const;
 
-export function useServerSecrets() {
+export type ServerSettingsPatch = Partial<{
+  provider: string;
+  baseURL: string;
+  model: string;
+  realtimeModel: string;
+  realtimeVoice: string;
+  ttsModel: string;
+  audioSource: AudioSource;
+  layoutMode: LayoutMode;
+  hideFinishedBooks: boolean;
+  llmApiKey: string;
+  realtimeApiKey: string;
+  audioProvider: string;
+  audioVoice: string;
+  audioVoiceEn: string;
+  audioVoiceVi: string;
+  speechSpeed: string;
+  azureApiKey: string;
+  elevenLabsApiKey: string;
+  vocaOrigin: string;
+  vocaToken: string;
+}>;
+
+export function getServerSettings(): Promise<ServerSettings> {
+  return apiJson<ServerSettings>('/api/user/settings');
+}
+
+export function useServerSettings() {
   return useQuery({
     queryKey: USER_SETTINGS_KEY,
-    queryFn: () => apiJson<ServerSecrets>('/api/user/settings'),
+    queryFn: getServerSettings,
     staleTime: 60_000,
   });
 }
 
-/** PUT partial secrets/config; omit a field to keep it, send "" to clear it. */
-export async function saveServerSecrets(patch: {
-  llmApiKey?: string;
-  realtimeApiKey?: string;
-  audioProvider?: string;
-  audioVoice?: string;
-  audioVoiceEn?: string;
-  audioVoiceVi?: string;
-  speechSpeed?: string;
-  azureApiKey?: string;
-  elevenLabsApiKey?: string;
-  vocaOrigin?: string;
-  vocaToken?: string;
-}): Promise<ServerSecrets> {
-  return apiJson<ServerSecrets>('/api/user/settings', {
+/**
+ * Persist a partial settings update.
+ *
+ * Omit a field to keep its current value. For secret fields, send an empty
+ * string only when the user explicitly wants to clear the server-side value.
+ */
+export async function saveServerSettings(
+  patch: ServerSettingsPatch,
+): Promise<ServerSettings> {
+  return apiJson<ServerSettings>('/api/user/settings', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
   });
 }
+
+// Compatibility aliases while callers are migrated to the unified naming.
+export type ServerSecrets = ServerSettings;
+export const useServerSecrets = useServerSettings;
+export const saveServerSecrets = saveServerSettings;
 
 /**
  * v1 shipped this Voca key hardcoded in the bundle, so it is public and burnt —
@@ -71,13 +103,13 @@ export async function migrateLegacySecrets(): Promise<boolean> {
   if (!legacy.apiKey && !legacy.realtimeApiKey && !legacy.vocaBridgeToken) {
     return false;
   }
-  let current: ServerSecrets | null = null;
+  let current: ServerSettings | null = null;
   try {
-    current = await apiJson<ServerSecrets>('/api/user/settings');
+    current = await getServerSettings();
   } catch {
     /* offline / not ready — fall through and attempt the migration anyway */
   }
-  const patch: Parameters<typeof saveServerSecrets>[0] = {};
+  const patch: ServerSettingsPatch = {};
   if (legacy.apiKey && !current?.hasLlmKey) patch.llmApiKey = legacy.apiKey;
   if (legacy.realtimeApiKey && !current?.hasRealtimeKey) patch.realtimeApiKey = legacy.realtimeApiKey;
   if (legacy.vocaBridgeToken && legacy.vocaBridgeToken !== LEAKED_V1_VOCA_TOKEN && !current?.hasVocaToken) {
@@ -85,7 +117,7 @@ export async function migrateLegacySecrets(): Promise<boolean> {
   }
   if (!Object.keys(patch).length) return false;
   try {
-    await saveServerSecrets(patch);
+    await saveServerSettings(patch);
     return true;
   } catch {
     return false;

@@ -116,11 +116,11 @@ class UserRefreshToken(Base):
     expires_at = Column(Integer, nullable=False)
 
 class UserSettings(Base):
-    """Per-user server-held secrets & config. Secrets (LLM / realtime API keys,
-    Voca API token) are entered on the FE but stored here server-side and NEVER
-    returned to the browser — the /api/chat, /api/voca proxies attach them. Empty
-    values fall back to the relevant env defaults (OPENAI_API_KEY,
-    VOCA_API_ORIGIN / VOCA_BRIDGE_ORIGIN, VOCA_BRIDGE_TOKEN).
+    """Single source of truth for settings shared by web and mobile clients.
+
+    Secrets are stored here but are never returned to clients. Public preferences
+    are returned by `/api/user/settings`, so every signed-in device uses the same
+    AI, audio, reader and library configuration.
 
     The `voca_bridge_*` column names predate the Voca 2.0 rename and are kept
     deliberately — renaming them buys nothing and costs a migration."""
@@ -131,14 +131,27 @@ class UserSettings(Base):
     llm_api_key = Column(String, nullable=True, default="")
     realtime_api_key = Column(String, nullable=True, default="")
 
+    # Companion / realtime AI preferences
+    ai_provider = Column(String, nullable=True, default="openai")
+    ai_base_url = Column(String, nullable=True, default="https://api.openai.com/v1")
+    ai_model = Column(String, nullable=True, default="gpt-4o-mini")
+    realtime_model = Column(String, nullable=True, default="gpt-realtime-mini")
+    realtime_voice = Column(String, nullable=True, default="alloy")
+
     # Audiobook / TTS settings
     audio_provider = Column(String, nullable=True, default="device")
+    audio_source = Column(String, nullable=True, default="auto")
     audio_voice = Column(String, nullable=True, default="")
     audio_voice_en = Column(String, nullable=True, default="")
     audio_voice_vi = Column(String, nullable=True, default="")
+    tts_model = Column(String, nullable=True, default="edge-tts/en-US-SteffanNeural")
     azure_api_key = Column(String, nullable=True, default="")
     elevenlabs_api_key = Column(String, nullable=True, default="")
     speech_speed = Column(String, nullable=True, default="1.0")
+
+    # Reader and library preferences
+    layout_mode = Column(String, nullable=True, default="en-vi")
+    hide_finished_books = Column(Boolean, nullable=False, default=True)
 
     voca_bridge_origin = Column(String, nullable=True, default="")
     voca_bridge_token = Column(String, nullable=True, default="")
@@ -230,11 +243,52 @@ def _migrate_add_audio_settings():
                 except Exception as e:
                     print(f"[Migration] user_settings.{col_name} skipped: {e}")
 
+
+def _migrate_add_unified_user_settings():
+    """Idempotently add cross-platform preferences to older databases."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "user_settings" not in inspector.get_table_names():
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("user_settings")
+    }
+    columns_to_add = [
+        ("ai_provider", "TEXT DEFAULT 'openai'"),
+        ("ai_base_url", "TEXT DEFAULT 'https://api.openai.com/v1'"),
+        ("ai_model", "TEXT DEFAULT 'gpt-4o-mini'"),
+        ("realtime_model", "TEXT DEFAULT 'gpt-realtime-mini'"),
+        ("realtime_voice", "TEXT DEFAULT 'alloy'"),
+        ("audio_source", "TEXT DEFAULT 'auto'"),
+        ("tts_model", "TEXT DEFAULT 'edge-tts/en-US-SteffanNeural'"),
+        ("layout_mode", "TEXT DEFAULT 'en-vi'"),
+        ("hide_finished_books", "BOOLEAN NOT NULL DEFAULT 1"),
+    ]
+
+    with engine.begin() as connection:
+        for column_name, column_definition in columns_to_add:
+            if column_name in existing_columns:
+                continue
+            try:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE user_settings "
+                        f"ADD COLUMN {column_name} {column_definition}"
+                    )
+                )
+            except Exception as error:
+                print(
+                    f"[Migration] user_settings.{column_name} skipped: {error}"
+                )
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_voca_config_to_user_settings()
     _migrate_add_book_created_at()
     _migrate_add_audio_settings()
+    _migrate_add_unified_user_settings()
 
 def get_db():
     db = SessionLocal()
