@@ -12,6 +12,12 @@ targets:
           - "README.md"
           - "project.yml"
           - "BilingualReader.xcodeproj"
+          - ".pytest_cache"
+    info:
+      path: Info.plist
+      properties:
+        UIBackgroundModes:
+          - audio
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true

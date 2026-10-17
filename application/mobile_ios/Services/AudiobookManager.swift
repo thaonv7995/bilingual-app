@@ -1,6 +1,7 @@
 import Foundation
 import WebKit
 import SwiftUI
+import UIKit
 
 struct AudioSentenceItem: Identifiable, Equatable {
     var id: String
@@ -39,6 +40,8 @@ final class AudiobookManager: ObservableObject {
     @Published var voiceVi: String = ""
     @Published var currentViewMode: String = "split"
     @Published var bookSlug: String = ""
+    @Published var bookTitle: String = ""
+    @Published var bookAuthor: String = ""
     @Published var currentPage: Int = 1
     @Published var totalPage: Int = 1
     var shouldContinuePlayingOnPageLoad: Bool = false
@@ -52,8 +55,78 @@ final class AudiobookManager: ObservableObject {
 
     private var cumulativeOffsets: [Int] = []
     private var totalChars: Int = 0
+    private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
 
-    private init() {}
+    // In-memory cache for parsed page sentences
+    private var pageSentencesCache: [Int: [AudioSentenceItem]] = [:]
+
+    private init() {
+        setupRemoteCommands()
+    }
+
+    private func setupRemoteCommands() {
+        NowPlayingManager.shared.setupRemoteCommands(
+            onPlay: { [weak self] in
+                self?.play()
+            },
+            onPause: { [weak self] in
+                self?.pause()
+            },
+            onToggle: { [weak self] in
+                guard let self = self else { return }
+                if self.isPlaying {
+                    self.pause()
+                } else {
+                    self.play()
+                }
+            },
+            onNextTrack: { [weak self] in
+                self?.nextSentence()
+            },
+            onPrevTrack: { [weak self] in
+                self?.prevSentence()
+            },
+            onSeek: { [weak self] time in
+                AudioProviderFactory.shared.seek(to: time)
+                self?.updateNowPlayingInfo()
+            }
+        )
+    }
+
+    private func beginBackgroundTransitionTask() {
+        endBackgroundTransitionTask()
+        backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "AudiobookPlaybackTransition") { [weak self] in
+            self?.endBackgroundTransitionTask()
+        }
+    }
+
+    private func endBackgroundTransitionTask() {
+        if backgroundTaskId != .invalid {
+            UIApplication.shared.endBackgroundTask(backgroundTaskId)
+            backgroundTaskId = .invalid
+        }
+    }
+
+    func updateNowPlayingInfo() {
+        let currentItem = currentSentenceIndex < sentences.count ? sentences[currentSentenceIndex] : nil
+        let sentenceText = currentItem?.text ?? ""
+        let title = !sentenceText.isEmpty ? sentenceText : (!bookTitle.isEmpty ? "\(bookTitle) - Trang \(currentPage)" : "Trang \(currentPage)")
+        let artist = !bookTitle.isEmpty ? "\(bookTitle) • \(mode.title) Mode" : "Bilingual Reader • \(mode.title)"
+        let album = totalPage > 0 ? "Trang \(currentPage)/\(totalPage)" : "Trang \(currentPage)"
+
+        let rate = isPlaying ? (Double(speed) ?? 1.0) : 0.0
+        let curTime = AudioProviderFactory.shared.currentTime
+        let duration = AudioProviderFactory.shared.duration
+
+        NowPlayingManager.shared.updateNowPlaying(
+            title: title,
+            artist: artist,
+            albumTitle: album,
+            currentTime: curTime,
+            duration: duration,
+            playbackRate: rate
+        )
+    }
 
     func configure(provider: String, voice: String, speed: String, voiceEn: String = "", voiceVi: String = "") {
         self.provider = provider
@@ -63,19 +136,90 @@ final class AudiobookManager: ObservableObject {
         self.speed = speed
     }
 
-    func updateContext(bookSlug: String, currentPage: Int, totalPage: Int) {
-        if self.currentPage != currentPage || self.bookSlug != bookSlug {
-            if !shouldContinuePlayingOnPageLoad {
-                isPausedOnCurrentPage = false
-                if isPlaying {
-                    pause()
-                }
-                AudioProviderFactory.shared.stop()
+    func updateContext(bookSlug: String, currentPage: Int, totalPage: Int, bookTitle: String = "", bookAuthor: String = "") {
+        let isNewBook = self.bookSlug != bookSlug
+        let isNewPage = self.currentPage != currentPage
+
+        self.bookSlug = bookSlug
+        self.totalPage = totalPage
+        if !bookTitle.isEmpty { self.bookTitle = bookTitle }
+        if !bookAuthor.isEmpty { self.bookAuthor = bookAuthor }
+
+        if isNewBook {
+            pageSentencesCache.removeAll()
+            AudioProviderFactory.shared.clearCache()
+        }
+
+        if isNewBook || (isNewPage && !isPlaying && !shouldContinuePlayingOnPageLoad) {
+            self.currentPage = currentPage
+            isPausedOnCurrentPage = false
+            AudioProviderFactory.shared.stop()
+            preloadCurrentPageSentences()
+        } else if isNewPage && !isPlaying {
+            self.currentPage = currentPage
+            preloadCurrentPageSentences()
+        }
+
+        if isPlaying {
+            updateNowPlayingInfo()
+        }
+    }
+
+    /// Fast preload of current page sentences from memory cache or local HTML storage (< 1ms)
+    func preloadCurrentPageSentences() {
+        guard !bookSlug.isEmpty else { return }
+
+        if let cached = pageSentencesCache[currentPage], !cached.isEmpty {
+            self.sentences = cached
+            self.updateSentenceOffsets(cached)
+            return
+        }
+
+        // Fast synchronous check from local file on disk
+        if let localUrl = BookCacheManager.shared.localPageURL(slug: bookSlug, lang: mode.rawValue, page: currentPage),
+           let data = try? Data(contentsOf: localUrl),
+           let str = String(data: data, encoding: .utf8) {
+            let items = parseHtmlToSentenceItems(html: str, lang: mode.rawValue)
+            if !items.isEmpty {
+                self.pageSentencesCache[currentPage] = items
+                self.sentences = items
+                self.updateSentenceOffsets(items)
+                return
             }
         }
-        self.bookSlug = bookSlug
-        self.currentPage = currentPage
-        self.totalPage = totalPage
+    }
+
+    /// Prepares state immediately when user opens the player bar on a page
+    func syncWithCurrentPage(page: Int, viewMode: String, en: WKWebView?, vi: WKWebView?) {
+        self.enWebView = en
+        self.viWebView = vi
+        self.currentViewMode = viewMode
+
+        if self.currentPage != page || self.sentences.isEmpty {
+            self.currentPage = page
+            self.currentSentenceIndex = 0
+            self.preloadCurrentPageSentences()
+        }
+
+        // Smoothly highlight and scroll to active sentence
+        if !sentences.isEmpty {
+            let idx = min(currentSentenceIndex, sentences.count - 1)
+            let item = sentences[idx]
+            highlightSentence(id: item.id, lang: item.lang)
+        } else {
+            Task {
+                await extractSentences(viewMode: viewMode)
+                if let first = self.sentences.first {
+                    self.highlightSentence(id: first.id, lang: first.lang)
+                }
+            }
+        }
+
+        // Pre-fetch NEXT page audio in the background
+        Task.detached(priority: .background) { [weak self] in
+            guard let self = self else { return }
+            await self.prefetchNextPageAudio(page: page + 1, targetMode: await self.mode)
+        }
     }
 
     func voiceFor(lang: String) -> String {
@@ -105,28 +249,39 @@ final class AudiobookManager: ObservableObject {
         self.enWebView = en
         self.viWebView = vi
         self.currentViewMode = viewMode
-        Task {
-            // Wait briefly for DOM rendering/script execution if page just flipped
-            try? await Task.sleep(nanoseconds: 180_000_000)
-            await extractSentences(viewMode: viewMode)
 
-            if self.shouldContinuePlayingOnPageLoad {
-                if !self.sentences.isEmpty {
+        // If audio is already actively playing on this page (e.g. instant continuous playback),
+        // we just update the web views and highlight the active sentence without any interruption!
+        if isPlaying {
+            if currentSentenceIndex < sentences.count {
+                let item = sentences[currentSentenceIndex]
+                highlightSentence(id: item.id, lang: item.lang)
+            }
+            return
+        }
+
+        // Preload immediately from cache/disk without sleeping
+        preloadCurrentPageSentences()
+
+        if sentences.isEmpty {
+            Task {
+                await extractSentences(viewMode: viewMode)
+                if self.shouldContinuePlayingOnPageLoad && !self.sentences.isEmpty {
                     self.shouldContinuePlayingOnPageLoad = false
                     self.currentSentenceIndex = 0
                     self.play()
-                } else {
-                    // Retry once after additional 350ms in case WebView was still loading HTML
-                    try? await Task.sleep(nanoseconds: 350_000_000)
-                    if self.shouldContinuePlayingOnPageLoad {
-                        await extractSentences(viewMode: viewMode)
-                        if !self.sentences.isEmpty && self.shouldContinuePlayingOnPageLoad {
-                            self.shouldContinuePlayingOnPageLoad = false
-                            self.currentSentenceIndex = 0
-                            self.play()
-                        }
-                    }
+                } else if let first = self.sentences.first {
+                    self.highlightSentence(id: first.id, lang: first.lang)
                 }
+            }
+        } else {
+            if self.shouldContinuePlayingOnPageLoad {
+                self.shouldContinuePlayingOnPageLoad = false
+                self.currentSentenceIndex = 0
+                self.play()
+            } else if !self.sentences.isEmpty {
+                let item = sentences[min(currentSentenceIndex, sentences.count - 1)]
+                highlightSentence(id: item.id, lang: item.lang)
             }
         }
     }
@@ -139,22 +294,31 @@ final class AudiobookManager: ObservableObject {
         playbackTask?.cancel()
         playbackTask = nil
         stopTimeTracking()
+        endBackgroundTransitionTask()
         AudioProviderFactory.shared.stop()
         highlightSentence(id: nil)
         self.mode = newMode
         self.currentSentenceIndex = 0
+        self.pageSentencesCache.removeAll()
+
+        preloadCurrentPageSentences()
+
         Task {
-            await extractSentences(viewMode: currentViewMode)
+            if self.sentences.isEmpty {
+                await extractSentences(viewMode: currentViewMode)
+            }
             if let first = sentences.first {
                 highlightSentence(id: first.id, lang: first.lang)
             }
             if wasPlaying && !sentences.isEmpty {
                 self.play()
+            } else {
+                updateNowPlayingInfo()
             }
         }
     }
 
-    /// Extracts segmented sentences from active WKWebView DOM instances with robust fallbacks
+    /// Extracts segmented sentences from active WKWebView DOM instances with robust storage fallbacks
     func extractSentences(viewMode: String) async {
         let jsExtract = """
         (function() {
@@ -213,11 +377,94 @@ final class AudiobookManager: ObservableObject {
             combined = !viItems.isEmpty ? viItems : enItems.map { AudioSentenceItem(id: $0.id, text: $0.text, lang: "vi") }
         }
 
-        self.sentences = combined
-        updateSentenceOffsets(combined)
-        if currentSentenceIndex >= combined.count {
-            currentSentenceIndex = 0
+        // If WebViews returned nothing (e.g. app in background / screen off / WebKit paused)
+        if combined.isEmpty && !bookSlug.isEmpty {
+            combined = await extractSentencesDirectlyFromStorage(slug: bookSlug, page: currentPage, lang: mode.rawValue)
         }
+
+        if !combined.isEmpty {
+            self.pageSentencesCache[currentPage] = combined
+            self.sentences = combined
+            updateSentenceOffsets(combined)
+            if currentSentenceIndex >= combined.count {
+                currentSentenceIndex = 0
+            }
+        }
+    }
+
+    /// Background-safe extraction from local HTML cache or remote server when WebKit is suspended
+    private func extractSentencesDirectlyFromStorage(slug: String, page: Int, lang: String) async -> [AudioSentenceItem] {
+        if let cached = pageSentencesCache[page], !cached.isEmpty {
+            return cached
+        }
+
+        var html: String = ""
+        if let localUrl = BookCacheManager.shared.localPageURL(slug: slug, lang: lang, page: page),
+           let data = try? Data(contentsOf: localUrl),
+           let str = String(data: data, encoding: .utf8) {
+            html = str
+        } else if let remoteUrl = URL(string: "\(APIService.shared.serverUrl)/books/\(slug)/output/\(lang)/page_\(String(format: "%04d", page)).html?token=\(APIService.shared.token)"),
+                  let (data, _) = try? await URLSession.shared.data(from: remoteUrl),
+                  let str = String(data: data, encoding: .utf8) {
+            html = str
+        }
+
+        guard !html.isEmpty else { return [] }
+        let items = parseHtmlToSentenceItems(html: html, lang: lang)
+        if !items.isEmpty {
+            self.pageSentencesCache[page] = items
+        }
+        return items
+    }
+
+    private func parseHtmlToSentenceItems(html: String, lang: String) -> [AudioSentenceItem] {
+        let nsHtml = html as NSString
+        var results: [AudioSentenceItem] = []
+
+        // 1. Try finding .sentence-node with data-sentence-id
+        let sentenceNodeRegex = try? NSRegularExpression(
+            pattern: #"<[^>]+class="[^"]*sentence-node[^"]*"[^>]*data-sentence-id="([^"]+)"[^>]*>([\s\S]*?)</[^>]+>"#,
+            options: .caseInsensitive
+        )
+        if let matches = sentenceNodeRegex?.matches(in: html, range: NSRange(location: 0, length: nsHtml.length)), !matches.isEmpty {
+            for match in matches {
+                guard match.numberOfRanges >= 3 else { continue }
+                let id = nsHtml.substring(with: match.range(at: 1))
+                let rawText = nsHtml.substring(with: match.range(at: 2))
+                let cleaned = stripHtmlToText(rawText)
+                if !cleaned.isEmpty {
+                    results.append(AudioSentenceItem(id: id, text: cleaned, lang: lang))
+                }
+            }
+        }
+
+        if !results.isEmpty { return results }
+
+        // 2. Fallback: extract paragraphs, headings, list items
+        let blockRegex = try? NSRegularExpression(
+            pattern: #"<(p|h[1-6]|li|blockquote|dt|dd)[^>]*>([\s\S]*?)</\1>"#,
+            options: .caseInsensitive
+        )
+        if let blockMatches = blockRegex?.matches(in: html, range: NSRange(location: 0, length: nsHtml.length)), !blockMatches.isEmpty {
+            for (idx, match) in blockMatches.enumerated() {
+                guard match.numberOfRanges >= 3 else { continue }
+                let rawText = nsHtml.substring(with: match.range(at: 2))
+                let cleaned = stripHtmlToText(rawText)
+                if !cleaned.isEmpty {
+                    results.append(AudioSentenceItem(id: "fallback-\(lang)-s-\(idx)", text: cleaned, lang: lang))
+                }
+            }
+        }
+
+        if !results.isEmpty { return results }
+
+        // 3. Fallback: plain text stripped from entire page
+        let fullText = stripHtmlToText(html)
+        if !fullText.isEmpty {
+            results.append(AudioSentenceItem(id: "fallback-\(lang)-s-0", text: fullText, lang: lang))
+        }
+
+        return results
     }
 
     private func updateSentenceOffsets(_ items: [AudioSentenceItem]) {
@@ -235,15 +482,19 @@ final class AudiobookManager: ObservableObject {
 
     func play() {
         if sentences.isEmpty {
-            Task {
-                await extractSentences(viewMode: currentViewMode)
-                if self.sentences.isEmpty {
-                    self.errorMessage = "Không tìm thấy văn bản trên trang."
-                } else {
-                    self.play()
+            preloadCurrentPageSentences()
+            if sentences.isEmpty {
+                Task {
+                    await extractSentences(viewMode: currentViewMode)
+                    if self.sentences.isEmpty {
+                        self.errorMessage = "Không tìm thấy văn bản trên trang."
+                        self.endBackgroundTransitionTask()
+                    } else {
+                        self.play()
+                    }
                 }
+                return
             }
-            return
         }
 
         errorMessage = nil
@@ -254,6 +505,7 @@ final class AudiobookManager: ObservableObject {
                 isPlaying = true
                 isPausedOnCurrentPage = false
                 startTimeTracking()
+                updateNowPlayingInfo()
                 return
             }
         }
@@ -265,7 +517,7 @@ final class AudiobookManager: ObservableObject {
         playbackTask = nil
         stopTimeTracking()
 
-        // Prefetch NEXT page audio in the background
+        // Prefetch NEXT page audio in the background immediately
         Task.detached(priority: .background) { [weak self] in
             guard let self = self else { return }
             let nextPage = await self.currentPage + 1
@@ -279,7 +531,10 @@ final class AudiobookManager: ObservableObject {
     }
 
     private func startFullPagePlayback(from startIndex: Int) async {
-        guard !sentences.isEmpty else { return }
+        guard !sentences.isEmpty else {
+            endBackgroundTransitionTask()
+            return
+        }
 
         let fullPageText = sentences.map { $0.text }.joined(separator: " ")
         let isVi = mode == .vi
@@ -294,6 +549,7 @@ final class AudiobookManager: ObservableObject {
         }
 
         startTimeTracking()
+        updateNowPlayingInfo()
 
         do {
             try await AudioProviderFactory.shared.speak(
@@ -310,22 +566,49 @@ final class AudiobookManager: ObservableObject {
             stopTimeTracking()
             if isPlaying {
                 if autoPageTurn && currentPage < totalPage {
+                    beginBackgroundTransitionTask()
+                    let nextPage = currentPage + 1
+
+                    // INSTANT ZERO-GAP TRANSITION if next page sentences are already cached:
+                    if let nextSentences = pageSentencesCache[nextPage], !nextSentences.isEmpty {
+                        self.currentPage = nextPage
+                        self.sentences = nextSentences
+                        self.updateSentenceOffsets(nextSentences)
+                        self.currentSentenceIndex = 0
+                        self.shouldContinuePlayingOnPageLoad = false
+
+                        // Smoothly advance UI page
+                        self.onPageTurnNeeded?()
+
+                        // Play immediately without waiting for WKWebView DOM
+                        self.play()
+                        return
+                    }
+
+                    // Fallback to waiting for onPageTurnNeeded
                     shouldContinuePlayingOnPageLoad = true
                     onPageTurnNeeded?()
                 } else {
                     isPlaying = false
+                    endBackgroundTransitionTask()
                     highlightSentence(id: nil)
+                    updateNowPlayingInfo()
                 }
+            } else {
+                endBackgroundTransitionTask()
             }
         } catch is CancellationError {
             stopTimeTracking()
+            endBackgroundTransitionTask()
         } catch {
             stopTimeTracking()
+            endBackgroundTransitionTask()
             isPausedOnCurrentPage = false
             if !Task.isCancelled {
                 print("[AudiobookManager] Playback error: \(error.localizedDescription)")
                 errorMessage = error.localizedDescription
                 isPlaying = false
+                updateNowPlayingInfo()
             }
         }
     }
@@ -368,6 +651,7 @@ final class AudiobookManager: ObservableObject {
                         self.currentSentenceIndex = activeIdx
                         let item = self.sentences[activeIdx]
                         self.highlightSentence(id: item.id, lang: item.lang)
+                        self.updateNowPlayingInfo()
                     }
                 }
             }
@@ -379,6 +663,7 @@ final class AudiobookManager: ObservableObject {
         timeTrackingTask = nil
     }
 
+    /// Prefetches next page sentences and EXACT synthesized audio matching startFullPagePlayback
     private func prefetchNextPageAudio(page: Int, targetMode: AudiobookLanguageMode) async {
         guard page <= totalPage, !bookSlug.isEmpty, provider != "device" else { return }
 
@@ -395,13 +680,20 @@ final class AudiobookManager: ObservableObject {
         }
 
         guard !htmlString.isEmpty else { return }
-        let plainText = stripHtmlToText(htmlString)
-        guard !plainText.isEmpty else { return }
+        let items = parseHtmlToSentenceItems(html: htmlString, lang: targetMode.rawValue)
+        guard !items.isEmpty else { return }
+
+        // Cache the parsed sentences in memory for instant transition!
+        self.pageSentencesCache[page] = items
+
+        // CRITICAL: The prefetched text MUST MATCH EXACTLY what startFullPagePlayback will request:
+        let fullPageText = items.map { $0.text }.joined(separator: " ")
+        guard !fullPageText.isEmpty else { return }
 
         let langTag = targetMode == .vi ? "vi-VN" : "en-US"
         let nextVoice = voiceFor(lang: langTag)
         AudioProviderFactory.shared.prefetch(
-            text: plainText,
+            text: fullPageText,
             provider: provider,
             voice: nextVoice,
             speed: speed,
@@ -429,7 +721,9 @@ final class AudiobookManager: ObservableObject {
         isPlaying = false
         isPausedOnCurrentPage = true
         stopTimeTracking()
+        endBackgroundTransitionTask()
         AudioProviderFactory.shared.pause()
+        updateNowPlayingInfo()
     }
 
     func seekToSentence(_ index: Int) {
@@ -444,6 +738,7 @@ final class AudiobookManager: ObservableObject {
             let targetOffset = cumulativeOffsets[clamped]
             let targetTime = (Double(targetOffset) / Double(totalChars)) * duration
             AudioProviderFactory.shared.seek(to: targetTime)
+            updateNowPlayingInfo()
         } else if isPlaying {
             AudioProviderFactory.shared.stop()
             isPausedOnCurrentPage = false
@@ -452,11 +747,30 @@ final class AudiobookManager: ObservableObject {
     }
 
     func nextSentence() {
-        seekToSentence(currentSentenceIndex + 1)
+        if currentSentenceIndex < sentences.count - 1 {
+            seekToSentence(currentSentenceIndex + 1)
+        } else if autoPageTurn && currentPage < totalPage {
+            beginBackgroundTransitionTask()
+            let nextPage = currentPage + 1
+            if let nextSentences = pageSentencesCache[nextPage], !nextSentences.isEmpty {
+                self.currentPage = nextPage
+                self.sentences = nextSentences
+                self.updateSentenceOffsets(nextSentences)
+                self.currentSentenceIndex = 0
+                self.shouldContinuePlayingOnPageLoad = false
+                self.onPageTurnNeeded?()
+                self.play()
+                return
+            }
+            shouldContinuePlayingOnPageLoad = true
+            onPageTurnNeeded?()
+        }
     }
 
     func prevSentence() {
-        seekToSentence(currentSentenceIndex - 1)
+        if currentSentenceIndex > 0 {
+            seekToSentence(currentSentenceIndex - 1)
+        }
     }
 
     func highlightSentence(id: String?, lang: String? = nil) {
@@ -464,8 +778,11 @@ final class AudiobookManager: ObservableObject {
         if let id = id {
             jsHighlight = """
             (function() {
+                if (typeof segmentDocSentences === 'function' && document.querySelectorAll('.sentence-node').length === 0) {
+                    try { segmentDocSentences(document); } catch(e) {}
+                }
                 window.highlightSentence && window.highlightSentence('\(id)');
-                const el = document.querySelector('.sentence-node[data-sentence-id="\(id)"]');
+                const el = document.querySelector('.sentence-node[data-sentence-id="\(id)"]') || document.querySelector('[data-sentence-id="\(id)"]');
                 if (el) {
                     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
@@ -490,8 +807,10 @@ final class AudiobookManager: ObservableObject {
         playbackTask?.cancel()
         playbackTask = nil
         stopTimeTracking()
+        endBackgroundTransitionTask()
         AudioProviderFactory.shared.stop()
         highlightSentence(id: nil)
         isBarVisible = false
+        NowPlayingManager.shared.clearNowPlaying()
     }
 }

@@ -9,6 +9,12 @@ import {
   getAudioDuration,
   getCurrentAudioElement,
 } from './audiobookService';
+import {
+  updateMediaSessionMetadata,
+  updateMediaSessionPositionState,
+  setMediaSessionPlaybackState,
+  setupMediaSessionActionHandlers,
+} from './mediaSession';
 import { useServerSecrets } from '@/features/settings/serverSecrets';
 import { segmentDocSentences } from '../reader/iframe/segmentation';
 import { apiFetch } from '@/lib/api-client';
@@ -40,6 +46,7 @@ export function useAudiobook({
   enIframeRef,
   viIframeRef,
   onNextPage,
+  onPrevPage,
 }: UseAudiobookOptions) {
   const { data: serverSecrets } = useServerSecrets();
   const [isPlaying, setIsPlaying] = useState(false);
@@ -57,6 +64,9 @@ export function useAudiobook({
   const totalCharsRef = useRef<number>(0);
   const activePageRef = useRef<number>(currentPage);
   activePageRef.current = currentPage;
+
+  // In-memory cache for parsed page sentences
+  const pageSentencesCacheRef = useRef<Map<number, SentenceItem[]>>(new Map());
 
   // Sync speed with server settings when loaded
   useEffect(() => {
@@ -111,6 +121,47 @@ export function useAudiobook({
       .filter((item) => item.text.length > 0);
   }, []);
 
+  // Background-safe direct fetch for sentence extraction
+  const fetchSentencesDirectly = useCallback(
+    async (page: number, targetMode: AudiobookLanguageMode): Promise<SentenceItem[]> => {
+      if (!bookSlug) return [];
+      const cached = pageSentencesCacheRef.current.get(page);
+      if (cached && cached.length > 0) return cached;
+
+      try {
+        const pad = String(page).padStart(4, '0');
+        const url = `/books/${encodeURIComponent(bookSlug)}/output/${targetMode}/page_${pad}.html`;
+        const res = await apiFetch(url);
+        if (!res.ok) return [];
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        let nodes = Array.from(doc.querySelectorAll<HTMLElement>('.sentence-node'));
+        if (nodes.length === 0) {
+          nodes = Array.from(
+            doc.querySelectorAll<HTMLElement>(
+              'p, h1, h2, h3, h4, h5, h6, li, blockquote, .chapter-start, .section-title, .action-header, .action-title',
+            ),
+          );
+        }
+        const items = nodes
+          .map((n, idx) => ({
+            id: n.dataset?.sentenceId || `fallback-${targetMode}-s-${idx}`,
+            text: n.textContent?.trim() || '',
+            lang: targetMode,
+          }))
+          .filter((item) => item.text.length > 0);
+
+        if (items.length > 0) {
+          pageSentencesCacheRef.current.set(page, items);
+        }
+        return items;
+      } catch {
+        return [];
+      }
+    },
+    [bookSlug],
+  );
+
   // Extract sentences for selected mode (en or vi)
   const extractSentencesForMode = useCallback(
     (targetMode: AudiobookLanguageMode): SentenceItem[] => {
@@ -140,6 +191,24 @@ export function useAudiobook({
     totalCharsRef.current = total;
   }, []);
 
+  // Update Media Session Lock Screen information
+  const updateMediaInfo = useCallback(
+    (index: number, list: SentenceItem[]) => {
+      const item = list[index];
+      const text = item?.text || '';
+      const title = text ? text : `Trang ${currentPage}`;
+      const artist = `Bilingual Reader (${mode.toUpperCase()})`;
+      const album = bookSlug ? `${bookSlug} • Trang ${currentPage}/${totalPage}` : `Trang ${currentPage}`;
+
+      updateMediaSessionMetadata({
+        title,
+        artist,
+        album,
+      });
+    },
+    [bookSlug, currentPage, mode, totalPage],
+  );
+
   // Highlight and scroll sentence in iframes
   const highlightSentence = useCallback(
     (sentenceId: string | null, targetLang?: 'en' | 'vi') => {
@@ -168,7 +237,7 @@ export function useAudiobook({
     [enIframeRef, viIframeRef],
   );
 
-  // Background prefetch for next page audio
+  // Background prefetch for next page sentences and EXACT matching audio
   const prefetchNextPageAudio = useCallback(
     async (nextPage: number, nextMode: AudiobookLanguageMode) => {
       if (nextPage > totalPage || !bookSlug) return;
@@ -187,10 +256,19 @@ export function useAudiobook({
             ),
           );
         }
-        const text = nodes
-          .map((n) => n.textContent?.trim() || '')
-          .filter((t) => t.length > 0)
-          .join(' ');
+        const items = nodes
+          .map((n, idx) => ({
+            id: n.dataset?.sentenceId || `fallback-${nextMode}-s-${idx}`,
+            text: n.textContent?.trim() || '',
+            lang: nextMode,
+          }))
+          .filter((t) => t.text.length > 0);
+
+        if (items.length === 0) return;
+        pageSentencesCacheRef.current.set(nextPage, items);
+
+        // Exact text match for prefetch
+        const text = items.map((s) => s.text).join(' ');
         if (!text) return;
 
         const provider = serverSecrets?.audioProvider || 'device';
@@ -222,21 +300,24 @@ export function useAudiobook({
       playingRef.current = false;
       setIsPlaying(false);
       stopCurrentAudio();
+      setMediaSessionPlaybackState('paused');
       highlightSentence(null);
 
       setMode(newMode);
       currentSentenceIndexRef.current = 0;
       setCurrentSentenceIndex(0);
       setError(null);
+      pageSentencesCacheRef.current.clear();
 
       const list = extractSentencesForMode(newMode);
       setSentences(list);
       updateSentenceOffsets(list);
       if (list[0]) {
         highlightSentence(list[0].id, list[0].lang);
+        updateMediaInfo(0, list);
       }
     },
-    [extractSentencesForMode, highlightSentence, updateSentenceOffsets],
+    [extractSentencesForMode, highlightSentence, updateSentenceOffsets, updateMediaInfo],
   );
 
   // Play full page audio
@@ -246,12 +327,15 @@ export function useAudiobook({
         setError('Không tìm thấy nội dung văn bản trên trang này.');
         setIsPlaying(false);
         playingRef.current = false;
+        setMediaSessionPlaybackState('none');
         return;
       }
 
       setIsPlaying(true);
       playingRef.current = true;
       setError(null);
+      setMediaSessionPlaybackState('playing');
+      updateMediaInfo(startIndex, currentList);
 
       const pageText = currentList.map((s) => s.text).join(' ');
       const provider = serverSecrets?.audioProvider || 'device';
@@ -261,7 +345,7 @@ export function useAudiobook({
         ? (serverSecrets?.audioVoiceVi || (provider === 'azure' ? 'vi-VN-HoaiMyNeural' : provider === 'openai' ? 'alloy' : (serverSecrets?.audioVoice && serverSecrets.audioVoice !== '21m00Tcm4TlvDq8ikWAM' && !serverSecrets.audioVoice.startsWith('en-') ? serverSecrets.audioVoice : '')))
         : (serverSecrets?.audioVoiceEn || serverSecrets?.audioVoice || (provider === 'azure' ? 'en-US-JennyNeural' : provider === 'elevenlabs' ? '21m00Tcm4TlvDq8ikWAM' : 'alloy'));
 
-      // Prefetch NEXT page audio in the background while this page is starting
+      // Prefetch NEXT page audio in the background immediately
       prefetchNextPageAudio(currentPage + 1, mode);
 
       try {
@@ -279,6 +363,13 @@ export function useAudiobook({
             const totalChars = totalCharsRef.current;
             const offsets = cumulativeOffsetsRef.current;
             if (!duration || duration <= 0 || totalChars <= 0) return;
+
+            // Sync position state with Lock Screen / Control Center
+            updateMediaSessionPositionState({
+              duration,
+              position: currentTime,
+              playbackRate: parseFloat(speed) || 1.0,
+            });
 
             // If playback started at an offset sentence, perform initial seek once metadata is ready
             if (!hasInitialSeek && startIndex > 0 && offsets.length > startIndex) {
@@ -307,6 +398,7 @@ export function useAudiobook({
               const item = currentList[activeIdx];
               if (item) {
                 highlightSentence(item.id, item.lang);
+                updateMediaInfo(activeIdx, currentList);
               }
             }
           },
@@ -316,11 +408,26 @@ export function useAudiobook({
 
         // Page audio completed
         if (autoPageTurn && currentPage < totalPage) {
+          const nextPage = currentPage + 1;
+          const cachedNext = pageSentencesCacheRef.current.get(nextPage);
+
+          // Zero-gap instant transition if already cached
+          if (cachedNext && cachedNext.length > 0) {
+            onNextPage();
+            currentSentenceIndexRef.current = 0;
+            setCurrentSentenceIndex(0);
+            setSentences(cachedNext);
+            updateSentenceOffsets(cachedNext);
+            startFullPagePlayback(0, cachedNext);
+            return;
+          }
+
           shouldAutoPlayNextPageRef.current = true;
           onNextPage();
         } else {
           setIsPlaying(false);
           playingRef.current = false;
+          setMediaSessionPlaybackState('paused');
           highlightSentence(null);
         }
       } catch (err: any) {
@@ -329,6 +436,7 @@ export function useAudiobook({
         setError(err.message || 'Lỗi phát âm thanh');
         setIsPlaying(false);
         playingRef.current = false;
+        setMediaSessionPlaybackState('paused');
       }
     },
     [
@@ -341,6 +449,8 @@ export function useAudiobook({
       totalPage,
       onNextPage,
       highlightSentence,
+      updateMediaInfo,
+      updateSentenceOffsets,
     ],
   );
 
@@ -362,6 +472,8 @@ export function useAudiobook({
       // Resume existing paused audio
       setIsPlaying(true);
       playingRef.current = true;
+      setMediaSessionPlaybackState('playing');
+      updateMediaInfo(currentSentenceIndexRef.current, list);
       resumeCurrentAudio().catch((err) => {
         console.warn('[Audiobook] Resume failed, restarting:', err);
         startFullPagePlayback(currentSentenceIndexRef.current, list);
@@ -370,13 +482,14 @@ export function useAudiobook({
     }
 
     startFullPagePlayback(currentSentenceIndexRef.current, list);
-  }, [sentences, extractSentencesForMode, mode, updateSentenceOffsets, startFullPagePlayback]);
+  }, [sentences, extractSentencesForMode, mode, updateSentenceOffsets, startFullPagePlayback, updateMediaInfo]);
 
   // Pause
   const pause = useCallback(() => {
     shouldAutoPlayNextPageRef.current = false;
     setIsPlaying(false);
     playingRef.current = false;
+    setMediaSessionPlaybackState('paused');
     pauseCurrentAudio();
   }, []);
 
@@ -390,6 +503,7 @@ export function useAudiobook({
       const item = sentences[clamped];
       if (item) {
         highlightSentence(item.id, item.lang);
+        updateMediaInfo(clamped, sentences);
       }
 
       const duration = getAudioDuration();
@@ -405,21 +519,84 @@ export function useAudiobook({
         startFullPagePlayback(clamped, sentences);
       }
     },
-    [sentences, highlightSentence, isPlaying, startFullPagePlayback],
+    [sentences, highlightSentence, updateMediaInfo, isPlaying, startFullPagePlayback],
   );
 
   const nextSentence = useCallback(() => {
-    seekToSentence(currentSentenceIndexRef.current + 1);
-  }, [seekToSentence]);
+    if (currentSentenceIndexRef.current < sentences.length - 1) {
+      seekToSentence(currentSentenceIndexRef.current + 1);
+    } else if (autoPageTurn && currentPage < totalPage) {
+      const nextPage = currentPage + 1;
+      const cachedNext = pageSentencesCacheRef.current.get(nextPage);
+      if (cachedNext && cachedNext.length > 0) {
+        onNextPage();
+        currentSentenceIndexRef.current = 0;
+        setCurrentSentenceIndex(0);
+        setSentences(cachedNext);
+        updateSentenceOffsets(cachedNext);
+        startFullPagePlayback(0, cachedNext);
+        return;
+      }
+      shouldAutoPlayNextPageRef.current = true;
+      onNextPage();
+    }
+  }, [
+    seekToSentence,
+    sentences.length,
+    autoPageTurn,
+    currentPage,
+    totalPage,
+    onNextPage,
+    updateSentenceOffsets,
+    startFullPagePlayback,
+  ]);
 
   const prevSentence = useCallback(() => {
-    seekToSentence(currentSentenceIndexRef.current - 1);
-  }, [seekToSentence]);
+    if (currentSentenceIndexRef.current > 0) {
+      seekToSentence(currentSentenceIndexRef.current - 1);
+    } else if (onPrevPage && currentPage > 1) {
+      onPrevPage();
+    }
+  }, [seekToSentence, onPrevPage, currentPage]);
+
+  // Connect Web MediaSession action handlers (Lock Screen & Media Key controls)
+  useEffect(() => {
+    setupMediaSessionActionHandlers({
+      onPlay: () => play(),
+      onPause: () => pause(),
+      onNextTrack: () => nextSentence(),
+      onPreviousTrack: () => prevSentence(),
+      onSeekTo: (timeSeconds) => seekAudio(timeSeconds),
+      onSkipForward: () => nextSentence(),
+      onSkipBackward: () => prevSentence(),
+    });
+  }, [play, pause, nextSentence, prevSentence]);
 
   // Re-extract sentences when page or viewMode changes, and auto-continue playback on page change
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const extracted = extractSentencesForMode(mode);
+    let cancelled = false;
+
+    // Check memory cache first
+    const cached = pageSentencesCacheRef.current.get(currentPage);
+    if (cached && cached.length > 0) {
+      setSentences(cached);
+      updateSentenceOffsets(cached);
+      if (shouldAutoPlayNextPageRef.current) {
+        shouldAutoPlayNextPageRef.current = false;
+        currentSentenceIndexRef.current = 0;
+        setCurrentSentenceIndex(0);
+        startFullPagePlayback(0, cached);
+      }
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      let extracted = extractSentencesForMode(mode);
+      if (extracted.length === 0 && bookSlug) {
+        extracted = await fetchSentencesDirectly(currentPage, mode);
+      }
+      if (cancelled) return;
+
       setSentences(extracted);
       updateSentenceOffsets(extracted);
 
@@ -434,16 +611,29 @@ export function useAudiobook({
         currentSentenceIndexRef.current = 0;
         setCurrentSentenceIndex(0);
       }
-    }, 250);
+    }, 100);
 
-    return () => clearTimeout(timer);
-  }, [currentPage, viewMode, mode, extractSentencesForMode, updateSentenceOffsets, startFullPagePlayback]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    currentPage,
+    viewMode,
+    mode,
+    extractSentencesForMode,
+    updateSentenceOffsets,
+    startFullPagePlayback,
+    bookSlug,
+    fetchSentencesDirectly,
+  ]);
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
       playingRef.current = false;
       stopCurrentAudio();
+      setMediaSessionPlaybackState('none');
       highlightSentence(null);
     };
   }, [highlightSentence]);

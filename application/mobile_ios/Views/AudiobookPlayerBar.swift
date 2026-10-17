@@ -2,6 +2,8 @@ import SwiftUI
 
 struct AudiobookPlayerBar: View {
     @ObservedObject var manager = AudiobookManager.shared
+    var onMinimize: () -> Void = {}
+    var onClose: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 6) {
@@ -16,7 +18,23 @@ struct AudiobookPlayerBar: View {
                     .transition(.opacity)
             }
 
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                // Collapse action owns the left curved cap of the player. It is
+                // part of the layout, so it never overlaps the waveform or any
+                // other control.
+                Button(action: onMinimize) {
+                    Image(systemName: "pip.exit")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Color(hex: "cbd5e1"))
+                        .frame(width: 24, height: 24)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 4)
+                .accessibilityLabel("Thu nhỏ trình phát")
+
                 // Audio Status Icon
                 ZStack {
                     if manager.isPlaying {
@@ -34,7 +52,7 @@ struct AudiobookPlayerBar: View {
                 .clipShape(Circle())
 
                 // Navigation & Play Controls
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     Button(action: {
                         manager.prevSentence()
                     }) {
@@ -76,15 +94,6 @@ struct AudiobookPlayerBar: View {
                     .disabled(manager.currentSentenceIndex >= manager.sentences.count - 1)
                 }
 
-                // Sentence Progress (câu hiện tại / tổng câu trang này)
-                Text(manager.sentences.isEmpty ? "0/0" : "\(manager.currentSentenceIndex + 1)/\(manager.sentences.count)")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundColor(Color(hex: "cbd5e1"))
-
-                Divider()
-                    .frame(height: 16)
-                    .background(Color.white.opacity(0.15))
-
                 // Mode Menu
                 Menu {
                     Button(action: { manager.changeMode(.en) }) {
@@ -103,11 +112,15 @@ struct AudiobookPlayerBar: View {
                     Text(manager.mode == .en ? "EN" : "VI")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 8)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: 22)
+                        .padding(.horizontal, 5)
                         .padding(.vertical, 3)
                         .background(Color.white.opacity(0.08))
                         .cornerRadius(6)
                 }
+                .layoutPriority(1)
 
                 // Speed Menu
                 Menu {
@@ -125,26 +138,36 @@ struct AudiobookPlayerBar: View {
                     }
                 } label: {
                     Text("\(manager.speed)x")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 6)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: 32)
+                        .padding(.horizontal, 4)
                         .padding(.vertical, 3)
                         .background(Color.white.opacity(0.08))
                         .cornerRadius(6)
                 }
+                .layoutPriority(1)
 
-                // Close Button
-                Button(action: {
-                    manager.close()
-                }) {
+                // Keep the single close action inside the player.
+                Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.gray)
-                        .padding(6)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(Color(hex: "94a3b8"))
+                        .frame(width: 24, height: 24)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Đóng trình phát")
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            // The mini button starts exactly at the leading edge and occupies
+            // the player's curved cap. The outer clip supplies the same border
+            // and corner radius as the rest of the player.
+            .padding(.leading, 0)
+            .padding(.trailing, 10)
+            .frame(minHeight: 52)
             .background(
                 RoundedRectangle(cornerRadius: 30)
                     .fill(Color(hex: "0f172a").opacity(0.88))
@@ -154,6 +177,30 @@ struct AudiobookPlayerBar: View {
                     )
                     .shadow(color: Color.black.opacity(0.35), radius: 16, x: 0, y: 8)
             )
+            .clipShape(RoundedRectangle(cornerRadius: 30))
+            .overlay(alignment: .top) {
+                GeometryReader { proxy in
+                    let total = max(manager.sentences.count, 1)
+                    let completed = manager.sentences.isEmpty
+                        ? 0
+                        : min(manager.currentSentenceIndex + 1, total)
+                    let progress = CGFloat(completed) / CGFloat(total)
+
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.white.opacity(0.10))
+
+                        Capsule()
+                            .fill(Color(hex: "38bdf8"))
+                            .frame(width: proxy.size.width * progress)
+                    }
+                }
+                .frame(height: 2)
+                .padding(.horizontal, 24)
+                .padding(.top, 4)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
         }
         .padding(.bottom, 16)
     }

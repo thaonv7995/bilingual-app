@@ -46,6 +46,7 @@ struct ReaderView: View {
     }
 
     private var phoneTopInset: CGFloat { keyWindowSafeAreaInsets.top }
+    private var phoneBottomInset: CGFloat { keyWindowSafeAreaInsets.bottom }
 
     /// Phone landscape margin: the notch sits on the left or right depending on
     /// rotation direction; use the larger inset on BOTH sides so the page keeps
@@ -62,6 +63,10 @@ struct ReaderView: View {
             .frame(height: 1)
     }
     @StateObject private var api = APIService.shared
+    @ObservedObject private var audiobookManager = AudiobookManager.shared
+    @State private var isAudiobookPlayerMinimized = false
+    @State private var audiobookPlayerOffset: CGSize = .zero
+    @State private var audiobookPlayerDragStart: CGSize = .zero
     
     @State private var page: Int
     @State private var viewMode: String // "en" | "vi" | "split"
@@ -304,11 +309,17 @@ struct ReaderView: View {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                 isReadyToRender = true
                             }
-                            AudiobookManager.shared.updateContext(bookSlug: self.book.slug, currentPage: self.page, totalPage: self.book.pageCount)
+                            AudiobookManager.shared.updateContext(
+                                bookSlug: self.book.slug,
+                                currentPage: self.page,
+                                totalPage: self.book.pageCount,
+                                bookTitle: self.book.title,
+                                bookAuthor: self.book.author ?? ""
+                            )
+                            AudiobookManager.shared.preloadCurrentPageSentences()
                             readerUsesDoubleSided = useDoubleSided
                             AudiobookManager.shared.onPageTurnNeeded = {
                                 if self.page < self.book.pageCount {
-                                    AudiobookManager.shared.shouldContinuePlayingOnPageLoad = true
                                     self.page += 1
                                     self.saveProgress()
                                 } else {
@@ -329,7 +340,13 @@ struct ReaderView: View {
                             }
                         }
                         .onChange(of: page) { newPage in
-                            AudiobookManager.shared.updateContext(bookSlug: self.book.slug, currentPage: newPage, totalPage: self.book.pageCount)
+                            AudiobookManager.shared.updateContext(
+                                bookSlug: self.book.slug,
+                                currentPage: newPage,
+                                totalPage: self.book.pageCount,
+                                bookTitle: self.book.title,
+                                bookAuthor: self.book.author ?? ""
+                            )
                             if AudiobookManager.shared.isBarVisible {
                                 AudiobookManager.shared.updateWebViews(
                                     en: findCurrentWebView(lang: "en", page: newPage),
@@ -340,6 +357,12 @@ struct ReaderView: View {
                         }
                         .onChange(of: AudiobookManager.shared.isBarVisible) { isVisible in
                             if isVisible {
+                                AudiobookManager.shared.syncWithCurrentPage(
+                                    page: self.page,
+                                    viewMode: self.viewMode,
+                                    en: findCurrentWebView(lang: "en", page: self.page),
+                                    vi: findCurrentWebView(lang: "vi", page: self.page)
+                                )
                                 Task {
                                     if let secrets = try? await api.fetchServerSecrets() {
                                         AudiobookManager.shared.configure(
@@ -351,16 +374,19 @@ struct ReaderView: View {
                                         )
                                     }
                                 }
-                                AudiobookManager.shared.updateWebViews(
-                                    en: findCurrentWebView(lang: "en", page: page),
-                                    vi: findCurrentWebView(lang: "vi", page: page),
-                                    viewMode: viewMode
-                                )
                             }
                         }
                         .onChange(of: useDoubleSided) { readerUsesDoubleSided = $0 }
                         .onChange(of: viewMode) { newViewMode in
                             readerUsesDoubleSided = useDoubleSided
+                            // Keep the audiobook language aligned with the
+                            // language page currently shown in the reader.
+                            // Split mode preserves the user's last selection.
+                            if newViewMode == "en" && AudiobookManager.shared.mode != .en {
+                                AudiobookManager.shared.changeMode(.en)
+                            } else if newViewMode == "vi" && AudiobookManager.shared.mode != .vi {
+                                AudiobookManager.shared.changeMode(.vi)
+                            }
                             if AudiobookManager.shared.isBarVisible {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                     AudiobookManager.shared.updateWebViews(
@@ -405,7 +431,10 @@ struct ReaderView: View {
                             isFullScreen: $isFullScreen,
                             isBookFinished: isBookFinished,
                             isUpdatingFinished: isUpdatingFinished,
-                            onDismiss: { dismiss() },
+                            onDismiss: {
+                                AudiobookManager.shared.close()
+                                dismiss()
+                            },
                             onToggleFinished: toggleBookFinished,
                             onFontDecrease: { adjustPhoneFontScale(by: -0.1) },
                             onFontIncrease: { adjustPhoneFontScale(by: 0.1) }
@@ -492,18 +521,252 @@ struct ReaderView: View {
                             .padding(.horizontal, isPhone && isLandscape ? phoneHorizontalInset : 0)
                     }
 
-                    if AudiobookManager.shared.isBarVisible {
-                        VStack {
-                            Spacer()
-                            AudiobookPlayerBar()
+                    if audiobookManager.isBarVisible {
+                        GeometryReader { proxy in
+                            let compactSize: CGFloat = 64
+                            let horizontalMargin = max(
+                                12,
+                                isPhone && isLandscape ? phoneHorizontalInset + 8 : 12
+                            )
+                            let topMargin = max(12, keyWindowSafeAreaInsets.top + 8)
+                            let bottomMargin = max(12, keyWindowSafeAreaInsets.bottom + 8)
+
+                            ZStack {
+                                if isAudiobookPlayerMinimized {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color(hex: "0f172a").opacity(0.96))
+
+                                        Image(systemName: "waveform")
+                                            .font(.system(size: 22, weight: .semibold))
+                                            .foregroundColor(
+                                                audiobookManager.isPlaying
+                                                    ? Color(hex: "38bdf8")
+                                                    : Color(hex: "94a3b8")
+                                            )
+                                    }
+                                    .frame(width: compactSize, height: compactSize)
+                                    .background(
+                                        Circle()
+                                            .fill(Color(hex: "0f172a").opacity(0.96))
+                                            .shadow(
+                                                color: Color.black.opacity(0.35),
+                                                radius: 10,
+                                                x: 0,
+                                                y: 5
+                                            )
+                                    )
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                    )
+                                    .contentShape(Circle())
+                                    .onTapGesture {
+                                        withAnimation(
+                                            .spring(response: 0.28, dampingFraction: 0.88)
+                                        ) {
+                                            isAudiobookPlayerMinimized = false
+                                        }
+                                    }
+                                    .gesture(
+                                        DragGesture(
+                                            minimumDistance: 3,
+                                            coordinateSpace: .global
+                                        )
+                                            .onChanged { value in
+                                                var transaction = Transaction()
+                                                transaction.disablesAnimations = true
+                                                withTransaction(transaction) {
+                                                    audiobookPlayerOffset = CGSize(
+                                                        width: audiobookPlayerDragStart.width
+                                                            + value.translation.width,
+                                                        height: audiobookPlayerDragStart.height
+                                                            + value.translation.height
+                                                    )
+                                                }
+                                            }
+                                            .onEnded { _ in
+                                                let halfSize = compactSize / 2
+                                                let baseX = proxy.size.width
+                                                    - horizontalMargin
+                                                    - halfSize
+                                                let baseY = proxy.size.height
+                                                    - bottomMargin
+                                                    - halfSize
+                                                let minX = horizontalMargin + halfSize - baseX
+                                                let maxX = proxy.size.width
+                                                    - horizontalMargin
+                                                    - halfSize
+                                                    - baseX
+                                                let minY = topMargin + halfSize - baseY
+                                                let maxY = proxy.size.height
+                                                    - bottomMargin
+                                                    - halfSize
+                                                    - baseY
+
+                                                let clampedOffset = CGSize(
+                                                    width: min(
+                                                        max(audiobookPlayerOffset.width, minX),
+                                                        maxX
+                                                    ),
+                                                    height: min(
+                                                        max(audiobookPlayerOffset.height, minY),
+                                                        maxY
+                                                    )
+                                                )
+
+                                                let needsCorrection =
+                                                    clampedOffset != audiobookPlayerOffset
+
+                                                if needsCorrection {
+                                                    withAnimation(
+                                                        .interactiveSpring(
+                                                            response: 0.22,
+                                                            dampingFraction: 0.9,
+                                                            blendDuration: 0.08
+                                                        )
+                                                    ) {
+                                                        audiobookPlayerOffset = clampedOffset
+                                                    }
+                                                } else {
+                                                    audiobookPlayerOffset = clampedOffset
+                                                }
+
+                                                audiobookPlayerDragStart = clampedOffset
+                                            }
+                                    )
+                                    .position(
+                                        x: proxy.size.width - horizontalMargin - compactSize / 2,
+                                        y: proxy.size.height - bottomMargin - compactSize / 2
+                                    )
+                                    .offset(audiobookPlayerOffset)
+                                    .transition(
+                                        .scale(scale: 0.75)
+                                            .combined(with: .opacity)
+                                    )
+                                } else {
+                                    AudiobookPlayerBar(
+                                        onMinimize: {
+                                            withAnimation(
+                                                .spring(response: 0.28, dampingFraction: 0.88)
+                                            ) {
+                                                isAudiobookPlayerMinimized = true
+                                            }
+                                        },
+                                        onClose: {
+                                            audiobookManager.close()
+                                            isAudiobookPlayerMinimized = false
+                                            audiobookPlayerOffset = .zero
+                                            audiobookPlayerDragStart = .zero
+                                        }
+                                    )
+                                        .contentShape(RoundedRectangle(cornerRadius: 30))
+                                        .simultaneousGesture(
+                                            DragGesture(
+                                                minimumDistance: 8,
+                                                coordinateSpace: .global
+                                            )
+                                                .onChanged { value in
+                                                    var transaction = Transaction()
+                                                    transaction.disablesAnimations = true
+                                                    withTransaction(transaction) {
+                                                        audiobookPlayerOffset = CGSize(
+                                                            width:
+                                                                audiobookPlayerDragStart.width
+                                                                + value.translation.width,
+                                                            height:
+                                                                audiobookPlayerDragStart.height
+                                                                + value.translation.height
+                                                        )
+                                                    }
+                                                }
+                                                .onEnded { _ in
+                                                    let halfWidth = min(
+                                                        proxy.size.width * 0.46,
+                                                        250
+                                                    )
+                                                    let halfHeight: CGFloat = 42
+                                                    let baseX = proxy.size.width / 2
+                                                    let baseY = proxy.size.height
+                                                        - bottomMargin
+                                                        - 38
+                                                    let minX = horizontalMargin
+                                                        + halfWidth
+                                                        - baseX
+                                                    let maxX = proxy.size.width
+                                                        - horizontalMargin
+                                                        - halfWidth
+                                                        - baseX
+                                                    let minY = topMargin
+                                                        + halfHeight
+                                                        - baseY
+                                                    let maxY = proxy.size.height
+                                                        - bottomMargin
+                                                        - halfHeight
+                                                        - baseY
+
+                                                    let clampedOffset = CGSize(
+                                                        width: min(
+                                                            max(
+                                                                audiobookPlayerOffset.width,
+                                                                minX
+                                                            ),
+                                                            maxX
+                                                        ),
+                                                        height: min(
+                                                            max(
+                                                                audiobookPlayerOffset.height,
+                                                                minY
+                                                            ),
+                                                            maxY
+                                                        )
+                                                    )
+
+                                                    if clampedOffset != audiobookPlayerOffset {
+                                                        withAnimation(
+                                                            .interactiveSpring(
+                                                                response: 0.22,
+                                                                dampingFraction: 0.9,
+                                                                blendDuration: 0.08
+                                                            )
+                                                        ) {
+                                                            audiobookPlayerOffset =
+                                                                clampedOffset
+                                                        }
+                                                    } else {
+                                                        audiobookPlayerOffset =
+                                                            clampedOffset
+                                                    }
+
+                                                    audiobookPlayerDragStart =
+                                                        clampedOffset
+                                                }
+                                        )
+                                        .padding(.horizontal, horizontalMargin)
+                                        .position(
+                                            x: proxy.size.width / 2,
+                                            y: proxy.size.height - bottomMargin - 38
+                                        )
+                                        .offset(audiobookPlayerOffset)
+                                        .transition(
+                                            .scale(scale: 0.94)
+                                                .combined(with: .opacity)
+                                        )
+                                }
+                            }
                         }
-                        .padding(.horizontal, isPhone && isLandscape ? phoneHorizontalInset : 0)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(.opacity)
                     }
                 }
+                .animation(.spring(response: 0.28, dampingFraction: 0.88), value: audiobookManager.isBarVisible)
             )
         }
         .ignoresSafeArea()
+        .onDisappear {
+            // Defensive cleanup for every way the reader can be closed,
+            // including navigation gestures or parent-driven dismissal.
+            AudiobookManager.shared.close()
+        }
         .sheet(item: $externalBrowserDestination) { destination in
             ReaderSafariView(url: destination.url)
                 .ignoresSafeArea()
@@ -3567,7 +3830,9 @@ struct ReaderHeaderView: View {
             }
 
             Button(action: {
-                AudiobookManager.shared.isBarVisible.toggle()
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    AudiobookManager.shared.isBarVisible.toggle()
+                }
             }) {
                 Image(systemName: "headphones")
                     .foregroundColor(AudiobookManager.shared.isBarVisible ? Color(hex: "38bdf8") : .white)
@@ -3708,7 +3973,9 @@ struct ReaderHeaderView: View {
             }
             
             Button(action: {
-                AudiobookManager.shared.isBarVisible.toggle()
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    AudiobookManager.shared.isBarVisible.toggle()
+                }
             }) {
                 Image(systemName: "headphones")
                     .foregroundColor(AudiobookManager.shared.isBarVisible ? Color(hex: "38bdf8") : .white)
