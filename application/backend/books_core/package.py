@@ -3,10 +3,21 @@
 from __future__ import annotations
 
 import json
+import re
 import zipfile
 from pathlib import Path
 from typing import Any
 from books_core.paths import BookPaths
+
+_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+def validate_book_slug(slug: str) -> str:
+    """Validate that a book slug is a safe single directory name (no path traversal)."""
+    cleaned = (slug or "").strip()
+    if not cleaned or ".." in cleaned or "/" in cleaned or "\\" in cleaned or not _SLUG_RE.fullmatch(cleaned):
+        raise ValueError(f"Invalid book slug: {slug!r}")
+    return cleaned
 
 def pack_book(book_dir: str | Path, output_path: str | Path | None = None) -> dict[str, Any]:
     """
@@ -157,8 +168,11 @@ def unpack_book(bkb_path: str | Path, dest_parent_dir: str | Path) -> dict[str, 
         except Exception as e:
             raise ValueError(f"Failed to read manifest.json from archive: {e}")
             
-        slug = metadata.get("slug") or archive_path.stem
-        book_dir = parent_path / slug
+        raw_slug = metadata.get("slug") or archive_path.stem
+        slug = validate_book_slug(str(raw_slug))
+        book_dir = (parent_path / slug).resolve()
+        if book_dir.parent != parent_path.resolve():
+            raise ValueError(f"Path traversal attempt detected in book slug: {slug!r}")
         book_dir.mkdir(parents=True, exist_ok=True)
         
         # Write book.json

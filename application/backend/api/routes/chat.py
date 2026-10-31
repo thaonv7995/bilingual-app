@@ -1,5 +1,7 @@
+import ipaddress
 import os
 import json
+from urllib.parse import urlsplit
 import httpx
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse
@@ -11,8 +13,43 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 ENV_OPENAI = os.environ.get("OPENAI_API_KEY", "")
 
+_BLOCKED_HOST_SUFFIXES = (".localhost", ".local", ".internal", ".home.arpa")
+
+
+def _validate_chat_base_url(raw_url: str) -> tuple[str, str]:
+    """Validate and normalize the upstream LLM base URL against SSRF.
+    Returns (normalized_base_url, hostname).
+    """
+    base_url = (raw_url or "https://api.openai.com/v1").strip().rstrip("/")
+    parts = urlsplit(base_url)
+    if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
+        raise HTTPException(status_code=400, detail="Invalid or disallowed base URL")
+
+    host = parts.hostname.lower()
+    if host == "localhost" or host.endswith(_BLOCKED_HOST_SUFFIXES):
+        raise HTTPException(status_code=400, detail="Invalid or disallowed base URL")
+
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return base_url, host
+
+    if (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    ):
+        raise HTTPException(status_code=400, detail="Invalid or disallowed base URL")
+
+    return base_url, host
+
 
 def _user_settings(db: Session, user: User):
+    if getattr(user, "id", None) is None:
+        return None
     return db.query(UserSettings).filter(UserSettings.user_id == user.id).first()
 
 @router.post("")
@@ -29,15 +66,15 @@ async def chat_proxy(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid request body")
 
-    base_url = data.get("baseURL", "https://api.openai.com/v1").rstrip("/")
-    if not base_url.startswith("https://") or "localhost" in base_url or "127.0.0.1" in base_url:
-        raise HTTPException(status_code=400, detail="Invalid or disallowed base URL")
+    base_url, host = _validate_chat_base_url(data.get("baseURL", "https://api.openai.com/v1"))
 
     target_url = f"{base_url}/chat/completions"
-    # Key resolution: the server-held per-user key (or env) is authoritative; a
-    # client-sent key is only a last-resort fallback (the FE no longer sends one).
+    # Key resolution: the server-held per-user key is authoritative; ENV_OPENAI is
+    # only attached when talking to api.openai.com so a custom baseURL can never
+    # exfiltrate the server's environment key.
     s = _user_settings(db, current_user)
-    api_key = ((s.llm_api_key or "").strip() if s else "") or ENV_OPENAI or data.get("apiKey", "")
+    env_fallback = ENV_OPENAI if host == "api.openai.com" else ""
+    api_key = ((s.llm_api_key or "").strip() if s else "") or env_fallback or data.get("apiKey", "")
 
     headers = {
         "Content-Type": "application/json",

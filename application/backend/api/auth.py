@@ -1,4 +1,5 @@
 import os
+import secrets
 import time
 from typing import Optional
 from fastapi import Depends, HTTPException, Security, status, Request
@@ -10,10 +11,51 @@ from api.database import get_db, User, APIKey
 
 from api.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_SECONDS, REFRESH_TOKEN_EXPIRE_SECONDS
 
-HARDCODED_CLIENT_ID = os.environ.get("NOTEBOOK_CLIENT_ID", "notebook_client_v1")
+ENV_NOTEBOOK_CLIENT_ID = os.environ.get("NOTEBOOK_CLIENT_ID", "").strip()
+LOCAL_DEV_CLIENT_ID = "notebook_client_v1"
+HARDCODED_CLIENT_ID = ENV_NOTEBOOK_CLIENT_ID or LOCAL_DEV_CLIENT_ID
 
 security_jwt = HTTPBearer(auto_error=False)
 security_apikey = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def is_trusted_notebook_client(request: Request, candidate: Optional[str] = None) -> bool:
+    """Validate X-Client-ID / client_id without exposing a remote admin backdoor.
+
+    * If `NOTEBOOK_CLIENT_ID` is explicitly set in the environment, compare against
+      it in constant time.
+    * Otherwise, allow the default `notebook_client_v1` ONLY for direct local
+      loopback requests (no X-Forwarded-For / X-Real-IP / CF-Connecting-IP headers),
+      so local Notebook Studio integration works on the developer's machine while
+      remote requests through any proxy or public interface are rejected.
+    """
+    token = (
+        candidate
+        or request.headers.get("X-Client-ID")
+        or request.query_params.get("client_id")
+        or ""
+    ).strip()
+    if not token:
+        return False
+
+    if ENV_NOTEBOOK_CLIENT_ID:
+        return secrets.compare_digest(token, ENV_NOTEBOOK_CLIENT_ID)
+
+    # Unconfigured env: only allow local loopback without proxy forwarding headers
+    forwarded = (
+        request.headers.get("x-forwarded-for")
+        or request.headers.get("x-real-ip")
+        or request.headers.get("cf-connecting-ip")
+    )
+    if forwarded:
+        return False
+
+    client_host = (request.client.host if request.client else "") or ""
+    if client_host not in ("127.0.0.1", "::1", "localhost"):
+        return False
+
+    return secrets.compare_digest(token, LOCAL_DEV_CLIENT_ID)
+
 
 def get_password_hash(password: str) -> str:
     pwd_bytes = password.encode("utf-8")
@@ -49,13 +91,13 @@ def get_current_user_or_apikey(
     db: Session = Depends(get_db)
 ) -> Optional[User]:
     """
-    Authenticate request via JWT token, API Key, or hardcoded trusted Client-ID.
-    Returns the authenticated User object (or a dummy admin user for API Keys / Client-ID).
+    Authenticate request via JWT token, API Key, or trusted local Notebook Client-ID.
     """
-    # 0. Check Hardcoded Client ID (header or query parameter)
-    client_id = request.headers.get("X-Client-ID") or request.query_params.get("client_id")
-    if (client_id and client_id == HARDCODED_CLIENT_ID) or (api_key and api_key == HARDCODED_CLIENT_ID):
-        return User(username="client_notebook_studio", is_admin=True)
+    # 0. Check Trusted Notebook Client ID (read-only access, never full admin)
+    if is_trusted_notebook_client(request) or (api_key and is_trusted_notebook_client(request, api_key)):
+        notebook_user = User(username="client_notebook_studio", is_admin=True)
+        notebook_user._is_notebook_client = True
+        return notebook_user
 
     # 1. Check API Key
     if api_key:
@@ -69,9 +111,10 @@ def get_current_user_or_apikey(
             detail="Invalid or inactive API Key",
         )
 
-    # 2. Check JWT
-    if credentials:
-        payload = decode_access_token(credentials.credentials)
+    # 2. Check JWT (Bearer header or jwt_token cookie)
+    jwt_token = credentials.credentials if credentials else request.cookies.get("jwt_token")
+    if jwt_token:
+        payload = decode_access_token(jwt_token)
         if payload:
             username = payload.get("sub")
             if username:
@@ -91,7 +134,7 @@ def get_current_user_or_apikey(
 def require_admin(
     current_user: User = Depends(get_current_user_or_apikey)
 ) -> User:
-    if not current_user.is_admin:
+    if not current_user.is_admin or getattr(current_user, "_is_notebook_client", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required",

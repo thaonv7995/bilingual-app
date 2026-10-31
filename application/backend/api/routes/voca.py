@@ -168,7 +168,8 @@ def _resolve_voca(db: Session, user: User, *, require_token: bool = True):
     server-held per-user settings (entered on the FE, kept out of the browser) and
     falling back to the env defaults. The DB columns keep their legacy
     `voca_bridge_*` names on purpose — renaming them would need a migration."""
-    s = db.query(UserSettings).filter(UserSettings.user_id == user.id).first()
+    uid = getattr(user, "id", None)
+    s = db.query(UserSettings).filter(UserSettings.user_id == uid).first() if uid is not None else None
     raw_origin = ((s.voca_bridge_origin or "").strip() if s else "")
     token = ((s.voca_bridge_token or "").strip() if s else "") or ENV_VOCA_TOKEN
     if raw_origin:

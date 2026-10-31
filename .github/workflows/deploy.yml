@@ -42,10 +42,11 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Build v2 frontend
+      - name: Build & test v2 frontend
         run: |
           cd application/web-app-v2
           npm ci
+          npm test
           npm run build
 
       - name: Package Application
@@ -57,7 +58,13 @@ jobs:
               --exclude='**/__pycache__' \
               --exclude='**/.pytest_cache' \
               --exclude='application/data' \
-              --exclude='bilingual_reader.db' \
+              --exclude='*.db' \
+              --exclude='*.db-shm' \
+              --exclude='*.db-wal' \
+              --exclude='**/*.db' \
+              --exclude='**/*.db-shm' \
+              --exclude='**/*.db-wal' \
+              --exclude='output' \
               --exclude='application/legacy/web-app-v1/config.js' \
               --exclude='application/web-app-v2/node_modules' \
               --exclude='application/web-app-v2/dev-dist' \

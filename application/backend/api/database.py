@@ -5,8 +5,10 @@ from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignK
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 from sqlalchemy.pool import NullPool
+from api.config import WORKSPACE_ROOT
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./bilingual_reader.db")
+_DEFAULT_DB_PATH = WORKSPACE_ROOT / "bilingual_reader.db"
+DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{_DEFAULT_DB_PATH}")
 
 engine = create_engine(
     DATABASE_URL,

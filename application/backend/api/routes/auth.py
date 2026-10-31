@@ -83,11 +83,16 @@ def login(
         raise HTTPException(status_code=400, detail="Incorrect username or password")
         
     # Generate short-lived Access Token (15 mins) and long-lived Refresh Token (30 days)
+    now = int(time.time())
     access_token = create_access_token(data={"sub": user.username})
     refresh_token = secrets.token_hex(32)
     
-    # Save Refresh Token to database
-    expires_at = int(time.time()) + REFRESH_TOKEN_EXPIRE_SECONDS
+    # Prune expired refresh tokens for this user and save the new Refresh Token
+    db.query(UserRefreshToken).filter(
+        UserRefreshToken.user_id == user.id,
+        UserRefreshToken.expires_at < now,
+    ).delete()
+    expires_at = now + REFRESH_TOKEN_EXPIRE_SECONDS
     new_refresh = UserRefreshToken(user_id=user.id, token=refresh_token, expires_at=expires_at)
     db.add(new_refresh)
     db.commit()
@@ -180,9 +185,16 @@ def refresh_token_endpoint(
     }
 
 @router.post("/logout")
-def logout(response: Response, request: Request, db: Session = Depends(get_db)):
-    # Delete refresh token from DB if present
+def logout(
+    response: Response,
+    request: Request,
+    body_payload: Optional[RefreshTokenRequest] = Body(default=None),
+    db: Session = Depends(get_db),
+):
+    # Delete refresh token from DB if present (from cookie on web or JSON body on mobile)
     refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token and body_payload:
+        refresh_token = body_payload.refresh_token
     if refresh_token:
         db.query(UserRefreshToken).filter(UserRefreshToken.token == refresh_token).delete()
         db.commit()
@@ -218,8 +230,9 @@ def change_password(
     if len(payload.new_password) < 4:
         raise HTTPException(status_code=400, detail="Mật khẩu mới phải có ít nhất 4 ký tự")
 
-    # Update password
+    # Update password and revoke existing refresh tokens for this user
     db_user.password_hash = get_password_hash(payload.new_password)
+    db.query(UserRefreshToken).filter(UserRefreshToken.user_id == db_user.id).delete()
     db.commit()
 
     return {"ok": True, "message": "Đổi mật khẩu thành công"}

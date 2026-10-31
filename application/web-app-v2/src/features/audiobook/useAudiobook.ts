@@ -66,8 +66,8 @@ export function useAudiobook({
   const previousPageRef = useRef<number>(currentPage);
   activePageRef.current = currentPage;
 
-  // In-memory cache for parsed page sentences
-  const pageSentencesCacheRef = useRef<Map<number, SentenceItem[]>>(new Map());
+  // In-memory cache for parsed page sentences, keyed by `${page}:${mode}`
+  const pageSentencesCacheRef = useRef<Map<string, SentenceItem[]>>(new Map());
 
   // Sync speed with server settings when loaded
   useEffect(() => {
@@ -189,7 +189,8 @@ export function useAudiobook({
   const fetchSentencesDirectly = useCallback(
     async (page: number, targetMode: AudiobookLanguageMode): Promise<SentenceItem[]> => {
       if (!bookSlug) return [];
-      const cached = pageSentencesCacheRef.current.get(page);
+      const cacheKey = `${page}:${targetMode}`;
+      const cached = pageSentencesCacheRef.current.get(cacheKey);
       if (cached && cached.length > 0) return cached;
 
       try {
@@ -254,7 +255,7 @@ export function useAudiobook({
           .filter((item) => item.text.length > 0);
 
         if (items.length > 0) {
-          pageSentencesCacheRef.current.set(page, items);
+          pageSentencesCacheRef.current.set(cacheKey, items);
         }
         return items;
       } catch {
@@ -367,7 +368,7 @@ export function useAudiobook({
           .filter((t) => t.text.length > 0);
 
         if (items.length === 0) return;
-        pageSentencesCacheRef.current.set(nextPage, items);
+        pageSentencesCacheRef.current.set(`${nextPage}:${nextMode}`, items);
 
         // Exact text match for prefetch
         const text = items.map((s) => s.text).join(' ');
@@ -511,7 +512,7 @@ export function useAudiobook({
         // Page audio completed
         if (autoPageTurn && currentPage < totalPage) {
           const nextPage = currentPage + 1;
-          const cachedNext = pageSentencesCacheRef.current.get(nextPage);
+          const cachedNext = pageSentencesCacheRef.current.get(`${nextPage}:${mode}`);
 
           // Zero-gap instant transition if already cached
           if (cachedNext && cachedNext.length > 0) {
@@ -532,10 +533,10 @@ export function useAudiobook({
           setMediaSessionPlaybackState('paused');
           highlightSentence(null);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!playingRef.current) return;
         console.error('[Audiobook] Playback error:', err);
-        setError(err.message || 'Lỗi phát âm thanh');
+        setError(err instanceof Error ? err.message : 'Lỗi phát âm thanh');
         setIsPlaying(false);
         playingRef.current = false;
         setMediaSessionPlaybackState('paused');
@@ -629,7 +630,7 @@ export function useAudiobook({
       seekToSentence(currentSentenceIndexRef.current + 1);
     } else if (autoPageTurn && currentPage < totalPage) {
       const nextPage = currentPage + 1;
-      const cachedNext = pageSentencesCacheRef.current.get(nextPage);
+      const cachedNext = pageSentencesCacheRef.current.get(`${nextPage}:${mode}`);
       if (cachedNext && cachedNext.length > 0) {
         onNextPage();
         currentSentenceIndexRef.current = 0;
@@ -648,6 +649,7 @@ export function useAudiobook({
     autoPageTurn,
     currentPage,
     totalPage,
+    mode,
     onNextPage,
     updateSentenceOffsets,
     startFullPagePlayback,
@@ -695,7 +697,7 @@ export function useAudiobook({
     }
 
     // Check memory cache first
-    const cached = pageSentencesCacheRef.current.get(currentPage);
+    const cached = pageSentencesCacheRef.current.get(`${currentPage}:${mode}`);
     if (cached && cached.length > 0) {
       setSentences(cached);
       updateSentenceOffsets(cached);

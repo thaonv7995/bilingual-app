@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 from pydantic import BaseModel
 import httpx
 from fastapi import APIRouter, Request, HTTPException, Depends, Query
@@ -23,6 +24,30 @@ ENV_ELEVENLABS_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
 
 CACHE_DIR = APPLICATION_DIR / "data" / "audio_cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+MAX_AUDIO_CACHE_FILES = 500
+_AZURE_REGION_RE = re.compile(r"^[a-z0-9-]+$")
+
+
+def _xml_escape(val: str) -> str:
+    return (
+        val.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
+
+
+def _prune_audio_cache(max_files: int = MAX_AUDIO_CACHE_FILES) -> None:
+    try:
+        files = [f for f in CACHE_DIR.glob("*.mp3") if f.is_file()]
+        if len(files) <= max_files:
+            return
+        files.sort(key=lambda f: f.stat().st_mtime)
+        for stale in files[: len(files) - max_files]:
+            stale.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 class SynthesizeRequest(BaseModel):
@@ -34,6 +59,8 @@ class SynthesizeRequest(BaseModel):
 
 
 def _user_settings(db: Session, user: User) -> Optional[UserSettings]:
+    if getattr(user, "id", None) is None:
+        return None
     return db.query(UserSettings).filter(UserSettings.user_id == user.id).first()
 
 
@@ -199,7 +226,9 @@ async def synthesize_speech(
             api_key = raw_key
 
         api_key = api_key.strip()
-        region = region.strip() or "eastus"
+        region = (region.strip() or "eastus").lower()
+        if not _AZURE_REGION_RE.fullmatch(region):
+            raise HTTPException(status_code=400, detail="Invalid Azure Speech region format")
 
         chosen_voice = voice if voice else ("vi-VN-HoaiMyNeural" if req.lang == "vi" else "en-US-JennyNeural")
         lang_tag = "vi-VN" if "vi" in chosen_voice.lower() else "en-US"
@@ -211,18 +240,14 @@ async def synthesize_speech(
         except (ValueError, TypeError):
             rate_str = "+0%"
 
-        # Clean xml special characters
-        escaped_text = (
-            text.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-            .replace("'", "&apos;")
-        )
+        # Clean xml special characters in text and attributes
+        escaped_text = _xml_escape(text)
+        escaped_voice = _xml_escape(chosen_voice)
+        escaped_lang = _xml_escape(lang_tag)
 
         ssml = (
-            f"<speak version='1.0' xml:lang='{lang_tag}'>"
-            f"<voice xml:lang='{lang_tag}' name='{chosen_voice}'>"
+            f"<speak version='1.0' xml:lang='{escaped_lang}'>"
+            f"<voice xml:lang='{escaped_lang}' name='{escaped_voice}'>"
             f"<prosody rate='{rate_str}'>{escaped_text}</prosody>"
             f"</voice></speak>"
         )
@@ -257,8 +282,8 @@ async def synthesize_speech(
                 detail="ElevenLabs API Key is required. Please configure it in Settings.",
             )
 
-        voice_id = voice if voice else "21m00Tcm4TlvDq8ikWAM"  # Rachel
-        target_url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        voice_id = (voice if voice else "21m00Tcm4TlvDq8ikWAM").strip()  # Rachel
+        target_url = f"https://api.elevenlabs.io/v1/text-to-speech/{quote(voice_id, safe='')}"
         eleven_input = text[:5000] if len(text) > 5000 else text
 
         # Note: eleven_multilingual_v2 does NOT support Vietnamese (limited to 29 languages).
@@ -301,6 +326,7 @@ async def synthesize_speech(
     # Save to cache
     try:
         cache_path.write_bytes(audio_bytes)
+        _prune_audio_cache()
     except Exception as e:
         print(f"[AudioCache] Warning: could not write cache file: {e}")
 

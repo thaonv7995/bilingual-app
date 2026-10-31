@@ -20,10 +20,20 @@ class APIService: ObservableObject {
         // kept on the device, so a stale local copy cannot linger. No-op afterwards.
         VocaService.purgeDeviceCredentialsIfNeeded()
 
-        // Load saved session
-        if let savedToken = UserDefaults.standard.string(forKey: "token") {
+        // Migrate legacy plaintext tokens from UserDefaults into Keychain if present
+        if let legacyToken = UserDefaults.standard.string(forKey: "token"), !legacyToken.isEmpty {
+            KeychainHelper.save(key: "auth.accessToken", value: legacyToken)
+            UserDefaults.standard.removeObject(forKey: "token")
+        }
+        if let legacyRefresh = UserDefaults.standard.string(forKey: "refreshToken"), !legacyRefresh.isEmpty {
+            KeychainHelper.save(key: "auth.refreshToken", value: legacyRefresh)
+            UserDefaults.standard.removeObject(forKey: "refreshToken")
+        }
+
+        // Load saved session from Keychain
+        if let savedToken = KeychainHelper.load(key: "auth.accessToken"), !savedToken.isEmpty {
             self.token = savedToken
-            self.refreshToken = UserDefaults.standard.string(forKey: "refreshToken") ?? ""
+            self.refreshToken = KeychainHelper.load(key: "auth.refreshToken") ?? ""
             self.serverUrl = UserDefaults.standard.string(forKey: "serverUrl") ?? "https://books.thaonv.online"
             self.username = ServerUsernameHack()
             self.isAdmin = UserDefaults.standard.bool(forKey: "isAdmin")
@@ -93,22 +103,18 @@ class APIService: ObservableObject {
         let cleanUrl = serverUrl
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard var urlComponents = URLComponents(string: "\(cleanUrl)/api/auth/login") else {
-            throw URLError(.badURL)
-        }
-        
-        urlComponents.queryItems = [
-            URLQueryItem(name: "username", value: usernameInput),
-            URLQueryItem(name: "password", value: passwordInput)
-        ]
-        
-        guard let url = urlComponents.url else {
+        guard let url = URL(string: "\(cleanUrl)/api/auth/login") else {
             throw URLError(.badURL)
         }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "username": usernameInput,
+            "password": passwordInput
+        ])
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
@@ -126,9 +132,9 @@ class APIService: ObservableObject {
         self.isAuthenticated = true
         self.serverUrl = cleanUrl
         
-        // Save to UserDefaults
-        UserDefaults.standard.set(self.token, forKey: "token")
-        UserDefaults.standard.set(self.refreshToken, forKey: "refreshToken")
+        // Save tokens to Keychain and non-sensitive profile metadata to UserDefaults
+        KeychainHelper.save(key: "auth.accessToken", value: self.token)
+        KeychainHelper.save(key: "auth.refreshToken", value: self.refreshToken)
         UserDefaults.standard.set(cleanUrl, forKey: "serverUrl")
         UserDefaults.standard.set(self.username, forKey: "username")
         UserDefaults.standard.set(self.isAdmin, forKey: "isAdmin")
@@ -138,6 +144,7 @@ class APIService: ObservableObject {
     
     func logout() {
         let savedToken = token
+        let savedRefreshToken = refreshToken
         
         token = ""
         refreshToken = ""
@@ -146,6 +153,8 @@ class APIService: ObservableObject {
         username = ""
         highlights = []
         
+        KeychainHelper.delete(key: "auth.accessToken")
+        KeychainHelper.delete(key: "auth.refreshToken")
         UserDefaults.standard.removeObject(forKey: "token")
         UserDefaults.standard.removeObject(forKey: "refreshToken")
         UserDefaults.standard.removeObject(forKey: "username")
@@ -156,11 +165,17 @@ class APIService: ObservableObject {
         VocaService.invalidateConfiguration()
         VocaService.clearCardsCache()
 
-        // Notify server with the saved (valid) token
-        if !savedToken.isEmpty, let url = URL(string: "\(serverUrl)/api/auth/logout") {
+        // Notify server with the saved token and refresh token so the DB session is revoked
+        if (!savedToken.isEmpty || !savedRefreshToken.isEmpty), let url = URL(string: "\(serverUrl)/api/auth/logout") {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
-            request.setValue("Bearer \(savedToken)", forHTTPHeaderField: "Authorization")
+            if !savedToken.isEmpty {
+                request.setValue("Bearer \(savedToken)", forHTTPHeaderField: "Authorization")
+            }
+            if !savedRefreshToken.isEmpty {
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try? JSONSerialization.data(withJSONObject: ["refresh_token": savedRefreshToken])
+            }
             URLSession.shared.dataTask(with: request).resume()
         }
     }
@@ -202,8 +217,8 @@ class APIService: ObservableObject {
         let result = try JSONDecoder().decode(RefreshResponse.self, from: data)
         self.token = result.accessToken
         self.refreshToken = result.refreshToken
-        UserDefaults.standard.set(self.token, forKey: "token")
-        UserDefaults.standard.set(self.refreshToken, forKey: "refreshToken")
+        KeychainHelper.save(key: "auth.accessToken", value: self.token)
+        KeychainHelper.save(key: "auth.refreshToken", value: self.refreshToken)
         return result.accessToken
     }
     

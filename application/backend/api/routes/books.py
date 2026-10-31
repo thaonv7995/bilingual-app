@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, Response, status, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from api.database import get_db, User, Book, UserPermission, Highlight, ReadingProgress, UserBookState
@@ -12,27 +13,41 @@ from api.auth import (
     get_current_user_or_apikey,
     require_admin,
     decode_access_token,
-    HARDCODED_CLIENT_ID
+    is_trusted_notebook_client,
 )
 from api.config import BOOKS_DIR
 from books_core.paths import BookPaths
-from books_core.package import pack_book, unpack_book
+from books_core.package import pack_book, unpack_book, validate_book_slug
 
 router = APIRouter(prefix="/api/books", tags=["books"])
 content_router = APIRouter(prefix="/books", tags=["books content"])
 
+
+def _ensure_safe_slug(slug: str) -> str:
+    try:
+        return validate_book_slug(slug)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid book slug.",
+        ) from exc
+
+
 # --- Helper function for cookie & header authentication ---
 def get_user_from_request(request: Request, db: Session) -> Optional[User]:
-    # 0. Try Client-ID first
-    client_id = request.headers.get("X-Client-ID") or request.query_params.get("client_id")
-    if client_id and client_id == HARDCODED_CLIENT_ID:
-        return User(username="client_notebook_studio", is_admin=True)
+    # 0. Try Trusted Notebook Client-ID first
+    if is_trusted_notebook_client(request):
+        notebook_user = User(username="client_notebook_studio", is_admin=True)
+        notebook_user._is_notebook_client = True
+        return notebook_user
 
     # 1. Try X-API-Key first
     api_key = request.headers.get("X-API-Key")
     if api_key:
-        if api_key == HARDCODED_CLIENT_ID:
-            return User(username="client_notebook_studio", is_admin=True)
+        if is_trusted_notebook_client(request, api_key):
+            notebook_user = User(username="client_notebook_studio", is_admin=True)
+            notebook_user._is_notebook_client = True
+            return notebook_user
         from api.database import APIKey
         key_record = db.query(APIKey).filter(APIKey.key_value == api_key, APIKey.is_active == True).first()
         if key_record:
@@ -94,8 +109,16 @@ def serve_secure_book_static(slug: str, path: str, request: Request, db: Session
                 detail="Access Denied: You do not have permission to view this book."
             )
 
+    slug = _ensure_safe_slug(slug)
+
     # Serve the requested file safely
-    base_dir = (BOOKS_DIR / slug / "output").resolve()
+    books_root = BOOKS_DIR.resolve()
+    base_dir = (books_root / slug / "output").resolve()
+    if base_dir.parts[:len(books_root.parts)] != books_root.parts:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access Denied: Invalid book slug."
+        )
     file_path = (base_dir / path).resolve()
     
     # Robust path traversal check
@@ -401,6 +424,7 @@ def download_bkb(
     db: Session = Depends(get_db)
 ):
     """Download the book as a .bkb package file."""
+    slug = _ensure_safe_slug(slug)
     # Check permissions
     if not current_user.is_admin:
         has_permission = db.query(UserPermission).filter(
@@ -410,8 +434,8 @@ def download_bkb(
         if not has_permission:
             raise HTTPException(status_code=403, detail="No permission to download this book")
             
-    book_dir = BOOKS_DIR / slug
-    if not book_dir.is_dir():
+    book_dir = (BOOKS_DIR / slug).resolve()
+    if book_dir.parent != BOOKS_DIR.resolve() or not book_dir.is_dir():
         raise HTTPException(status_code=404, detail="Book directory not found")
         
     # Create a unique temp file (not inside a TemporaryDirectory that deletes itself on return)
@@ -436,6 +460,7 @@ def download_bkb(
 @router.get("/{slug}/manifest")
 def get_book_manifest(slug: str, current_user: User = Depends(get_current_user_or_apikey), db: Session = Depends(get_db)):
     """Return a manifest of all file paths under output/ for downloading."""
+    slug = _ensure_safe_slug(slug)
     # Check permissions
     if not current_user.is_admin:
         has_permission = db.query(UserPermission).filter(
@@ -461,6 +486,7 @@ def get_book_manifest(slug: str, current_user: User = Depends(get_current_user_o
 @router.delete("/{slug}")
 def delete_book(slug: str, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
     """Delete a book from DB and filesystem."""
+    slug = _ensure_safe_slug(slug)
     db_book = db.query(Book).filter(Book.slug == slug).first()
     if not db_book:
         raise HTTPException(status_code=404, detail="Book not found in DB")
@@ -483,8 +509,8 @@ def delete_book(slug: str, current_user: User = Depends(require_admin), db: Sess
     db.commit()
     
     # Remove physical directory
-    book_dir = BOOKS_DIR / slug
-    if book_dir.is_dir():
+    book_dir = (BOOKS_DIR / slug).resolve()
+    if book_dir.parent == BOOKS_DIR.resolve() and book_dir.is_dir():
         shutil.rmtree(book_dir, ignore_errors=True)
         
     return {"ok": True, "message": f"Successfully deleted book '{slug}'"}
@@ -492,7 +518,8 @@ def delete_book(slug: str, current_user: User = Depends(require_admin), db: Sess
 # --- Highlights Sync APIs ---
 @router.get("/{slug}/highlights")
 def get_highlights(slug: str, current_user: User = Depends(get_current_user_or_apikey), db: Session = Depends(get_db)):
-    """Fetch all highlights for a specific book."""
+    """Fetch all highlights for a specific book owned by the current user."""
+    slug = _ensure_safe_slug(slug)
     # Check permissions
     if not current_user.is_admin:
         has_perm = db.query(UserPermission).filter(
@@ -502,7 +529,10 @@ def get_highlights(slug: str, current_user: User = Depends(get_current_user_or_a
         if not has_perm:
             raise HTTPException(status_code=403, detail="No permission to read this book")
             
-    highlights = db.query(Highlight).filter(Highlight.book_slug == slug).all()
+    highlights = db.query(Highlight).filter(
+        Highlight.book_slug == slug,
+        or_(Highlight.username == current_user.username, Highlight.username.is_(None)),
+    ).all()
     return {
         "highlights": [
             {
@@ -529,6 +559,7 @@ def create_or_update_highlight(
     db: Session = Depends(get_db)
 ):
     """Add or edit a highlight sentence."""
+    slug = _ensure_safe_slug(slug)
     if not current_user.is_admin:
         has_perm = db.query(UserPermission).filter(
             UserPermission.user_id == current_user.id,
@@ -538,28 +569,34 @@ def create_or_update_highlight(
             raise HTTPException(status_code=403, detail="No permission")
 
     hl_id = highlight_data.get("id")
-    if not hl_id:
+    if not hl_id or not isinstance(hl_id, str):
         raise HTTPException(status_code=400, detail="Highlight ID is required")
 
     db_hl = db.query(Highlight).filter(Highlight.id == hl_id).first()
     if not db_hl:
+        page = highlight_data.get("page")
+        lang = highlight_data.get("lang")
+        color = highlight_data.get("color")
+        text = highlight_data.get("text")
+        if page is None or not lang or not color or text is None:
+            raise HTTPException(status_code=422, detail="Missing required highlight fields (page, lang, color, text)")
         db_hl = Highlight(
             id=hl_id,
             book_slug=slug,
-            page=highlight_data.get("page"),
-            lang=highlight_data.get("lang"),
-            color=highlight_data.get("color"),
-            text=highlight_data.get("text"),
-            start_offset=highlight_data.get("startOffset", 0),
-            end_offset=highlight_data.get("endOffset", 0),
-            paragraph_index=highlight_data.get("paragraphIndex", 0),
-            note=highlight_data.get("note", ""),
+            page=int(page),
+            lang=str(lang),
+            color=str(color),
+            text=str(text),
+            start_offset=int(highlight_data.get("startOffset", 0)),
+            end_offset=int(highlight_data.get("endOffset", 0)),
+            paragraph_index=int(highlight_data.get("paragraphIndex", 0)),
+            note=str(highlight_data.get("note", "") or ""),
             username=current_user.username
         )
         db.add(db_hl)
     else:
-        # Prevent IDOR: Check ownership and book slug
-        if not current_user.is_admin and db_hl.username != current_user.username:
+        # Prevent IDOR / cross-user collision: check ownership and book slug
+        if db_hl.username and db_hl.username != current_user.username:
             raise HTTPException(status_code=403, detail="Not allowed to modify this highlight")
         if db_hl.book_slug != slug:
             raise HTTPException(status_code=400, detail="Highlight does not belong to this book")
@@ -579,12 +616,13 @@ def delete_highlight(
     db: Session = Depends(get_db)
 ):
     """Delete a highlight by ID."""
+    slug = _ensure_safe_slug(slug)
     db_hl = db.query(Highlight).filter(Highlight.id == hl_id, Highlight.book_slug == slug).first()
     if not db_hl:
         raise HTTPException(status_code=404, detail="Highlight not found")
         
     # Prevent IDOR: Check ownership
-    if not current_user.is_admin and db_hl.username != current_user.username:
+    if db_hl.username and db_hl.username != current_user.username and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not allowed to delete this highlight")
         
     db.delete(db_hl)
@@ -599,6 +637,8 @@ def get_reading_progress(
     db: Session = Depends(get_db)
 ):
     """Retrieve the logged-in user's reading progress for a book."""
+    if current_user.id is None:
+        return {"page": 1, "viewMode": "en"}
     progress = db.query(ReadingProgress).filter(
         ReadingProgress.user_id == current_user.id,
         ReadingProgress.book_slug == slug
@@ -629,6 +669,8 @@ def save_reading_progress(
     always-overwrite behaviour. The response always carries the authoritative
     stored progress so a rejected (stale) writer can reconcile.
     """
+    if current_user.id is None:
+        raise HTTPException(status_code=400, detail="API keys cannot save personal reading progress")
     page = progress_data.get("page", 1)
     view_mode = progress_data.get("viewMode", "en")
 

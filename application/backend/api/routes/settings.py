@@ -80,6 +80,8 @@ def _public_view(s: UserSettings | None) -> dict:
 def get_user_settings(
     current_user: User = Depends(get_current_user_or_apikey), db: Session = Depends(get_db)
 ):
+    if getattr(current_user, "id", None) is None:
+        return _public_view(None)
     s = db.query(UserSettings).filter(UserSettings.user_id == current_user.id).first()
     return _public_view(s)
 
@@ -90,6 +92,8 @@ def put_user_settings(
     current_user: User = Depends(get_current_user_or_apikey),
     db: Session = Depends(get_db),
 ):
+    if getattr(current_user, "id", None) is None:
+        raise HTTPException(status_code=400, detail="API keys cannot store personal user settings")
     s = get_or_create_user_settings(db, current_user.id)
 
     public_fields = {

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from fastapi import FastAPI, Depends
 from fastapi.responses import FileResponse
@@ -13,10 +14,18 @@ from books_core.paths import BookPaths
 
 app = FastAPI(title="Bilingual Digital Library API")
 
-# Enable CORS for frontend flexibility
+# Enable CORS (supports explicit CORS_ALLOWED_ORIGINS or safe default origin regex)
+_cors_origins_raw = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
+_cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()] if _cors_origins_raw else []
+_cors_origin_regex = None if _cors_origins else os.environ.get(
+    "CORS_ALLOW_ORIGIN_REGEX",
+    r"^(https?://(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?|https://([a-zA-Z0-9-]+\.)?thaonv\.online|capacitor://localhost|ionic://localhost)$",
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=".*",  # allow_origins=["*"] is invalid with allow_credentials=True
+    allow_origins=_cors_origins,
+    allow_origin_regex=_cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,11 +51,15 @@ def startup_event():
         # Create default admin user if none exists
         admin_exists = db.query(User).filter(User.is_admin == True).first()
         if not admin_exists:
-            hashed_pw = get_password_hash("admin123")
+            initial_pw = os.environ.get("INITIAL_ADMIN_PASSWORD", "").strip() or "admin123"
+            hashed_pw = get_password_hash(initial_pw)
             admin_user = User(username="admin", password_hash=hashed_pw, is_admin=True)
             db.add(admin_user)
             db.commit()
-            print("[Startup] Created default admin user 'admin' (password: 'admin123').")
+            if initial_pw == "admin123":
+                print("[Startup][SECURITY WARNING] Created default admin user 'admin' with default password. Change it immediately in Admin Portal!")
+            else:
+                print("[Startup] Created initial admin user 'admin' from INITIAL_ADMIN_PASSWORD.")
 
         # Sync existing books in directory into DB
         sync_books_directory_to_db(db)

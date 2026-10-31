@@ -13,6 +13,42 @@ import {
 import { useToast } from '@/components/Toast';
 import './ReaderNotePanel.css';
 
+const FORBIDDEN_NOTE_TAGS = [
+  'script',
+  'iframe',
+  'object',
+  'embed',
+  'style',
+  'link',
+  'meta',
+  'base',
+  'form',
+  'svg',
+  'math',
+].join(',');
+
+function sanitizeNoteHtml(raw: string): string {
+  if (!raw) return '';
+  if (typeof DOMParser === 'undefined') return '';
+  const doc = new DOMParser().parseFromString(raw, 'text/html');
+  doc.querySelectorAll(FORBIDDEN_NOTE_TAGS).forEach((el) => el.remove());
+  doc.body.querySelectorAll('*').forEach((el) => {
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      const val = attr.value.trim().toLowerCase();
+      if (
+        name.startsWith('on') ||
+        name === 'srcdoc' ||
+        ((name === 'href' || name === 'src' || name === 'xlink:href') &&
+          (val.startsWith('javascript:') || val.startsWith('vbscript:') || val.startsWith('data:text/html')))
+      ) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  });
+  return doc.body.innerHTML;
+}
+
 const TEMPLATE_OPTIONS: { id: NotebookPageData['template']; name: string; badge: string; icon: string }[] = [
   { id: 'cornell', name: 'Cornell Notes', badge: '✦ STUDY JOURNAL', icon: '📝' },
   { id: 'reading', name: 'Reading Notes', badge: '📖 READING NOTES', icon: '📖' },
@@ -159,9 +195,9 @@ export function ReaderNotePanel({
     const pageKey = `${pageData.id}-${pageData.bookPage || currentPage}-${currentTemplate}`;
     if (lastSyncedKeyRef.current !== pageKey) {
       lastSyncedKeyRef.current = pageKey;
-      if (cuesRef.current) cuesRef.current.innerHTML = pageData.cues || '';
-      if (notesRef.current) notesRef.current.innerHTML = pageData.notes || pageData.content || '';
-      if (summaryRef.current) summaryRef.current.innerHTML = pageData.summary || '';
+      if (cuesRef.current) cuesRef.current.innerHTML = sanitizeNoteHtml(pageData.cues || '');
+      if (notesRef.current) notesRef.current.innerHTML = sanitizeNoteHtml(pageData.notes || pageData.content || '');
+      if (summaryRef.current) summaryRef.current.innerHTML = sanitizeNoteHtml(pageData.summary || '');
       if (topicRef.current) topicRef.current.value = pageData.topic || book.title || '';
     }
   }, [pageData, currentTemplate, currentPage, isLoadingPage, book.title, activeTab]);
