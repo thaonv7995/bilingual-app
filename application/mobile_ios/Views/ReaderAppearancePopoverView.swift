@@ -141,42 +141,27 @@ struct ReaderAppearancePopoverView: View {
     }
 
     private var fontScaleRow: some View {
-        let shownScale = a4Status.appliedFontScale
-        let disablePlus = a4Status.atMaxA4Scale || desc.fontScale >= 140
+        let shownScale = desc.fontScale
+        let disableMinus = shownScale <= 60
+        let disablePlus = shownScale >= 200
 
         return settingRow {
-            HStack(spacing: 6) {
-                Text("Cỡ chữ")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Color(hex: "cbd5e1"))
-
-                if a4Status.atMaxA4Scale || a4Status.clampedByA4 {
-                    Text("Max A4")
-                        .font(.system(size: 9.5, weight: .bold))
-                        .foregroundColor(Color(hex: "fbbf24"))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color(hex: "f59e0b").opacity(0.18))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color(hex: "f59e0b").opacity(0.38), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-            }
+            Text("Cỡ chữ")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Color(hex: "cbd5e1"))
 
             Spacer()
 
             HStack(spacing: 0) {
                 Button(action: {
-                    updateDescriptor { $0.fontScale = max(80, shownScale - 5) }
+                    updateDescriptor { $0.fontScale = max(60, shownScale - 5) }
                 }) {
                     Text("A−")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(shownScale <= 80 ? Color.gray.opacity(0.4) : Color(hex: "cbd5e1"))
+                        .foregroundColor(disableMinus ? Color.gray.opacity(0.4) : Color(hex: "cbd5e1"))
                         .frame(width: 38, height: 30)
                 }
-                .disabled(shownScale <= 80)
+                .disabled(disableMinus)
 
                 Button(action: {
                     updateDescriptor { $0.fontScale = 100 }
@@ -188,7 +173,7 @@ struct ReaderAppearancePopoverView: View {
                 }
 
                 Button(action: {
-                    updateDescriptor { $0.fontScale = min(140, shownScale + 5) }
+                    updateDescriptor { $0.fontScale = min(200, shownScale + 5) }
                 }) {
                     Text("A+")
                         .font(.system(size: 12, weight: .bold))

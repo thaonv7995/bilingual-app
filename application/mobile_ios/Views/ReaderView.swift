@@ -1177,8 +1177,7 @@ struct ReaderView: View {
 
     private func adjustAppearanceScale(by deltaPct: Int) {
         var desc = ReaderAppearance.parseThemeDescriptor(effectiveThemeId)
-        let base = a4Status.appliedFontScale
-        desc.fontScale = max(80, min(140, base + deltaPct))
+        desc.fontScale = max(60, min(200, desc.fontScale + deltaPct))
         selectAppearanceTheme(ReaderAppearance.serializeThemeDescriptor(desc))
     }
 

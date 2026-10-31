@@ -513,7 +513,7 @@ enum ReaderAppearance {
                 }
             case "scale":
                 if let n = Int(val) {
-                    result.fontScale = max(80, min(140, n))
+                    result.fontScale = max(60, min(200, n))
                 }
             case "lh":
                 if ["default", "1.35", "1.5", "1.65", "1.8"].contains(val) {
@@ -566,7 +566,7 @@ enum ReaderAppearance {
             segments.append("tex=\(normalized.textureId)")
         }
         if normalized.fontScale != 100 {
-            segments.append("scale=\(max(80, min(140, normalized.fontScale)))")
+            segments.append("scale=\(max(60, min(200, normalized.fontScale)))")
         }
         if !normalized.lineHeight.isEmpty && normalized.lineHeight != "default" {
             segments.append("lh=\(normalized.lineHeight)")
@@ -933,16 +933,6 @@ enum ReaderAppearance {
                 return blocks.join('\\n');
             }
 
-            function doesOverflowA4() {
-                if (isPhone) return false;
-                const docEl = document.documentElement;
-                const bodyEl = document.body;
-                if (!docEl || !bodyEl) return false;
-                const vh = window.innerHeight || docEl.clientHeight || 0;
-                if (vh <= 0) return false;
-                return Math.max(docEl.scrollHeight, bodyEl.scrollHeight) > vh + 6;
-            }
-
             if (!document.documentElement.dataset.bkbOriginalPaper) {
                 const rootCs = getComputedStyle(document.documentElement);
                 const tokenPaper = (rootCs.getPropertyValue('--book-paper') || rootCs.getPropertyValue('--paper') || '').trim();
@@ -978,44 +968,10 @@ enum ReaderAppearance {
                 styleEl.textContent = cssText;
             };
 
-            let appliedScale = requestedScale || 100;
-            let appliedLh = requestedLh;
-            let appliedMargin = requestedMargin;
-            let clampedByA4 = false;
-
+            const appliedScale = requestedScale || 100;
+            const appliedLh = requestedLh;
+            const appliedMargin = requestedMargin;
             ensureStyle(buildCss(appliedScale, appliedLh, appliedMargin));
-
-            if (!isPhone && (appliedScale > 100 || (appliedLh && appliedLh !== 'default') || appliedMargin === 'wide')) {
-                while (appliedScale > 80 && doesOverflowA4()) {
-                    appliedScale -= 5;
-                    clampedByA4 = true;
-                    ensureStyle(buildCss(appliedScale, appliedLh, appliedMargin));
-                }
-                if (doesOverflowA4() && appliedLh && appliedLh !== 'default') {
-                    appliedLh = 'default';
-                    clampedByA4 = true;
-                    ensureStyle(buildCss(appliedScale, appliedLh, appliedMargin));
-                }
-                if (doesOverflowA4() && appliedMargin === 'wide') {
-                    appliedMargin = 'default';
-                    clampedByA4 = true;
-                    ensureStyle(buildCss(appliedScale, appliedLh, appliedMargin));
-                }
-            }
-
-            let atMaxA4Scale = appliedScale >= 140;
-            if (!isPhone && !atMaxA4Scale) {
-                if (clampedByA4 && appliedScale < requestedScale) {
-                    atMaxA4Scale = true;
-                } else {
-                    const nextScale = Math.min(140, appliedScale + 5);
-                    ensureStyle(buildCss(nextScale, appliedLh, appliedMargin));
-                    if (doesOverflowA4()) {
-                        atMaxA4Scale = true;
-                    }
-                    ensureStyle(buildCss(appliedScale, appliedLh, appliedMargin));
-                }
-            }
 
             // Compute effective background RGBA for WKWebView native canvas
             let rgba = null;
@@ -1036,8 +992,8 @@ enum ReaderAppearance {
 
             return {
                 appliedFontScale: appliedScale,
-                clampedByA4: clampedByA4,
-                atMaxA4Scale: atMaxA4Scale,
+                clampedByA4: false,
+                atMaxA4Scale: false,
                 rgba: rgba
             };
         })();
