@@ -162,12 +162,18 @@
 }
 
 .select {
-  background: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.08);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  background-size: 11px 11px;
+  appearance: none;
+  -webkit-appearance: none;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   color: #f1f5f9;
   font-size: 11px;
-  padding: 4px 6px;
+  padding: 4px 22px 4px 8px;
   outline: none;
   cursor: pointer;
 }

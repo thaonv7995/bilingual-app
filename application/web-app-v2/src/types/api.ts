@@ -32,9 +32,24 @@ export interface Book {
   lastRead?: number | null;
   isFinished: boolean;
   isPriority: boolean;
+  /** Per-book default font ID ('default' = original book CSS font). */
+  defaultFont?: string;
+  /** Per-book default paper color theme ID ('default' = original book CSS paper). */
+  defaultTheme?: string;
+  /** User's per-book font override ('' = use book's defaultFont). */
+  readerFont?: string;
+  /** User's per-book paper color override ('' = use book's defaultTheme). */
+  readerTheme?: string;
 }
 
-export type BookStatePatch = Partial<Pick<Book, 'isFinished' | 'isPriority'>>;
+export type BookStatePatch = Partial<
+  Pick<Book, 'isFinished' | 'isPriority' | 'readerFont' | 'readerTheme'>
+>;
+
+export interface BookAppearanceDefaultsPatch {
+  defaultFont?: string;
+  defaultTheme?: string;
+}
 
 export type HighlightLang = 'en' | 'vi';
 

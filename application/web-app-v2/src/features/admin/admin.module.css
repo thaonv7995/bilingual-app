@@ -144,7 +144,7 @@
 .input,
 .select {
   width: 100%;
-  background: var(--bg);
+  background-color: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.625rem 0.875rem;
@@ -154,6 +154,17 @@
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
+}
+
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.25rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 14px 14px;
+  cursor: pointer;
 }
 
 .input:focus,
@@ -718,6 +729,38 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.bookDefaultsRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.15rem;
+}
+
+.bookDefaultSelect {
+  width: 100%;
+  background-color: rgba(15, 23, 42, 0.72);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  background-size: 11px 11px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+  font-size: 0.625rem;
+  padding: 0.22rem 1.35rem 0.22rem 0.4rem;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+.bookDefaultSelect:hover,
+.bookDefaultSelect:focus {
+  border-color: #38bdf8;
+  color: #f8fafc;
 }
 
 .bookMeta {

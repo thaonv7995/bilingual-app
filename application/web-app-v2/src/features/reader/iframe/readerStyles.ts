@@ -7,7 +7,93 @@
  * The voca lookup-panel CSS (v1 appended getVocaLookupPanelCss()) is added in
  * Phase 5 via `vocaPanelCss`.
  */
+import {
+  PAGE_MARGIN_OPTIONS,
+  getReaderFont,
+  getReaderTheme,
+  isHexColorDark,
+  parseThemeDescriptor,
+  type PaperTextureId,
+} from '../readerAppearance.ts';
+
 const STYLE_ID = 'bilingual-highlight-style';
+const APPEARANCE_STYLE_ID = 'bilingual-appearance-style';
+const APPEARANCE_FONT_LINK_ID = 'bilingual-appearance-font-link';
+
+const SVG_NOISE_DATA_URI = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.065'/%3E%3C/svg%3E")`;
+
+function buildTextureCss(textureId: PaperTextureId, isDark: boolean): string {
+  if (textureId === 'default') return '';
+  const lineAlpha = isDark ? 'rgba(255, 255, 255, 0.055)' : 'rgba(60, 42, 24, 0.075)';
+  const dotAlpha = isDark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(60, 42, 24, 0.14)';
+
+  let bgImage = '';
+  let bgSize = '';
+  let boxShadow = '';
+
+  switch (textureId) {
+    case 'paper-grain':
+      bgImage = SVG_NOISE_DATA_URI;
+      bgSize = '160px 160px';
+      break;
+    case 'vintage':
+      bgImage = `radial-gradient(ellipse at center, transparent 52%, ${
+        isDark ? 'rgba(0, 0, 0, 0.42)' : 'rgba(120, 82, 38, 0.16)'
+      } 100%), ${SVG_NOISE_DATA_URI}`;
+      bgSize = '100% 100%, 160px 160px';
+      boxShadow = isDark
+        ? 'inset 0 0 36px rgba(0, 0, 0, 0.48)'
+        : 'inset 0 0 38px rgba(110, 74, 32, 0.18)';
+      break;
+    case 'linen':
+      bgImage = `
+        repeating-linear-gradient(0deg, ${lineAlpha} 0px, ${lineAlpha} 1px, transparent 1px, transparent 4px),
+        repeating-linear-gradient(90deg, ${lineAlpha} 0px, ${lineAlpha} 1px, transparent 1px, transparent 4px)
+      `;
+      bgSize = '4px 4px';
+      break;
+    case 'parchment':
+      bgImage = `
+        radial-gradient(circle at 20% 25%, ${
+          isDark ? 'rgba(255, 215, 150, 0.04)' : 'rgba(180, 130, 65, 0.10)'
+        } 0%, transparent 55%),
+        radial-gradient(circle at 80% 75%, ${
+          isDark ? 'rgba(0, 0, 0, 0.35)' : 'rgba(145, 98, 42, 0.13)'
+        } 0%, transparent 60%),
+        ${SVG_NOISE_DATA_URI}
+      `;
+      bgSize = '100% 100%, 100% 100%, 160px 160px';
+      boxShadow = isDark
+        ? 'inset 0 0 42px rgba(0, 0, 0, 0.5)'
+        : 'inset 0 0 42px rgba(120, 80, 30, 0.18)';
+      break;
+    case 'dot-grid':
+      bgImage = `radial-gradient(${dotAlpha} 1.1px, transparent 1.1px)`;
+      bgSize = '18px 18px';
+      break;
+    case 'ruled':
+      bgImage = `repeating-linear-gradient(to bottom, transparent 0px, transparent 25px, ${lineAlpha} 25px, ${lineAlpha} 26px)`;
+      bgSize = '100% 26px';
+      break;
+  }
+
+  return `
+    .book-page::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      background-image: ${bgImage} !important;
+      ${bgSize ? `background-size: ${bgSize} !important;` : ''}
+      ${boxShadow ? `box-shadow: ${boxShadow} !important;` : ''}
+    }
+    .prose-page, .toc-page {
+      position: relative;
+      z-index: 2;
+    }
+  `;
+}
 
 let vocaPanelCss = '';
 /** Phase 5 registers the voca lookup-panel CSS here so it's included on inject. */
@@ -127,4 +213,429 @@ export function injectReaderStyles(doc: Document, isEnglish: boolean): void {
     ${vocaPanelCss}
   `;
   (doc.head || doc.documentElement).appendChild(style);
+}
+
+/**
+ * Detect whether the rendered prose/content inside a book iframe overflows
+ * the fixed A4 sheet (either exceeding scrollHeight or colliding with the
+ * bottom edge / footer folio).
+ */
+export function doesDocOverflowA4(doc: Document | null | undefined): boolean {
+  if (!doc) return false;
+  const view = doc.defaultView;
+  const pageEl = doc.querySelector<HTMLElement>('.book-page') || doc.body;
+  const flowEl =
+    doc.querySelector<HTMLElement>('.prose-page, .toc-page, .sheet-flow') || pageEl;
+  if (!flowEl || !pageEl) return false;
+
+  // 1. Standard box scrollHeight overflow check
+  if (flowEl.scrollHeight > flowEl.clientHeight + 2) return true;
+  if (pageEl.scrollHeight > pageEl.clientHeight + 2) return true;
+
+  // 2. Geometric bottom boundary check inside the A4 sheet
+  const pageRect = pageEl.getBoundingClientRect();
+  if (pageRect.height <= 0) return false;
+
+  let safeBottomY = pageRect.bottom - 16;
+
+  // Account for any visible absolute-positioned footer or folio at the bottom of the page
+  const footers = flowEl.querySelectorAll<HTMLElement>(
+    '.book-footer, .page-folio, .preface-folio, .toc-folio',
+  );
+  footers.forEach((footer) => {
+    const cs = view ? view.getComputedStyle(footer) : null;
+    if (!cs || cs.display === 'none' || cs.visibility === 'hidden') return;
+    if (cs.position !== 'absolute' && cs.position !== 'fixed') return;
+    const hasText = Boolean(footer.textContent && footer.textContent.trim().length > 0);
+    const hasBorder = (parseFloat(cs.borderTopWidth || '0') || 0) > 0;
+    if (!hasText && !hasBorder) return;
+    const fRect = footer.getBoundingClientRect();
+    if (fRect.height > 0 && fRect.top > pageRect.top + pageRect.height * 0.72) {
+      safeBottomY = Math.min(safeBottomY, fRect.top - 4);
+    }
+  });
+
+  // Measure the lowest in-flow content element inside flowEl
+  const candidates = flowEl.querySelectorAll<HTMLElement>(
+    'p, li, pre, table, figure, blockquote, h1, h2, h3, h4, h5, h6, .convention-item, .toc-row, .exercise-block',
+  );
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const el = candidates[i]!;
+    if (
+      el.classList.contains('page-folio') ||
+      el.classList.contains('preface-folio') ||
+      el.classList.contains('toc-folio') ||
+      el.closest('.book-footer, .page-nav')
+    ) {
+      continue;
+    }
+    const cs = view ? view.getComputedStyle(el) : null;
+    if (cs && (cs.position === 'absolute' || cs.position === 'fixed' || cs.display === 'none')) {
+      continue;
+    }
+    const rect = el.getBoundingClientRect();
+    if (rect.height <= 0 && rect.width <= 0) continue;
+    if (rect.bottom > safeBottomY + 1.5) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export interface ApplyAppearanceResult {
+  /** The effective fontScale (%) actually applied after A4 overflow clamping. */
+  appliedFontScale: number;
+  /** True when the requested settings had to be clamped down to prevent A4 overflow. */
+  clampedByA4: boolean;
+  /** True when increasing fontScale by +5% would overflow the A4 page. */
+  atMaxA4Scale: boolean;
+}
+
+/**
+ * Dynamically apply (or remove when 'default') font, book size, ink color,
+ * paper color, and paper texture overrides inside a book page iframe without reloading.
+ * Automatically clamps font scale if the chosen size/font/spacing would overflow the A4 sheet.
+ */
+export function applyBookAppearance(
+  doc: Document | null | undefined,
+  iframeEl: HTMLIFrameElement | null | undefined,
+  options: { fontId: string; themeId: string },
+): ApplyAppearanceResult {
+  const desc = parseThemeDescriptor(options.themeId);
+  const defaultResult: ApplyAppearanceResult = {
+    appliedFontScale: desc.fontScale || 100,
+    clampedByA4: false,
+    atMaxA4Scale: (desc.fontScale || 100) >= 140,
+  };
+  if (!doc) return defaultResult;
+  const head = doc.head || doc.documentElement;
+  if (!head) return defaultResult;
+
+  const font = getReaderFont(options.fontId);
+  const theme = getReaderTheme(options.themeId);
+  const hasCustomPaper = desc.themeId !== 'default';
+  const hasCustomInk = Boolean(desc.inkColor && desc.inkColor !== 'auto');
+  const effectiveInk = hasCustomInk ? desc.inkColor : theme.ink;
+  const isDarkSurface = hasCustomPaper
+    ? theme.isDark
+    : hasCustomInk
+      ? !isHexColorDark(desc.inkColor)
+      : false;
+
+  // 1. Manage Google Font <link> inside iframe head
+  let fontLink = doc.getElementById(APPEARANCE_FONT_LINK_ID) as HTMLLinkElement | null;
+  if (font.id !== 'default' && font.googleFontUrl) {
+    if (!fontLink) {
+      fontLink = doc.createElement('link');
+      fontLink.id = APPEARANCE_FONT_LINK_ID;
+      fontLink.rel = 'stylesheet';
+      head.appendChild(fontLink);
+    }
+    if (fontLink.href !== font.googleFontUrl) {
+      fontLink.href = font.googleFontUrl;
+    }
+  } else if (fontLink) {
+    fontLink.remove();
+  }
+
+  const buildCssForScale = (
+    scalePct: number,
+    lineHeightVal: string,
+    marginVal: string,
+  ): string[] => {
+    const cssBlocks: string[] = [];
+
+    if (font.id !== 'default' && font.family) {
+      cssBlocks.push(`
+        :root {
+          --font-display: ${font.family} !important;
+          --font-ui: ${font.family} !important;
+        }
+        body,
+        .book-page,
+        .prose-page,
+        .toc-page,
+        .prose-page p,
+        .prose-page li,
+        .prose-page blockquote,
+        .prose-page td,
+        .prose-page th,
+        .prose-page figcaption,
+        .prose-page h1,
+        .prose-page h2,
+        .prose-page h3,
+        .prose-page h4,
+        .prose-page h5,
+        .prose-page h6,
+        .prose-page .running-head,
+        .prose-page .section-title,
+        .prose-page .section-number,
+        .prose-page .chapter-opener,
+        .prose-page .chapter-title,
+        .prose-page .preface-title,
+        .prose-page .exercise-instruction,
+        .prose-page .exercises-title,
+        .title-book,
+        .subtitle-book,
+        .author-book,
+        .toc-title,
+        .toc-row {
+          font-family: ${font.family} !important;
+        }
+        /* Keep code, ASCII diagrams, and math formulas in their original font */
+        .prose-page pre,
+        .prose-page code,
+        .prose-page pre *,
+        .prose-page code *,
+        .prose-page .code-block,
+        .prose-page .ascii-figure {
+          font-family: var(--font-mono, "Courier New", Courier, monospace) !important;
+        }
+        .prose-page .math,
+        .prose-page .formula,
+        .prose-page .formula-display {
+          font-family: "Times New Roman", Times, serif !important;
+        }
+      `);
+    }
+
+    if (scalePct !== 100) {
+      const ratio = (scalePct / 100).toFixed(3);
+      cssBlocks.push(`
+        .prose-page {
+          font-size: calc(11pt * ${ratio}) !important;
+        }
+        .prose-page p,
+        .prose-page li,
+        .prose-page blockquote,
+        .prose-page .exercise-instruction,
+        .toc-page .toc-row {
+          font-size: calc(11pt * ${ratio}) !important;
+        }
+      `);
+    }
+
+    if (lineHeightVal && lineHeightVal !== 'default') {
+      cssBlocks.push(`
+        .prose-page,
+        .prose-page p,
+        .prose-page li,
+        .prose-page blockquote,
+        .prose-page .exercise-instruction {
+          line-height: ${lineHeightVal} !important;
+        }
+      `);
+    }
+
+    if (marginVal && marginVal !== 'default') {
+      const marginOpt = PAGE_MARGIN_OPTIONS.find((m) => m.id === marginVal);
+      if (marginOpt?.mm) {
+        cssBlocks.push(`
+          :root {
+            --book-margin-x: ${marginOpt.mm} !important;
+          }
+          .prose-page,
+          .toc-page {
+            padding-left: ${marginOpt.mm} !important;
+            padding-right: ${marginOpt.mm} !important;
+          }
+        `);
+      }
+    }
+
+    if (hasCustomPaper || hasCustomInk) {
+      cssBlocks.push(`
+        :root {
+          ${
+            hasCustomPaper
+              ? `
+            --book-paper: ${theme.paper} !important;
+            --paper: ${theme.paper} !important;
+            --muted: ${theme.muted} !important;
+            --book-accent: ${theme.accent} !important;
+            --accent: ${theme.accent} !important;
+            --book-rule: ${theme.rule} !important;
+            --rule: ${theme.rule} !important;
+          `
+              : ''
+          }
+          --book-ink: ${effectiveInk} !important;
+          --ink: ${effectiveInk} !important;
+        }
+        ${
+          hasCustomPaper
+            ? `
+          html,
+          body,
+          body.book-standalone,
+          .book-page,
+          .book-page.book-page--sheet {
+            background-color: ${theme.paper} !important;
+            background: ${theme.paper} !important;
+            color: ${effectiveInk} !important;
+          }
+          .book-page--sheet::after {
+            background: linear-gradient(
+              to bottom,
+              transparent 0%,
+              color-mix(in srgb, ${theme.paper} 60%, transparent) 40%,
+              ${theme.paper} 75%
+            ) !important;
+          }
+          .prose-page .running-head,
+          .prose-page .running-head span,
+          .prose-page .page-folio,
+          .prose-page .preface-folio,
+          .toc-page .toc-folio,
+          .prose-page figcaption,
+          .prose-page .footnotes {
+            color: ${theme.muted} !important;
+          }
+          .prose-page a,
+          .prose-page .accent-word,
+          .prose-page .exercises-title,
+          .prose-page .exercise-number {
+            color: ${theme.accent} !important;
+          }
+          .prose-page pre.code-block,
+          .prose-page pre.ascii-figure {
+            color: ${effectiveInk} !important;
+            background-color: ${theme.codeBg} !important;
+            border-radius: 4px;
+          }
+          .prose-page table.data-table th {
+            background-color: ${theme.codeBg} !important;
+            color: ${effectiveInk} !important;
+            border-color: ${theme.rule} !important;
+          }
+          .prose-page table.data-table td {
+            border-color: ${theme.rule} !important;
+          }
+          .prose-page .footnotes,
+          .toc-page .toc-row .label::after,
+          .title-page-border {
+            border-color: ${theme.rule} !important;
+          }
+        `
+            : ''
+        }
+        .prose-page,
+        .toc-page,
+        .prose-page p,
+        .prose-page li,
+        .prose-page blockquote,
+        .prose-page td,
+        .prose-page h1,
+        .prose-page h2,
+        .prose-page h3,
+        .prose-page h4,
+        .prose-page h5,
+        .prose-page h6,
+        .prose-page .section-number,
+        .prose-page .section-title,
+        .prose-page .chapter-opener,
+        .prose-page .chapter-title,
+        .prose-page .preface-title,
+        .prose-page .drop-cap,
+        .title-book,
+        .subtitle-book,
+        .author-book,
+        .toc-title,
+        .toc-row {
+          color: ${effectiveInk} !important;
+        }
+        ${
+          isDarkSurface
+            ? `
+          mark.reader-highlight {
+            color: #0f172a !important;
+          }
+          mark.reader-highlight * {
+            color: #0f172a !important;
+          }
+        `
+            : ''
+        }
+      `);
+    }
+
+    if (desc.textureId && desc.textureId !== 'default') {
+      cssBlocks.push(buildTextureCss(desc.textureId, isDarkSurface));
+    }
+
+    return cssBlocks;
+  };
+
+  const writeCss = (blocks: string[]) => {
+    let styleEl = doc.getElementById(APPEARANCE_STYLE_ID) as HTMLStyleElement | null;
+    if (blocks.length > 0) {
+      if (!styleEl) {
+        styleEl = doc.createElement('style');
+        styleEl.id = APPEARANCE_STYLE_ID;
+        head.appendChild(styleEl);
+      }
+      styleEl.textContent = blocks.join('\n');
+    } else if (styleEl) {
+      styleEl.remove();
+    }
+  };
+
+  const requestedScale = desc.fontScale || 100;
+  let appliedScale = requestedScale;
+  let appliedLineHeight = desc.lineHeight || 'default';
+  let appliedMargin = desc.pageMargin || 'default';
+  let clampedByA4 = false;
+
+  writeCss(buildCssForScale(appliedScale, appliedLineHeight, appliedMargin));
+
+  // A4 Overflow Guard: if typography customization caused the page to overflow A4,
+  // step down scale (and if needed, line-height / wide margin) until it fits the A4 page.
+  const hasTypographyChange =
+    appliedScale > 100 ||
+    font.id !== 'default' ||
+    appliedLineHeight !== 'default' ||
+    appliedMargin === 'wide';
+
+  if (hasTypographyChange && doesDocOverflowA4(doc)) {
+    const minScale = font.id !== 'default' ? 85 : 100;
+    while (appliedScale > minScale && doesDocOverflowA4(doc)) {
+      appliedScale = Math.max(minScale, appliedScale - 2);
+      clampedByA4 = true;
+      writeCss(buildCssForScale(appliedScale, appliedLineHeight, appliedMargin));
+    }
+    if (doesDocOverflowA4(doc) && appliedLineHeight !== 'default') {
+      appliedLineHeight = 'default';
+      clampedByA4 = true;
+      writeCss(buildCssForScale(appliedScale, appliedLineHeight, appliedMargin));
+    }
+    if (doesDocOverflowA4(doc) && appliedMargin === 'wide') {
+      appliedMargin = 'default';
+      clampedByA4 = true;
+      writeCss(buildCssForScale(appliedScale, appliedLineHeight, appliedMargin));
+    }
+  }
+
+  // Probe whether +5% fontScale would overflow A4 so the UI can disable the A+ button
+  let atMaxA4Scale = appliedScale >= 140 || clampedByA4;
+  if (!atMaxA4Scale) {
+    writeCss(buildCssForScale(appliedScale + 5, appliedLineHeight, appliedMargin));
+    if (doesDocOverflowA4(doc)) {
+      atMaxA4Scale = true;
+    }
+    // Restore the actual applied CSS
+    writeCss(buildCssForScale(appliedScale, appliedLineHeight, appliedMargin));
+  }
+
+  if (iframeEl) {
+    iframeEl.style.backgroundColor = hasCustomPaper
+      ? theme.paper
+      : resolveBookBackground(doc);
+  }
+
+  return {
+    appliedFontScale: appliedScale,
+    clampedByA4,
+    atMaxA4Scale,
+  };
 }

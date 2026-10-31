@@ -15,9 +15,6 @@ export function ReaderTopbar({
   zoomMode,
   zoomLevel,
   chatOpen,
-  notePanelOpen,
-  noteCount,
-  hasPageNotes,
   isBookFinished,
   isUpdatingFinished,
   username,
@@ -29,10 +26,12 @@ export function ReaderTopbar({
   onSelectZoomMode,
   onAdjustZoom,
   onToggleChat,
-  onToggleNotePanel,
   onToggleFinished,
   audiobookOpen,
   onToggleAudiobook,
+  appearanceOpen,
+  hasCustomAppearance,
+  onToggleAppearance,
   onOpenSettings,
   onLogout,
 }: {
@@ -42,9 +41,6 @@ export function ReaderTopbar({
   zoomMode: ZoomMode;
   zoomLevel: number;
   chatOpen: boolean;
-  notePanelOpen: boolean;
-  noteCount: number;
-  hasPageNotes: boolean;
   isBookFinished: boolean;
   isUpdatingFinished: boolean;
   username: string;
@@ -56,10 +52,12 @@ export function ReaderTopbar({
   onSelectZoomMode: (mode: ZoomMode) => void;
   onAdjustZoom: (direction: number) => void;
   onToggleChat: () => void;
-  onToggleNotePanel: () => void;
   onToggleFinished: () => void;
   audiobookOpen?: boolean;
   onToggleAudiobook?: () => void;
+  appearanceOpen?: boolean;
+  hasCustomAppearance?: boolean;
+  onToggleAppearance?: () => void;
   onOpenSettings: () => void;
   onLogout: () => void;
 }) {
@@ -181,19 +179,17 @@ export function ReaderTopbar({
           ))}
         </div>
 
-        <button
-          className={`btn-icon btn-reader-notes ${notePanelOpen ? 'active' : ''} ${hasPageNotes ? 'has-page-notes' : ''}`}
-          onClick={onToggleNotePanel}
-          title={hasPageNotes ? `Ghi chép & Sổ tay (N) • Trang ${page} có ghi chú` : 'Ghi chép & Sổ tay (N)'}
-        >
-          <NoteIcon />
-          {hasPageNotes && (
-            <span className="reader-notes-pin-dot" title={`Trang ${page} có ghi chú`}>
-              <MiniPinIcon />
-            </span>
-          )}
-          {noteCount > 0 && <span className="reader-notes-badge">{noteCount}</span>}
-        </button>
+        {onToggleAppearance && (
+          <button
+            className={`btn-icon btn-reader-appearance ${appearanceOpen ? 'active' : ''} ${hasCustomAppearance ? 'has-custom-appearance' : ''}`}
+            onClick={onToggleAppearance}
+            title="Tuỳ chỉnh Font & Màu giấy sách (A)"
+            aria-label="Tuỳ chỉnh Font & Màu giấy"
+          >
+            <span className="reader-appearance-glyph" aria-hidden="true">Aa</span>
+            {hasCustomAppearance && <span className="reader-appearance-dot" />}
+          </button>
+        )}
 
         {onToggleAudiobook && (
           <button
@@ -356,30 +352,6 @@ function FitWidthIcon() {
       <polyline points="17 8 21 12 17 16" />
       <line x1="3" y1="4" x2="3" y2="20" />
       <line x1="21" y1="4" x2="21" y2="20" />
-    </svg>
-  );
-}
-
-function NoteIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M2 6h4" />
-      <path d="M2 10h4" />
-      <path d="M2 14h4" />
-      <path d="M2 18h4" />
-      <rect width="16" height="20" x="4" y="2" rx="2" />
-      <path d="M9.5 8h5" />
-      <path d="M9.5 12h5" />
-      <path d="M9.5 16h3" />
-    </svg>
-  );
-}
-
-function MiniPinIcon() {
-  return (
-    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <line x1="12" y1="17" x2="12" y2="22" />
-      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a3 3 0 0 0-6 0v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" fill="currentColor" />
     </svg>
   );
 }

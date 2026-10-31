@@ -300,6 +300,10 @@ def list_books(current_user: User = Depends(get_current_user_or_apikey), db: Ses
             "isFinished": bool(state_by_slug.get(b.slug) and state_by_slug[b.slug].is_finished),
             "onShelf": bool(state_by_slug.get(b.slug) and state_by_slug[b.slug].on_shelf),
             "isPriority": bool(state_by_slug.get(b.slug) and state_by_slug[b.slug].is_priority),
+            "defaultFont": (b.default_font if getattr(b, "default_font", None) else "default") or "default",
+            "defaultTheme": (b.default_theme if getattr(b, "default_theme", None) else "default") or "default",
+            "readerFont": (state_by_slug[b.slug].reader_font if state_by_slug.get(b.slug) and getattr(state_by_slug[b.slug], "reader_font", None) else "") or "",
+            "readerTheme": (state_by_slug[b.slug].reader_theme if state_by_slug.get(b.slug) and getattr(state_by_slug[b.slug], "reader_theme", None) else "") or "",
         }
         for b in books
     ]
@@ -311,7 +315,8 @@ def update_book_state(
     current_user: User = Depends(get_current_user_or_apikey),
     db: Session = Depends(get_db),
 ):
-    """Update this user's organisational flags for one accessible book."""
+    """Update this user's organisational flags and per-book appearance preferences."""
+    slug = _ensure_safe_slug(slug)
     book = db.query(Book).filter(Book.slug == slug).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -325,14 +330,24 @@ def update_book_state(
     if current_user.id is None:
         raise HTTPException(status_code=400, detail="API keys cannot own a personal shelf")
 
-    allowed = {
+    allowed_bool = {
         "isFinished": "is_finished",
         "onShelf": "on_shelf",
         "isPriority": "is_priority",
     }
-    supplied = {key: value for key, value in state_data.items() if key in allowed}
-    if not supplied or any(not isinstance(value, bool) for value in supplied.values()):
+    allowed_str = {
+        "readerFont": "reader_font",
+        "readerTheme": "reader_theme",
+    }
+    supplied_bool = {key: value for key, value in state_data.items() if key in allowed_bool}
+    supplied_str = {key: value for key, value in state_data.items() if key in allowed_str}
+
+    if not supplied_bool and not supplied_str:
+        raise HTTPException(status_code=422, detail="No valid state fields supplied")
+    if any(not isinstance(value, bool) for value in supplied_bool.values()):
         raise HTTPException(status_code=422, detail="State fields must be booleans")
+    if any(not isinstance(value, str) or len(value) > 512 for value in supplied_str.values()):
+        raise HTTPException(status_code=422, detail="Appearance fields must be short strings")
 
     state = db.query(UserBookState).filter(
         UserBookState.user_id == current_user.id,
@@ -341,22 +356,87 @@ def update_book_state(
     if not state:
         state = UserBookState(user_id=current_user.id, book_slug=slug)
         db.add(state)
-    for json_key, value in supplied.items():
-        setattr(state, allowed[json_key], value)
+    for json_key, value in supplied_bool.items():
+        setattr(state, allowed_bool[json_key], value)
+    for json_key, value in supplied_str.items():
+        setattr(state, allowed_str[json_key], value.strip())
     # The current UI exposes one library state at a time: priority, finished,
     # or normal (both false). Keep legacy `on_shelf` data inert as normal.
-    if supplied.get("isPriority") is True:
+    if supplied_bool.get("isPriority") is True:
         state.is_finished = False
         state.on_shelf = False
-    elif supplied.get("isFinished") is True:
+    elif supplied_bool.get("isFinished") is True:
         state.is_priority = False
         state.on_shelf = False
     db.commit()
     db.refresh(state)
-    return {
+    result = {
         "isFinished": state.is_finished,
         "onShelf": state.on_shelf,
         "isPriority": state.is_priority,
+    }
+    if "readerFont" in supplied_str or state.reader_font:
+        result["readerFont"] = state.reader_font or ""
+    if "readerTheme" in supplied_str or state.reader_theme:
+        result["readerTheme"] = state.reader_theme or ""
+    return result
+
+
+@router.patch("/{slug}/appearance-defaults")
+def update_book_appearance_defaults(
+    slug: str,
+    payload: dict,
+    current_user: User = Depends(get_current_user_or_apikey),
+    db: Session = Depends(get_db),
+):
+    """Update a book's default font and paper color theme (persisted in DB and book.json)."""
+    slug = _ensure_safe_slug(slug)
+    book = db.query(Book).filter(Book.slug == slug).first()
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    if not current_user.is_admin:
+        has_permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.book_slug == slug,
+        ).first()
+        if not has_permission:
+            raise HTTPException(status_code=403, detail="No permission to configure this book")
+
+    default_font = payload.get("defaultFont")
+    default_theme = payload.get("defaultTheme")
+    if default_font is None and default_theme is None:
+        raise HTTPException(status_code=422, detail="Provide defaultFont and/or defaultTheme")
+
+    if default_font is not None:
+        if not isinstance(default_font, str) or len(default_font) > 128:
+            raise HTTPException(status_code=422, detail="Invalid defaultFont")
+        book.default_font = default_font.strip() or "default"
+
+    if default_theme is not None:
+        if not isinstance(default_theme, str) or len(default_theme) > 512:
+            raise HTTPException(status_code=422, detail="Invalid defaultTheme")
+        book.default_theme = default_theme.strip() or "default"
+
+    db.commit()
+    db.refresh(book)
+
+    # Also persist into books/<slug>/book.json if present so exports (.bkb) and startup sync retain it
+    book_dir = BOOKS_DIR / slug
+    if (book_dir / "book.json").is_file():
+        try:
+            import json
+            book_json_path = book_dir / "book.json"
+            meta = json.loads(book_json_path.read_text(encoding="utf-8"))
+            meta["default_font"] = book.default_font or "default"
+            meta["default_theme"] = book.default_theme or "default"
+            book_json_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        except Exception as exc:
+            print(f"[Book Defaults] Could not update book.json for '{slug}': {exc}")
+
+    return {
+        "slug": book.slug,
+        "defaultFont": book.default_font or "default",
+        "defaultTheme": book.default_theme or "default",
     }
 
 @router.post("/upload")
@@ -398,6 +478,8 @@ def upload_bkb(
                 page_count=book_paths.estimate_page_count(),
                 cover_path=cover_val,
                 is_published=True,
+                default_font=metadata.get("default_font") or "default",
+                default_theme=metadata.get("default_theme") or "default",
                 created_at=int(time.time())
             )
             db.add(db_book)
@@ -407,6 +489,10 @@ def upload_bkb(
             db_book.author = metadata.get("author", db_book.author)
             if cover_val:
                 db_book.cover_path = cover_val
+            if metadata.get("default_font"):
+                db_book.default_font = metadata["default_font"]
+            if metadata.get("default_theme"):
+                db_book.default_theme = metadata["default_theme"]
                 
         db.commit()
         return {"ok": True, "slug": book_slug, "message": f"Successfully imported '{result['title']}'"}

@@ -4,7 +4,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiJson, ensureFreshAccessToken, getAccessToken } from '@/lib/api-client';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/Modal';
-import type { Book } from '@/types/api';
+import type { Book, BookAppearanceDefaultsPatch } from '@/types/api';
+import {
+  READER_FONTS,
+  READER_TEXTURES,
+  READER_THEMES,
+  parseThemeDescriptor,
+  serializeThemeDescriptor,
+  type PaperTextureId,
+} from '@/features/reader/readerAppearance';
 import { ADMIN_QUERY_KEY, useAdminBooks } from './adminApi';
 import styles from './admin.module.css';
 
@@ -182,6 +190,27 @@ export function BooksTab() {
     }
   }
 
+  async function handleUpdateBookDefaults(
+    slug: string,
+    title: string,
+    patch: BookAppearanceDefaultsPatch,
+  ) {
+    try {
+      await apiJson(`/api/books/${encodeURIComponent(slug)}/appearance-defaults`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      toast.show(`Đã cập nhật giao diện mặc định cho "${title}"`, 'success');
+      void refreshBooks();
+    } catch (err) {
+      toast.show(
+        'Không thể lưu giao diện mặc định: ' + (err instanceof Error ? err.message : ''),
+        'danger',
+      );
+    }
+  }
+
   // Newest first, matching v1.
   const ordered = [...books].reverse();
 
@@ -265,6 +294,9 @@ export function BooksTab() {
                 deleting={deletingSlug === book.slug}
                 onDownload={() => void handleDownload(book.slug)}
                 onDelete={() => void handleDelete(book.slug, book.title)}
+                onUpdateDefaults={(patch) =>
+                  void handleUpdateBookDefaults(book.slug, book.title, patch)
+                }
               />
             ))
           )}
@@ -280,13 +312,17 @@ function BookCard({
   deleting,
   onDownload,
   onDelete,
+  onUpdateDefaults,
 }: {
   book: Book;
   downloading: boolean;
   deleting: boolean;
   onDownload: () => void;
   onDelete: () => void;
+  onUpdateDefaults: (patch: BookAppearanceDefaultsPatch) => void;
 }) {
+  const desc = parseThemeDescriptor(book.defaultTheme || 'default');
+
   return (
     <div className={styles.bookCard}>
       <div className={styles.bookCover}>
@@ -327,6 +363,65 @@ function BookCard({
           {book.title}
         </div>
         <div className={styles.bookAuthor}>{book.author || 'Không rõ tác giả'}</div>
+        <div className={styles.bookDefaultsRow}>
+          <select
+            className={styles.bookDefaultSelect}
+            value={book.defaultFont || 'default'}
+            aria-label={`Font mặc định cho ${book.title}`}
+            title="Font chữ mặc định của sách"
+            onChange={(e) => onUpdateDefaults({ defaultFont: e.target.value })}
+          >
+            {READER_FONTS.map((f) => (
+              <option key={f.id} value={f.id}>
+                Font: {f.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className={styles.bookDefaultSelect}
+            value={desc.themeId}
+            aria-label={`Màu giấy mặc định cho ${book.title}`}
+            title="Màu giấy mặc định của sách"
+            onChange={(e) =>
+              onUpdateDefaults({
+                defaultTheme: serializeThemeDescriptor({
+                  ...desc,
+                  themeId: e.target.value,
+                  customPaperColor: '',
+                }),
+              })
+            }
+          >
+            {READER_THEMES.map((t) => (
+              <option key={t.id} value={t.id}>
+                Giấy: {t.label}
+              </option>
+            ))}
+            {desc.themeId === 'custom' && (
+              <option value="custom">Giấy: Tuỳ chọn ({desc.customPaperColor})</option>
+            )}
+          </select>
+          <select
+            className={styles.bookDefaultSelect}
+            value={desc.textureId}
+            aria-label={`Chất liệu giấy mặc định cho ${book.title}`}
+            title="Chất liệu giấy mặc định của sách"
+            onChange={(e) =>
+              onUpdateDefaults({
+                defaultTheme: serializeThemeDescriptor({
+                  ...desc,
+                  textureId: e.target.value as PaperTextureId,
+                }),
+              })
+            }
+          >
+            {READER_TEXTURES.map((tex) => (
+              <option key={tex.id} value={tex.id}>
+                Vân: {tex.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className={styles.bookMeta}>
           <span>{book.pageCount} trang</span>
           <span className={styles.bookSlug} title={book.slug}>

@@ -95,7 +95,9 @@ def sync_books_directory_to_db(db: Session):
                         author=metadata.get("author", "Unknown"),
                         page_count=book_paths.estimate_page_count(),
                         cover_path=cover_val,
-                        is_published=True
+                        is_published=True,
+                        default_font=metadata.get("default_font") or "default",
+                        default_theme=metadata.get("default_theme") or "default",
                     )
                     db.add(new_book)
                     print(f"[Startup Sync] Added book to DB: {item.name}")
@@ -106,6 +108,10 @@ def sync_books_directory_to_db(db: Session):
                     db_book.author = metadata.get("author", db_book.author)
                     if cover_val:
                         db_book.cover_path = cover_val
+                    if metadata.get("default_font"):
+                        db_book.default_font = metadata["default_font"]
+                    if metadata.get("default_theme"):
+                        db_book.default_theme = metadata["default_theme"]
             except Exception as e:
                 print(f"[Startup Sync Error] Failed syncing book '{item.name}': {e}")
     db.commit()

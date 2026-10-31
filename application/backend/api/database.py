@@ -47,6 +47,8 @@ class Book(Base):
     page_count = Column(Integer, default=0)
     cover_path = Column(String, nullable=True)
     is_published = Column(Boolean, default=True)
+    default_font = Column(String, nullable=True, default="default")
+    default_theme = Column(String, nullable=True, default="default")
     # Import time (unix seconds). NULLABLE on purpose: rows that predate this
     # column keep NULL, and the shelf ordering falls back to `id` for them —
     # id is autoincrement, i.e. import order, so the fallback is exact. New
@@ -108,6 +110,8 @@ class UserBookState(Base):
     is_finished = Column(Boolean, nullable=False, default=False)
     on_shelf = Column(Boolean, nullable=False, default=False)
     is_priority = Column(Boolean, nullable=False, default=False)
+    reader_font = Column(String, nullable=True, default="")
+    reader_theme = Column(String, nullable=True, default="")
 
 class UserRefreshToken(Base):
     __tablename__ = "user_refresh_tokens"
@@ -285,12 +289,48 @@ def _migrate_add_unified_user_settings():
                     f"[Migration] user_settings.{column_name} skipped: {error}"
                 )
 
+def _migrate_add_book_appearance_columns():
+    """Idempotently add per-book default font/theme on books and per-user overrides on user_book_states."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    with engine.begin() as connection:
+        if "books" in table_names:
+            book_cols = {col["name"] for col in inspector.get_columns("books")}
+            for col_name, col_def in [
+                ("default_font", "TEXT DEFAULT 'default'"),
+                ("default_theme", "TEXT DEFAULT 'default'"),
+            ]:
+                if col_name not in book_cols:
+                    try:
+                        connection.execute(text(f"ALTER TABLE books ADD COLUMN {col_name} {col_def}"))
+                    except Exception as error:
+                        print(f"[Migration] books.{col_name} skipped: {error}")
+
+        if "user_book_states" in table_names:
+            state_cols = {col["name"] for col in inspector.get_columns("user_book_states")}
+            for col_name, col_def in [
+                ("reader_font", "TEXT DEFAULT ''"),
+                ("reader_theme", "TEXT DEFAULT ''"),
+            ]:
+                if col_name not in state_cols:
+                    try:
+                        connection.execute(
+                            text(f"ALTER TABLE user_book_states ADD COLUMN {col_name} {col_def}")
+                        )
+                    except Exception as error:
+                        print(f"[Migration] user_book_states.{col_name} skipped: {error}")
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_voca_config_to_user_settings()
     _migrate_add_book_created_at()
     _migrate_add_audio_settings()
     _migrate_add_unified_user_settings()
+    _migrate_add_book_appearance_columns()
 
 def get_db():
     db = SessionLocal()

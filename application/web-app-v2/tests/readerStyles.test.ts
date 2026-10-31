@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { resolveBookBackground } from '../src/features/reader/iframe/readerStyles.ts';
+import {
+  doesDocOverflowA4,
+  resolveBookBackground,
+} from '../src/features/reader/iframe/readerStyles.ts';
 
 function fakeDocument(bodyColor: string, sheetColor: string, htmlColor = 'rgba(0, 0, 0, 0)'): Document {
   const body = {};
@@ -36,4 +39,32 @@ test('transparent body falls back to the BKB sheet color', () => {
 test('fully transparent BKB stays transparent instead of receiving a reader color', () => {
   const doc = fakeDocument('transparent', 'rgba(0, 0, 0, 0)');
   assert.equal(resolveBookBackground(doc), 'transparent');
+});
+
+test('doesDocOverflowA4 detects when prose scrollHeight exceeds A4 sheet clientHeight', () => {
+  const overflowingFlow = {
+    scrollHeight: 1180,
+    clientHeight: 1122,
+    getBoundingClientRect: () => ({ top: 0, bottom: 1122, height: 1122, width: 794 }),
+    querySelectorAll: () => [],
+  };
+  const fittingFlow = {
+    scrollHeight: 1122,
+    clientHeight: 1122,
+    getBoundingClientRect: () => ({ top: 0, bottom: 1122, height: 1122, width: 794 }),
+    querySelectorAll: () => [],
+  };
+
+  const docOverflow = {
+    body: overflowingFlow,
+    querySelector: () => overflowingFlow,
+  } as unknown as Document;
+
+  const docFit = {
+    body: fittingFlow,
+    querySelector: () => fittingFlow,
+  } as unknown as Document;
+
+  assert.equal(doesDocOverflowA4(docOverflow), true);
+  assert.equal(doesDocOverflowA4(docFit), false);
 });

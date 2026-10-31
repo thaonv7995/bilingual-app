@@ -30,7 +30,10 @@ from api.routes.books import (  # noqa: E402
     delete_highlight,
     get_highlights,
     get_reading_progress,
+    list_books,
     save_reading_progress,
+    update_book_appearance_defaults,
+    update_book_state,
 )
 from api.routes.chat import _validate_chat_base_url  # noqa: E402
 from api.routes.notebook import _get_target_notebook_url  # noqa: E402
@@ -280,5 +283,81 @@ def test_virtual_apikey_user_does_not_500_on_user_id_endpoints():
             save_reading_progress("some-book", {"page": 2}, current_user=virtual_user, db=db)
         assert exc.value.status_code == 400
     finally:
+        db.close()
+
+
+# ---- 6. Per-Book Default Font & Color + User Override -----------------------
+
+
+def test_per_book_default_appearance_and_user_override():
+    init_db()
+    db = SessionLocal()
+    slug = "test-appearance-book"
+    try:
+        db.query(UserPermission).filter(UserPermission.book_slug == slug).delete()
+        db.query(Book).filter(Book.slug == slug).delete()
+        db.query(User).filter(User.username.in_(["reader_one", "reader_two"])).delete()
+        db.commit()
+
+        u1 = User(username="reader_one", password_hash="x", is_admin=False)
+        u2 = User(username="reader_two", password_hash="x", is_admin=False)
+        db.add_all([u1, u2])
+        db.commit()
+        db.refresh(u1)
+        db.refresh(u2)
+
+        book = Book(slug=slug, title="Appearance Test Book", author="Tester", page_count=10)
+        db.add(book)
+        db.add_all([
+            UserPermission(user_id=u1.id, book_slug=slug),
+            UserPermission(user_id=u2.id, book_slug=slug),
+        ])
+        db.commit()
+
+        # Initially both defaults are 'default' and user overrides are ''
+        u1_books = list_books(current_user=u1, db=db)
+        b_view = next(b for b in u1_books if b["slug"] == slug)
+        assert b_view["defaultFont"] == "default"
+        assert b_view["defaultTheme"] == "default"
+        assert b_view["readerFont"] == ""
+        assert b_view["readerTheme"] == ""
+
+        # Configure book's default font and paper theme
+        res_def = update_book_appearance_defaults(
+            slug,
+            {"defaultFont": "literata", "defaultTheme": "paper-sepia"},
+            current_user=u1,
+            db=db,
+        )
+        assert res_def["defaultFont"] == "literata"
+        assert res_def["defaultTheme"] == "paper-sepia"
+
+        # User 1 sets a personal override while reading; User 2 keeps book defaults
+        res_state = update_book_state(
+            slug,
+            {"readerFont": "inter", "readerTheme": "paper-dark"},
+            current_user=u1,
+            db=db,
+        )
+        assert res_state["readerFont"] == "inter"
+        assert res_state["readerTheme"] == "paper-dark"
+
+        u1_view = next(b for b in list_books(current_user=u1, db=db) if b["slug"] == slug)
+        u2_view = next(b for b in list_books(current_user=u2, db=db) if b["slug"] == slug)
+
+        assert u1_view["defaultFont"] == "literata"
+        assert u1_view["defaultTheme"] == "paper-sepia"
+        assert u1_view["readerFont"] == "inter"
+        assert u1_view["readerTheme"] == "paper-dark"
+
+        assert u2_view["defaultFont"] == "literata"
+        assert u2_view["defaultTheme"] == "paper-sepia"
+        assert u2_view["readerFont"] == ""
+        assert u2_view["readerTheme"] == ""
+    finally:
+        db.query(UserPermission).filter(UserPermission.book_slug == slug).delete()
+        db.query(Book).filter(Book.slug == slug).delete()
+        db.query(User).filter(User.username.in_(["reader_one", "reader_two"])).delete()
+        db.commit()
         db.close()
 

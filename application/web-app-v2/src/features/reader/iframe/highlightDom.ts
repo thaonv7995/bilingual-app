@@ -25,8 +25,6 @@ export interface HighlightContext {
   deleteHighlight: (id: string) => void;
   /** Voca lookup (Phase 5). Receives the raw selected text + anchor. */
   onLookup?: (text: string, doc: Document, anchorRect: DOMRect) => void;
-  /** Push to Notebook Studio */
-  onPushToNotebook?: (text: string, note?: string) => void;
 }
 
 let currentContext: HighlightContext | null = null;

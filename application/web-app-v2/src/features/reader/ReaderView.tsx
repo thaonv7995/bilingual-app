@@ -8,7 +8,11 @@ import { ChatSidebar } from '@/features/chat/ChatSidebar';
 import { SettingsModal } from '@/features/settings/SettingsModal';
 import { useSettingsStore } from '@/features/settings/settingsStore';
 import { useAuthStore } from '@/features/auth/authStore';
-import { useBooks, useUpdateBookState } from '@/features/library/useBooks';
+import {
+  useBooks,
+  useUpdateBookAppearanceDefaults,
+  useUpdateBookState,
+} from '@/features/library/useBooks';
 import type { Book, ViewMode } from '@/types/api';
 import {
   cleanWord,
@@ -20,15 +24,23 @@ import {
   syncVocaCards,
 } from '@/lib/voca';
 import { ReaderTopbar } from './ReaderTopbar';
+import { ReaderAppearancePopover } from './ReaderAppearancePopover';
+import {
+  getLocalBookAppearance,
+  parseThemeDescriptor,
+  resolveEffectiveBookAppearance,
+  saveLocalBookAppearance,
+  serializeThemeDescriptor,
+  type LocalBookAppearance,
+} from './readerAppearance';
 import { AudiobookBar } from '@/features/audiobook/AudiobookBar';
 import { useAudiobook, type AudiobookLanguageMode } from '@/features/audiobook/useAudiobook';
-import { ReaderNotePanel } from './ReaderNotePanel';
 import {
-  type BookNotebookStatus,
-  fetchBookNotebookStatus,
-  syncNoteToNotebook,
-} from './notebookApi';
-import { injectReaderStyles, resolveBookBackground, setVocaPanelCss } from './iframe/readerStyles';
+  applyBookAppearance,
+  injectReaderStyles,
+  resolveBookBackground,
+  setVocaPanelCss,
+} from './iframe/readerStyles';
 import { segmentDocSentences } from './iframe/segmentation';
 
 // Make the voca lookup-panel CSS part of the styles injected into each iframe.
@@ -81,6 +93,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const updateBookState = useUpdateBookState();
+  const updateBookAppearanceDefaults = useUpdateBookAppearanceDefaults();
 
   const local = useMemo(() => getLocalProgress(book.slug), [book.slug]);
   // Captured at mount: the URL-sync effect rewrites the URL to /page/:page
@@ -141,8 +154,223 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [audiobookOpen, setAudiobookOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [localAppearance, setLocalAppearance] = useState<LocalBookAppearance>(() =>
+    getLocalBookAppearance(book.slug),
+  );
   const enIframeRef = useRef<HTMLIFrameElement | null>(null);
   const viIframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  // Sync server-provided per-book appearance override when book metadata refreshes
+  useEffect(() => {
+    if (book.readerFont !== undefined || book.readerTheme !== undefined) {
+      setLocalAppearance((prev) => {
+        const next: LocalBookAppearance = {
+          readerFont: book.readerFont ?? prev.readerFont ?? '',
+          readerTheme: book.readerTheme ?? prev.readerTheme ?? '',
+        };
+        saveLocalBookAppearance(book.slug, next);
+        return next;
+      });
+    }
+  }, [book.slug, book.readerFont, book.readerTheme]);
+
+  const resolvedAppearance = useMemo(
+    () => resolveEffectiveBookAppearance(book, localAppearance),
+    [book, localAppearance],
+  );
+  const {
+    effectiveFontId,
+    effectiveThemeId,
+    bookDefaultFontId,
+    bookDefaultThemeId,
+    hasUserFontOverride,
+    hasUserThemeOverride,
+  } = resolvedAppearance;
+  const hasUserAppearanceOverride = hasUserFontOverride || hasUserThemeOverride;
+  const hasCustomAppearance = effectiveFontId !== 'default' || effectiveThemeId !== 'default';
+
+  const appearanceRef = useRef({ fontId: effectiveFontId, themeId: effectiveThemeId });
+  const [a4Status, setA4Status] = useState<{
+    appliedFontScale: number;
+    clampedByA4: boolean;
+    atMaxA4Scale: boolean;
+  }>({
+    appliedFontScale: 100,
+    clampedByA4: false,
+    atMaxA4Scale: false,
+  });
+
+  const syncAppearanceAndMeasureA4 = useCallback(
+    (fontId: string, themeId: string) => {
+      const results = [];
+      if (enIframeRef.current?.contentDocument) {
+        results.push(
+          applyBookAppearance(enIframeRef.current.contentDocument, enIframeRef.current, {
+            fontId,
+            themeId,
+          }),
+        );
+      }
+      if (viIframeRef.current?.contentDocument) {
+        results.push(
+          applyBookAppearance(viIframeRef.current.contentDocument, viIframeRef.current, {
+            fontId,
+            themeId,
+          }),
+        );
+      }
+      if (results.length > 0) {
+        const appliedFontScale = Math.min(...results.map((r) => r.appliedFontScale));
+        const clampedByA4 = results.some((r) => r.clampedByA4);
+        const atMaxA4Scale = results.some((r) => r.atMaxA4Scale);
+        setA4Status({ appliedFontScale, clampedByA4, atMaxA4Scale });
+        return { appliedFontScale, clampedByA4, atMaxA4Scale };
+      }
+      const reqScale = parseThemeDescriptor(themeId).fontScale || 100;
+      const fallback = {
+        appliedFontScale: reqScale,
+        clampedByA4: false,
+        atMaxA4Scale: reqScale >= 140,
+      };
+      setA4Status(fallback);
+      return fallback;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    appearanceRef.current = { fontId: effectiveFontId, themeId: effectiveThemeId };
+    syncAppearanceAndMeasureA4(effectiveFontId, effectiveThemeId);
+  }, [effectiveFontId, effectiveThemeId, syncAppearanceAndMeasureA4]);
+
+  const handleSelectFont = useCallback(
+    (fontId: string) => {
+      const nextFont = fontId === bookDefaultFontId ? '' : fontId;
+      const next: LocalBookAppearance = {
+        ...localAppearance,
+        readerFont: nextFont,
+      };
+      setLocalAppearance(next);
+      saveLocalBookAppearance(book.slug, next);
+      updateBookState.mutate({
+        slug: book.slug,
+        patch: { readerFont: nextFont },
+      });
+    },
+    [book.slug, bookDefaultFontId, localAppearance, updateBookState],
+  );
+
+  const handleSelectTheme = useCallback(
+    (themeId: string) => {
+      const prevScale = parseThemeDescriptor(effectiveThemeId).fontScale || 100;
+      const requestedDesc = parseThemeDescriptor(themeId);
+      const measured = syncAppearanceAndMeasureA4(effectiveFontId, themeId);
+
+      let finalThemeId = themeId;
+      if (measured.clampedByA4 && requestedDesc.fontScale > measured.appliedFontScale) {
+        finalThemeId = serializeThemeDescriptor({
+          ...requestedDesc,
+          fontScale: measured.appliedFontScale,
+        });
+        if (requestedDesc.fontScale > prevScale) {
+          toast.info(
+            `Đã chạm giới hạn trang A4 (${measured.appliedFontScale}%) — không thể tăng chữ lớn hơn.`,
+          );
+        }
+      }
+
+      const nextTheme = finalThemeId === bookDefaultThemeId ? '' : finalThemeId;
+      const next: LocalBookAppearance = {
+        ...localAppearance,
+        readerTheme: nextTheme,
+      };
+      setLocalAppearance(next);
+      saveLocalBookAppearance(book.slug, next);
+      updateBookState.mutate({
+        slug: book.slug,
+        patch: { readerTheme: nextTheme },
+      });
+    },
+    [
+      book.slug,
+      bookDefaultThemeId,
+      effectiveFontId,
+      effectiveThemeId,
+      localAppearance,
+      syncAppearanceAndMeasureA4,
+      toast,
+      updateBookState,
+    ],
+  );
+
+  const handleResetAppearanceToBookDefault = useCallback(() => {
+    if (hasUserAppearanceOverride) {
+      const cleared: LocalBookAppearance = { readerFont: '', readerTheme: '' };
+      setLocalAppearance(cleared);
+      saveLocalBookAppearance(book.slug, cleared);
+      updateBookState.mutate({
+        slug: book.slug,
+        patch: { readerFont: '', readerTheme: '' },
+      });
+      toast.info('Đã trở về phông chữ & màu giấy mặc định của sách.');
+    } else if (bookDefaultFontId !== 'default' || bookDefaultThemeId !== 'default') {
+      updateBookAppearanceDefaults.mutate(
+        {
+          slug: book.slug,
+          patch: { defaultFont: 'default', defaultTheme: 'default' },
+        },
+        {
+          onSuccess: () => {
+            toast.info('Đã đặt mặc định của sách về thiết kế CSS gốc.');
+          },
+        },
+      );
+    }
+  }, [
+    book.slug,
+    bookDefaultFontId,
+    bookDefaultThemeId,
+    hasUserAppearanceOverride,
+    toast,
+    updateBookAppearanceDefaults,
+    updateBookState,
+  ]);
+
+  const handleSaveAsBookDefault = useCallback(() => {
+    updateBookAppearanceDefaults.mutate(
+      {
+        slug: book.slug,
+        patch: {
+          defaultFont: effectiveFontId,
+          defaultTheme: effectiveThemeId,
+        },
+      },
+      {
+        onSuccess: () => {
+          const cleared: LocalBookAppearance = { readerFont: '', readerTheme: '' };
+          setLocalAppearance(cleared);
+          saveLocalBookAppearance(book.slug, cleared);
+          updateBookState.mutate({
+            slug: book.slug,
+            patch: { readerFont: '', readerTheme: '' },
+          });
+          toast.success(`Đã lưu cấu hình mặc định cho sách "${book.title}"!`);
+        },
+        onError: () => {
+          toast.error('Không thể lưu cấu hình mặc định của sách.');
+        },
+      },
+    );
+  }, [
+    book.slug,
+    book.title,
+    effectiveFontId,
+    effectiveThemeId,
+    toast,
+    updateBookAppearanceDefaults,
+    updateBookState,
+  ]);
 
   const audiobook = useAudiobook({
     bookSlug: book.slug,
@@ -161,73 +389,6 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       /* offline / Voca not configured — lookups fall back to the network */
     });
   }, []);
-
-  // Notebook integration state
-  const [notebookStatus, setNotebookStatus] = useState<BookNotebookStatus | null>(null);
-  const [notePanelOpen, setNotePanelOpen] = useState(false);
-
-  const refreshNotebookStatus = useCallback(async () => {
-    try {
-      const st = await fetchBookNotebookStatus(book.slug);
-      setNotebookStatus(st);
-    } catch {
-      // offline / not reachable
-    }
-  }, [book.slug]);
-
-  useEffect(() => {
-    void refreshNotebookStatus();
-  }, [refreshNotebookStatus]);
-
-  const hasPageNotes = useMemo(() => {
-    return notebookStatus?.pagesWithNotes?.includes(page) ?? false;
-  }, [notebookStatus, page]);
-
-  const noteCount = notebookStatus?.notes?.length ?? 0;
-
-  // Listen for voca lookup panel "Push to Notebook"
-  useEffect(() => {
-    const handlePushVocab = async (e: Event) => {
-      const customEvt = e as CustomEvent<{ card: any }>;
-      const card = customEvt.detail?.card;
-      if (!card) return;
-
-      if (!notebookStatus?.linkedNotebook?.id) {
-        setNotePanelOpen(true);
-        toast.info('Hãy chọn hoặc tạo Sổ tay để lưu từ vựng.');
-        return;
-      }
-
-      try {
-        const res = await syncNoteToNotebook({
-          notebookId: notebookStatus.linkedNotebook.id,
-          bookSlug: book.slug,
-          bookTitle: book.title,
-          page,
-          type: 'vocab',
-          text: card.word,
-          vocab: {
-            word: card.word,
-            ipa: card.ipa || card.pronunciation || '',
-            meaningVi: card.meaningVi || '',
-            meaningEn: card.meaningEn || '',
-            example: card.examples?.[0] || '',
-          },
-        });
-        if (res.ok) {
-          toast.success(`Đã lưu "${card.word}" vào Sổ tay!`);
-          void refreshNotebookStatus();
-        } else {
-          toast.error(res.message || 'Lỗi lưu từ vựng');
-        }
-      } catch {
-        toast.error('Không thể kết nối đến Sổ tay');
-      }
-    };
-
-    window.addEventListener('bilingual:push-vocab-to-notebook', handlePushVocab);
-    return () => window.removeEventListener('bilingual:push-vocab-to-notebook', handlePushVocab);
-  }, [book.slug, book.title, page, notebookStatus, refreshNotebookStatus, toast]);
 
   // Keep the imperative highlight layer's context fresh every render (v2's
   // typed replacement for v1's reassigned `highlightAppContext` global).
@@ -249,35 +410,9 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
           showVocaError(err instanceof Error ? err.message : 'Tra cứu thất bại.');
         }
       },
-      onPushToNotebook: async (text, note) => {
-        if (!notebookStatus?.linkedNotebook?.id) {
-          setNotePanelOpen(true);
-          toast.info('Hãy chọn hoặc tạo Sổ tay để lưu trích dẫn.');
-          return;
-        }
-        try {
-          const res = await syncNoteToNotebook({
-            notebookId: notebookStatus.linkedNotebook.id,
-            bookSlug: book.slug,
-            bookTitle: book.title,
-            page,
-            type: 'quote',
-            text,
-            note,
-          });
-          if (res.ok) {
-            toast.success('Đã lưu trích dẫn vào Sổ tay!');
-            void refreshNotebookStatus();
-          } else {
-            toast.error(res.message || 'Lỗi lưu vào Sổ tay');
-          }
-        } catch {
-          toast.error('Không thể kết nối đến Sổ tay');
-        }
-      },
     });
     return () => setHighlightContext(null);
-  }, [book.slug, book.title, page, createHighlight, updateHighlight, deleteHighlight, notebookStatus, refreshNotebookStatus, toast]);
+  }, [book.slug, page, createHighlight, updateHighlight, deleteHighlight]);
 
   const enPageUrl = `/books/${encodeURIComponent(book.slug)}/output/en/page_${padPage(page)}.html`;
   const viPageUrl = `/books/${encodeURIComponent(book.slug)}/output/vi/page_${padPage(page)}.html`;
@@ -480,6 +615,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
 
         iframeEl.style.backgroundColor = resolveBookBackground(doc);
         injectReaderStyles(doc, isEnglish);
+        syncAppearanceAndMeasureA4(appearanceRef.current.fontId, appearanceRef.current.themeId);
         segmentDocSentences(doc);
         applyStoredHighlights(doc, book.slug, page, lang);
         const win = iframeEl.contentWindow;
@@ -537,9 +673,9 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       } else if (e.key === '3') {
         e.preventDefault();
         setViewMode('split');
-      } else if (key === 'n') {
+      } else if (key === 'a' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
-        setNotePanelOpen((v) => !v);
+        setAppearanceOpen((v) => !v);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -646,9 +782,6 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         zoomMode={zoomMode}
         zoomLevel={displayedZoom}
         chatOpen={chatOpen}
-        notePanelOpen={notePanelOpen}
-        noteCount={noteCount}
-        hasPageNotes={hasPageNotes}
         isBookFinished={book.isFinished}
         isUpdatingFinished={updateBookState.isPending}
         username={user?.username ?? ''}
@@ -660,7 +793,6 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         onSelectZoomMode={selectZoomMode}
         onAdjustZoom={adjustReaderZoom}
         onToggleChat={toggleChat}
-        onToggleNotePanel={() => setNotePanelOpen((v) => !v)}
         onToggleFinished={() =>
           updateBookState.mutate({
             slug: book.slug,
@@ -670,8 +802,31 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         onOpenSettings={() => setSettingsOpen(true)}
         audiobookOpen={audiobookOpen}
         onToggleAudiobook={() => setAudiobookOpen((v) => !v)}
+        appearanceOpen={appearanceOpen}
+        hasCustomAppearance={hasCustomAppearance}
+        onToggleAppearance={() => setAppearanceOpen((v) => !v)}
         onLogout={logout}
       />
+
+      {appearanceOpen && (
+        <ReaderAppearancePopover
+          bookTitle={book.title}
+          effectiveFontId={effectiveFontId}
+          effectiveThemeId={effectiveThemeId}
+          bookDefaultFontId={bookDefaultFontId}
+          bookDefaultThemeId={bookDefaultThemeId}
+          hasUserOverride={hasUserAppearanceOverride}
+          isSavingDefault={updateBookAppearanceDefaults.isPending}
+          appliedFontScale={a4Status.appliedFontScale}
+          clampedByA4={a4Status.clampedByA4}
+          atMaxA4Scale={a4Status.atMaxA4Scale}
+          onSelectFont={handleSelectFont}
+          onSelectTheme={handleSelectTheme}
+          onResetToBookDefault={handleResetAppearanceToBookDefault}
+          onSaveAsBookDefault={handleSaveAsBookDefault}
+          onClose={() => setAppearanceOpen(false)}
+        />
+      )}
 
       <div className={`reader-workspace ${chatOpen ? 'chat-open' : ''}`}>
         <div className={`reader-panes layout-${layoutMode}`}>
@@ -731,16 +886,6 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       </div>
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
-
-      <ReaderNotePanel
-        isOpen={notePanelOpen}
-        onClose={() => setNotePanelOpen(false)}
-        book={book}
-        currentPage={page}
-        onGoToPage={(p) => void requestPageChange(p)}
-        status={notebookStatus}
-        onRefreshStatus={refreshNotebookStatus}
-      />
 
       {audiobookOpen && (
         <AudiobookBar

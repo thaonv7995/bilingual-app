@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { apiJson } from '@/lib/api-client';
-import type { Book, BookStatePatch } from '@/types/api';
+import type { Book, BookAppearanceDefaultsPatch, BookStatePatch } from '@/types/api';
 
 /** Query key for the shelf. Exported so the reader can invalidate it without
  * re-typing the string (a typo there silently disables the refresh). */
@@ -48,5 +48,35 @@ export function useUpdateBookState() {
       if (context?.previous) queryClient.setQueryData(BOOKS_QUERY_KEY, context.previous);
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: BOOKS_QUERY_KEY }),
+  });
+}
+
+export function useUpdateBookAppearanceDefaults() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, patch }: { slug: string; patch: BookAppearanceDefaultsPatch }) =>
+      apiJson<{ slug: string; defaultFont: string; defaultTheme: string }>(
+        `/api/books/${encodeURIComponent(slug)}/appearance-defaults`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patch),
+        },
+      ),
+    onMutate: async ({ slug, patch }) => {
+      await queryClient.cancelQueries({ queryKey: BOOKS_QUERY_KEY });
+      const previous = queryClient.getQueryData<Book[]>(BOOKS_QUERY_KEY);
+      queryClient.setQueryData<Book[]>(BOOKS_QUERY_KEY, (current = []) =>
+        current.map((book) => (book.slug === slug ? { ...book, ...patch } : book)),
+      );
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) queryClient.setQueryData(BOOKS_QUERY_KEY, context.previous);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: BOOKS_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'books'] });
+    },
   });
 }

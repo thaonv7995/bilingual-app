@@ -413,20 +413,7 @@ export function showVocaLookupPanel(doc: Document, anchorRect: DOMRect, card: Vo
   });
   const actions = doc.createElement('div');
   actions.className = 'voca-lookup-panel__actions';
-
-  const nbBtn = doc.createElement('button');
-  nbBtn.type = 'button';
-  nbBtn.className = 'voca-lookup-panel__nb-btn';
-  nbBtn.title = 'Đẩy vào Sổ tay (Notebook)';
-  nbBtn.setAttribute('aria-label', 'Đẩy vào Sổ tay');
-  nbBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>`;
-  nbBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    window.dispatchEvent(new CustomEvent('bilingual:push-vocab-to-notebook', { detail: { card } }));
-    showVocaToast('Đã gửi từ vựng sang Sổ tay!', { info: true });
-  });
-
-  actions.append(voiceBtn, nbBtn);
+  actions.append(voiceBtn);
   head.append(wordEl, actions);
   panel.appendChild(head);
 
@@ -560,11 +547,6 @@ export function getVocaLookupPanelCss(): string {
       width: 30px; height: 30px; cursor: pointer; font-size: 16px; line-height: 1; color: #075985;
       display: inline-flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; }
     .voca-lookup-panel__actions { display: flex; align-items: center; gap: 6px; }
-    .voca-lookup-panel__nb-btn { border: 1px solid rgba(139, 92, 246, 0.25); background: #f5f3ff; border-radius: 8px;
-      width: 30px; height: 30px; cursor: pointer; color: #7c3aed;
-      display: inline-flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; transition: all 0.15s ease; }
-    .voca-lookup-panel__nb-btn:hover { background: #ede9fe; color: #6d28d9; }
-    .voca-lookup-panel__nb-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .voca-lookup-panel__voice svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .voca-lookup-panel__voice:disabled { opacity: 0.5; cursor: wait; }
     .voca-lookup-panel__ipa { margin-top: 4px; color: #475569; font-size: 12px; }
