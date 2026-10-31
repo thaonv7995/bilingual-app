@@ -95,6 +95,8 @@ struct BilingualWebView: UIViewRepresentable {
     // scale, and extra top padding so full-screen mode clears the notch.
     var phoneFontScale: Double = 1.0
     var topOverlayInset: CGFloat = 0
+    var effectiveFontId: String = "default"
+    var effectiveThemeId: String = "default"
     @ObservedObject var api = APIService.shared
     let onScroll: (CGFloat) -> Void
     let onHighlightMessage: (HighlightMessage) -> Void
@@ -103,6 +105,7 @@ struct BilingualWebView: UIViewRepresentable {
     var onOpenExternalURL: ((URL) -> Void)? = nil
     var onWebViewReady: ((WKWebView, String, Int) -> Void)? = nil
     var onWebViewDismantled: ((WKWebView, String, Int) -> Void)? = nil
+    var onAppearanceMeasured: ((ReaderA4Status) -> Void)? = nil
 
     /// Phone typography rule, kept in ONE place so the copy baked into the
     /// document-start script and the live update in updateUIView never drift.
@@ -965,6 +968,12 @@ struct BilingualWebView: UIViewRepresentable {
                 uiView.evaluateJavaScript(js, completionHandler: nil)
             }
         }
+
+        let appearanceKey = "\(effectiveFontId)|\(effectiveThemeId)|\(viewMode)"
+        if context.coordinator.lastAppearanceKey != appearanceKey && context.coordinator.loadedUrlString != nil {
+            context.coordinator.lastAppearanceKey = appearanceKey
+            context.coordinator.applyBookAppearance(in: uiView)
+        }
         
         context.coordinator.updatePencilCanvas(
             isPencilModeActive: isPencilModeActive,
@@ -1067,6 +1076,7 @@ struct BilingualWebView: UIViewRepresentable {
         var lastAppliedHighlights: [Highlight] = []
         var lastAppliedSentenceId: String? = nil
         var lastPhoneDynCss: String? = nil
+        var lastAppearanceKey: String? = nil
         weak var registeredWebView: WKWebView?
         
         var canvasView: BilingualCanvasView?
@@ -1234,7 +1244,8 @@ struct BilingualWebView: UIViewRepresentable {
             self.registeredWebView = nil
             parent.onWebViewReady?(webView, parent.lang, parent.page)
 
-            syncBookBackground(in: webView)
+            self.lastAppearanceKey = "\(parent.effectiveFontId)|\(parent.effectiveThemeId)|\(parent.viewMode)"
+            applyBookAppearance(in: webView)
 
             let scrollScript = """
                 (function() {
@@ -1266,6 +1277,51 @@ struct BilingualWebView: UIViewRepresentable {
                 webView.evaluateJavaScript(activeJs, completionHandler: nil)
             } else {
                 self.lastAppliedSentenceId = nil
+            }
+        }
+
+        func applyBookAppearance(in webView: WKWebView) {
+            let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+            let js = ReaderAppearance.buildApplyAppearanceJS(
+                fontId: parent.effectiveFontId,
+                themeId: parent.effectiveThemeId,
+                isPhone: isPhone,
+                viewMode: parent.viewMode
+            )
+            webView.evaluateJavaScript(js) { [weak self] result, _ in
+                guard let self = self else { return }
+                if let dict = result as? [String: Any] {
+                    if let components = dict["rgba"] as? [NSNumber], components.count == 4 {
+                        let color = UIColor(
+                            red: CGFloat(truncating: components[0]) / 255,
+                            green: CGFloat(truncating: components[1]) / 255,
+                            blue: CGFloat(truncating: components[2]) / 255,
+                            alpha: CGFloat(truncating: components[3])
+                        )
+                        DispatchQueue.main.async {
+                            webView.backgroundColor = color
+                            webView.scrollView.backgroundColor = color
+                        }
+                    } else {
+                        self.syncBookBackground(in: webView)
+                    }
+                    let appliedScale = (dict["appliedFontScale"] as? Int)
+                        ?? (dict["appliedFontScale"] as? NSNumber)?.intValue
+                        ?? ReaderAppearance.parseThemeDescriptor(self.parent.effectiveThemeId).fontScale
+                    let clampedByA4 = (dict["clampedByA4"] as? Bool) ?? false
+                    let atMaxA4Scale = (dict["atMaxA4Scale"] as? Bool) ?? (appliedScale >= 140)
+                    DispatchQueue.main.async {
+                        self.parent.onAppearanceMeasured?(
+                            ReaderA4Status(
+                                appliedFontScale: appliedScale,
+                                clampedByA4: clampedByA4,
+                                atMaxA4Scale: atMaxA4Scale
+                            )
+                        )
+                    }
+                } else {
+                    self.syncBookBackground(in: webView)
+                }
             }
         }
 

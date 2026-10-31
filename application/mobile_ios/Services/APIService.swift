@@ -278,7 +278,7 @@ class APIService: ObservableObject {
         return try JSONDecoder().decode([Book].self, from: data)
     }
 
-    func updateBookState(slug: String, patch: [String: Bool]) async throws -> BookState {
+    func updateBookState(slug: String, patch: [String: Any]) async throws -> BookState {
         guard let url = URL(string: "\(serverUrl)/api/books/\(slug)/state") else {
             throw URLError(.badURL)
         }
@@ -291,6 +291,23 @@ class APIService: ObservableObject {
             throw URLError(.badServerResponse)
         }
         return try JSONDecoder().decode(BookState.self, from: data)
+    }
+
+    func updateBookAppearanceDefaults(slug: String, defaultFont: String, defaultTheme: String) async throws {
+        guard let url = URL(string: "\(serverUrl)/api/books/\(slug)/appearance-defaults") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "defaultFont": defaultFont,
+            "defaultTheme": defaultTheme
+        ])
+        let (_, response) = try await sendRequest(request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
     }
     
     /// `lastRead` is the unix-seconds moment the reading action happened; the

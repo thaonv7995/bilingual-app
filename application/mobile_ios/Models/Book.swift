@@ -48,6 +48,10 @@ struct Book: Codable, Identifiable, Equatable {
     let lastRead: Int64?
     let isFinished: Bool?
     let isPriority: Bool?
+    var defaultFont: String?
+    var defaultTheme: String?
+    var readerFont: String?
+    var readerTheme: String?
 
     var coverPath: String? {
         guard let cover = cover else { return nil }
@@ -62,12 +66,15 @@ struct Book: Codable, Identifiable, Equatable {
         case bookId = "id"
         case slug, title, author, pageCount, cover, isPublished, createdAt, lastRead
         case isFinished, isPriority
+        case defaultFont, defaultTheme, readerFont, readerTheme
     }
 }
 
 struct BookState: Codable {
     let isFinished: Bool
     let isPriority: Bool
+    let readerFont: String?
+    let readerTheme: String?
 }
 
 struct Highlight: Codable, Identifiable, Equatable {

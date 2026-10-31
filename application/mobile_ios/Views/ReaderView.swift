@@ -84,6 +84,15 @@ struct ReaderView: View {
     @State private var showJumpToPageDialog = false
     @State private var inputPageString = ""
     @FocusState private var isPageFieldFocused: Bool
+
+    // Per-book Appearance States (Font, Paper Color, Texture, Ink, Scale, LineHeight, Margin)
+    @State private var isAppearanceOpen = false
+    @State private var localReaderFont: String
+    @State private var localReaderTheme: String
+    @State private var bookDefaultFont: String
+    @State private var bookDefaultTheme: String
+    @State private var isSavingAppearanceDefault = false
+    @State private var a4Status = ReaderA4Status()
     
     init(book: Book) {
         self.book = book
@@ -100,6 +109,39 @@ struct ReaderView: View {
         self._page = State(initialValue: initialPage)
         self._viewMode = State(initialValue: initialViewMode)
         self._isBookFinished = State(initialValue: book.isFinished == true)
+
+        let localOverride = ReaderAppearance.loadLocalOverride(slug: book.slug)
+        self._localReaderFont = State(initialValue: localOverride.readerFont)
+        self._localReaderTheme = State(initialValue: localOverride.readerTheme)
+        self._bookDefaultFont = State(initialValue: ReaderAppearance.getFont(book.defaultFont).id)
+        self._bookDefaultTheme = State(
+            initialValue: ReaderAppearance.serializeThemeDescriptor(
+                ReaderAppearance.parseThemeDescriptor(book.defaultTheme)
+            )
+        )
+    }
+
+    private var effectiveFontId: String {
+        let userFont = !localReaderFont.isEmpty ? localReaderFont : (book.readerFont ?? "")
+        return !userFont.isEmpty ? ReaderAppearance.getFont(userFont).id : bookDefaultFont
+    }
+
+    private var effectiveThemeId: String {
+        let userTheme = !localReaderTheme.isEmpty ? localReaderTheme : (book.readerTheme ?? "")
+        return !userTheme.isEmpty
+            ? ReaderAppearance.serializeThemeDescriptor(ReaderAppearance.parseThemeDescriptor(userTheme))
+            : bookDefaultTheme
+    }
+
+    private var hasUserAppearanceOverride: Bool {
+        let userFont = !localReaderFont.isEmpty ? localReaderFont : (book.readerFont ?? "")
+        let userTheme = !localReaderTheme.isEmpty ? localReaderTheme : (book.readerTheme ?? "")
+        return (!userFont.isEmpty && effectiveFontId != bookDefaultFont)
+            || (!userTheme.isEmpty && effectiveThemeId != bookDefaultTheme)
+    }
+
+    private var hasCustomAppearance: Bool {
+        effectiveFontId != "default" || effectiveThemeId != "default"
     }
     
     // Highlights States
@@ -424,15 +466,28 @@ struct ReaderView: View {
                             showJumpToPageDialog: $showJumpToPageDialog,
                             inputPageString: $inputPageString,
                             isFullScreen: $isFullScreen,
+                            isAppearanceOpen: $isAppearanceOpen,
                             isBookFinished: isBookFinished,
                             isUpdatingFinished: isUpdatingFinished,
+                            hasCustomAppearance: hasCustomAppearance,
+                            effectiveFontId: effectiveFontId,
+                            effectiveThemeId: effectiveThemeId,
+                            bookDefaultFontId: bookDefaultFont,
+                            bookDefaultThemeId: bookDefaultTheme,
+                            hasUserOverride: hasUserAppearanceOverride,
+                            isSavingDefault: isSavingAppearanceDefault,
+                            a4Status: a4Status,
                             onDismiss: {
                                 AudiobookManager.shared.close()
                                 dismiss()
                             },
                             onToggleFinished: toggleBookFinished,
-                            onFontDecrease: { adjustPhoneFontScale(by: -0.1) },
-                            onFontIncrease: { adjustPhoneFontScale(by: 0.1) }
+                            onFontDecrease: { adjustAppearanceScale(by: -5) },
+                            onFontIncrease: { adjustAppearanceScale(by: 5) },
+                            onSelectFont: selectAppearanceFont,
+                            onSelectTheme: selectAppearanceTheme,
+                            onResetToBookDefault: resetAppearanceToBookDefault,
+                            onSaveAsBookDefault: saveAppearanceAsBookDefault
                         )
                         .padding(.top, isPhone ? max(5, phoneTopInset) : 5)
                         .padding(.horizontal, isPhone && isLandscape ? phoneHorizontalInset : 0)
@@ -487,6 +542,27 @@ struct ReaderView: View {
                     } else {
                         chatPanel
                     }
+                }
+                .sheet(isPresented: Binding(
+                    get: { isAppearanceOpen && isPhone },
+                    set: { isAppearanceOpen = $0 }
+                )) {
+                    ReaderAppearancePopoverView(
+                        effectiveFontId: effectiveFontId,
+                        effectiveThemeId: effectiveThemeId,
+                        bookDefaultFontId: bookDefaultFont,
+                        bookDefaultThemeId: bookDefaultTheme,
+                        hasUserOverride: hasUserAppearanceOverride,
+                        isSavingDefault: isSavingAppearanceDefault,
+                        a4Status: a4Status,
+                        onSelectFont: selectAppearanceFont,
+                        onSelectTheme: selectAppearanceTheme,
+                        onResetToBookDefault: resetAppearanceToBookDefault,
+                        onSaveAsBookDefault: saveAppearanceAsBookDefault,
+                        onClose: { isAppearanceOpen = false }
+                    )
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
                 }
             .background(Color(hex: "0f172a"))
             .statusBarHidden(true)
@@ -786,6 +862,8 @@ struct ReaderView: View {
             isPencilModeActive: isPencilModeActive,
             phoneFontScale: phoneFontScale,
             topOverlayInset: (isPhone && isFullScreen) ? keyWindowSafeAreaInsets.top : 0,
+            effectiveFontId: effectiveFontId,
+            effectiveThemeId: effectiveThemeId,
             onScroll: { scrollTop in
                 if viewMode == "split" {
                     let otherLang = lang == "en" ? "vi" : "en"
@@ -816,6 +894,11 @@ struct ReaderView: View {
             },
             onWebViewDismantled: { webView, readyLang, readyPage in
                 unregisterWebView(webView, lang: readyLang, page: readyPage, containerMode: containerMode)
+            },
+            onAppearanceMeasured: { status in
+                if p == self.page {
+                    self.a4Status = status
+                }
             }
         )
         .id("webview-\(lang)-\(p)")
@@ -1005,6 +1088,132 @@ struct ReaderView: View {
         phoneFontScale = clamped
         UserDefaults.standard.set(clamped, forKey: "phoneFontScale")
         bumpSelectionOverlayRevision()
+    }
+
+    private func applyAppearanceToMountedWebViews(fontId: String, themeId: String) {
+        let js = ReaderAppearance.buildApplyAppearanceJS(
+            fontId: fontId,
+            themeId: themeId,
+            isPhone: isPhone,
+            viewMode: viewMode
+        )
+        for (_, wv) in webViews {
+            wv.evaluateJavaScript(js) { result, _ in
+                if let dict = result as? [String: Any] {
+                    if let components = dict["rgba"] as? [NSNumber], components.count == 4 {
+                        let color = UIColor(
+                            red: CGFloat(truncating: components[0]) / 255,
+                            green: CGFloat(truncating: components[1]) / 255,
+                            blue: CGFloat(truncating: components[2]) / 255,
+                            alpha: CGFloat(truncating: components[3])
+                        )
+                        DispatchQueue.main.async {
+                            wv.backgroundColor = color
+                            wv.scrollView.backgroundColor = color
+                        }
+                    }
+                    let appliedScale = (dict["appliedFontScale"] as? Int)
+                        ?? (dict["appliedFontScale"] as? NSNumber)?.intValue
+                        ?? ReaderAppearance.parseThemeDescriptor(themeId).fontScale
+                    let clampedByA4 = (dict["clampedByA4"] as? Bool) ?? false
+                    let atMaxA4Scale = (dict["atMaxA4Scale"] as? Bool) ?? (appliedScale >= 140)
+                    DispatchQueue.main.async {
+                        self.a4Status = ReaderA4Status(
+                            appliedFontScale: appliedScale,
+                            clampedByA4: clampedByA4,
+                            atMaxA4Scale: atMaxA4Scale
+                        )
+                    }
+                }
+            }
+        }
+        bumpSelectionOverlayRevision()
+    }
+
+    private func selectAppearanceFont(_ fontId: String) {
+        let nextFont = fontId == bookDefaultFont ? "" : fontId
+        localReaderFont = nextFont
+        ReaderAppearance.saveLocalOverride(
+            slug: book.slug,
+            readerFont: nextFont,
+            readerTheme: localReaderTheme
+        )
+        applyAppearanceToMountedWebViews(fontId: effectiveFontId, themeId: effectiveThemeId)
+        Task {
+            _ = try? await api.updateBookState(slug: book.slug, patch: ["readerFont": nextFont])
+            NotificationCenter.default.post(name: NSNotification.Name("BookStateUpdated"), object: nil)
+        }
+    }
+
+    private func selectAppearanceTheme(_ themeId: String) {
+        let nextTheme = themeId == bookDefaultTheme ? "" : themeId
+        localReaderTheme = nextTheme
+        ReaderAppearance.saveLocalOverride(
+            slug: book.slug,
+            readerFont: localReaderFont,
+            readerTheme: nextTheme
+        )
+        applyAppearanceToMountedWebViews(fontId: effectiveFontId, themeId: effectiveThemeId)
+        Task {
+            _ = try? await api.updateBookState(slug: book.slug, patch: ["readerTheme": nextTheme])
+            NotificationCenter.default.post(name: NSNotification.Name("BookStateUpdated"), object: nil)
+        }
+    }
+
+    private func adjustAppearanceScale(by deltaPct: Int) {
+        var desc = ReaderAppearance.parseThemeDescriptor(effectiveThemeId)
+        let base = a4Status.appliedFontScale
+        desc.fontScale = max(80, min(140, base + deltaPct))
+        selectAppearanceTheme(ReaderAppearance.serializeThemeDescriptor(desc))
+    }
+
+    private func resetAppearanceToBookDefault() {
+        localReaderFont = ""
+        localReaderTheme = ""
+        ReaderAppearance.saveLocalOverride(slug: book.slug, readerFont: "", readerTheme: "")
+        applyAppearanceToMountedWebViews(fontId: bookDefaultFont, themeId: bookDefaultTheme)
+        Task {
+            _ = try? await api.updateBookState(
+                slug: book.slug,
+                patch: ["readerFont": "", "readerTheme": ""]
+            )
+            NotificationCenter.default.post(name: NSNotification.Name("BookStateUpdated"), object: nil)
+        }
+    }
+
+    private func saveAppearanceAsBookDefault() {
+        let targetFont = effectiveFontId
+        let targetTheme = effectiveThemeId
+        isSavingAppearanceDefault = true
+        bookDefaultFont = targetFont
+        bookDefaultTheme = targetTheme
+        localReaderFont = ""
+        localReaderTheme = ""
+        ReaderAppearance.saveLocalOverride(slug: book.slug, readerFont: "", readerTheme: "")
+
+        Task {
+            do {
+                try await api.updateBookAppearanceDefaults(
+                    slug: book.slug,
+                    defaultFont: targetFont,
+                    defaultTheme: targetTheme
+                )
+                _ = try? await api.updateBookState(
+                    slug: book.slug,
+                    patch: ["readerFont": "", "readerTheme": ""]
+                )
+                await MainActor.run {
+                    isSavingAppearanceDefault = false
+                    showVocaToast("Đã lưu làm mặc định cho sách này!")
+                    NotificationCenter.default.post(name: NSNotification.Name("BookStateUpdated"), object: nil)
+                }
+            } catch {
+                await MainActor.run {
+                    isSavingAppearanceDefault = false
+                    showVocaToast("Không thể lưu mặc định sách lên máy chủ.")
+                }
+            }
+        }
     }
 
     private func findCurrentWebView(lang: String, page: Int) -> WKWebView? {
@@ -3686,14 +3895,27 @@ struct ReaderHeaderView: View {
     @Binding var showJumpToPageDialog: Bool
     @Binding var inputPageString: String
     @Binding var isFullScreen: Bool
+    @Binding var isAppearanceOpen: Bool
     let isBookFinished: Bool
     let isUpdatingFinished: Bool
+    var hasCustomAppearance: Bool = false
+    var effectiveFontId: String = "default"
+    var effectiveThemeId: String = "default"
+    var bookDefaultFontId: String = "default"
+    var bookDefaultThemeId: String = "default"
+    var hasUserOverride: Bool = false
+    var isSavingDefault: Bool = false
+    var a4Status: ReaderA4Status = ReaderA4Status()
     
     var onDismiss: () -> Void
     var onToggleFinished: () -> Void
     // Phone-only: font stepper actions in the view-mode menu.
     var onFontDecrease: () -> Void = {}
     var onFontIncrease: () -> Void = {}
+    var onSelectFont: (String) -> Void = { _ in }
+    var onSelectTheme: (String) -> Void = { _ in }
+    var onResetToBookDefault: () -> Void = {}
+    var onSaveAsBookDefault: () -> Void = {}
 
     private let isPhone = UIDevice.current.userInterfaceIdiom == .phone
 
@@ -3792,6 +4014,21 @@ struct ReaderHeaderView: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(Color.white.opacity(0.1), lineWidth: 1)
                 )
+            }
+
+            Button(action: { isAppearanceOpen.toggle() }) {
+                ZStack(alignment: .topTrailing) {
+                    Text("Aa")
+                        .font(.system(size: 13, weight: .bold, design: .serif))
+                        .foregroundColor(isAppearanceOpen || hasCustomAppearance ? Color(hex: "38bdf8") : .white)
+                        .frame(width: 28, height: 28)
+                    if hasCustomAppearance {
+                        Circle()
+                            .fill(Color(hex: "38bdf8"))
+                            .frame(width: 6, height: 6)
+                            .offset(x: -2, y: 3)
+                    }
+                }
             }
 
             Button(action: {
@@ -3931,6 +4168,50 @@ struct ReaderHeaderView: View {
                 .opacity(isUpdatingFinished ? 0.5 : 1)
             }
             
+            Button(action: { isAppearanceOpen.toggle() }) {
+                ZStack(alignment: .topTrailing) {
+                    Text("Aa")
+                        .font(.system(size: 13, weight: .bold, design: .serif))
+                        .foregroundColor(isAppearanceOpen || hasCustomAppearance ? Color(hex: "38bdf8") : .white)
+                        .frame(width: 30, height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isAppearanceOpen ? Color(hex: "38bdf8").opacity(0.18) : Color(hex: "1e293b"))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(
+                                    isAppearanceOpen || hasCustomAppearance
+                                        ? Color(hex: "38bdf8").opacity(0.45)
+                                        : Color.white.opacity(0.1),
+                                    lineWidth: 1
+                                )
+                        )
+                    if hasCustomAppearance {
+                        Circle()
+                            .fill(Color(hex: "38bdf8"))
+                            .frame(width: 6, height: 6)
+                            .offset(x: -3, y: 3)
+                    }
+                }
+            }
+            .popover(isPresented: $isAppearanceOpen, arrowEdge: .top) {
+                ReaderAppearancePopoverView(
+                    effectiveFontId: effectiveFontId,
+                    effectiveThemeId: effectiveThemeId,
+                    bookDefaultFontId: bookDefaultFontId,
+                    bookDefaultThemeId: bookDefaultThemeId,
+                    hasUserOverride: hasUserOverride,
+                    isSavingDefault: isSavingDefault,
+                    a4Status: a4Status,
+                    onSelectFont: onSelectFont,
+                    onSelectTheme: onSelectTheme,
+                    onResetToBookDefault: onResetToBookDefault,
+                    onSaveAsBookDefault: onSaveAsBookDefault,
+                    onClose: { isAppearanceOpen = false }
+                )
+            }
+
             Button(action: { isPencilModeActive.toggle() }) {
                 Image(systemName: isPencilModeActive ? "pencil.tip.crop.circle.badge.minus" : "pencil.tip.crop.circle")
                     .foregroundColor(isPencilModeActive ? Color(hex: "818cf8") : .white)

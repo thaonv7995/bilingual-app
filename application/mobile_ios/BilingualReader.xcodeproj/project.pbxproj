@@ -20,12 +20,14 @@
 		46E6F6DD0BC8E058BC652705 /* BilingualReaderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */; };
 		6BB60AE66CC4E8F4A88C555A /* BookCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AF811F0CC00281EC4C8B04 /* BookCacheManager.swift */; };
 		71C38063963D067D63AF059B /* DeviceSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40877450721082DC886E1E1 /* DeviceSpeech.swift */; };
+		7C19A50549D258B2238352DA /* ReaderAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA49344947D26EBE22C30869 /* ReaderAppearance.swift */; };
 		83039E648CE6CD6CFEEBAA03 /* LayoutOptionButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = F25A14856419E8E55800C330 /* LayoutOptionButton.swift */; };
 		88CBC4EE202827D2947AE3C3 /* AISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D97E70A5694862660AFD0E6 /* AISettingsView.swift */; };
 		8CBD3ECD5460D98952AEEDCF /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AD4860B8B690109EFB9878A /* LoginView.swift */; };
 		9F5FD65A5AFA72B4FB5CC725 /* AudiobookPlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF9407A23E7E7C28184F0EE /* AudiobookPlayerBar.swift */; };
 		A0827BBC64B63C39E54883D2 /* Book.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD24421EAA5774ABB6536580 /* Book.swift */; };
 		A80052D358A61956D1231899 /* BookPagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */; };
+		B2528F06BC90C5DE221A6817 /* ReaderAppearancePopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E341E7B15F9E2813CF700F1 /* ReaderAppearancePopoverView.swift */; };
 		B73ADA8B14F6A58D0A2C0728 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB39B254369C911E5008B8A0 /* APIService.swift */; };
 		DF56599B9222CA17FAE427D3 /* NowPlayingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AE4260EF99FA67825B4EB3A /* NowPlayingManager.swift */; };
 		E949095D116E25F7B4F22DBE /* AudioProviderFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1102CFF2239A16DFAE29B93A /* AudioProviderFactory.swift */; };
@@ -39,6 +41,7 @@
 		5538CACD35C531C90CC07521 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualReaderApp.swift; sourceTree = "<group>"; };
 		5B06E32B69C6455CD7DD73EA /* CompanionToolHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionToolHandler.swift; sourceTree = "<group>"; };
+		5E341E7B15F9E2813CF700F1 /* ReaderAppearancePopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderAppearancePopoverView.swift; sourceTree = "<group>"; };
 		62D6D2E8A59E1377CCAAFF3F /* VocaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaService.swift; sourceTree = "<group>"; };
 		6AD4860B8B690109EFB9878A /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		6D9000B187782F546998E2BF /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
@@ -55,6 +58,7 @@
 		CD24421EAA5774ABB6536580 /* Book.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Book.swift; sourceTree = "<group>"; };
 		CEF9407A23E7E7C28184F0EE /* AudiobookPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookPlayerBar.swift; sourceTree = "<group>"; };
 		D57B156C7DBCD09A96394153 /* BilingualWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualWebView.swift; sourceTree = "<group>"; };
+		DA49344947D26EBE22C30869 /* ReaderAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderAppearance.swift; sourceTree = "<group>"; };
 		F25A14856419E8E55800C330 /* LayoutOptionButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutOptionButton.swift; sourceTree = "<group>"; };
 		FB921731167CE40A439D7728 /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
 		FFC2FD190791DB4676689F5F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -103,6 +107,7 @@
 			isa = PBXGroup;
 			children = (
 				CD24421EAA5774ABB6536580 /* Book.swift */,
+				DA49344947D26EBE22C30869 /* ReaderAppearance.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -113,6 +118,9 @@
 				5538CACD35C531C90CC07521 /* Assets.xcassets */,
 				58D45DE9BF48CA2CC79EB741 /* BilingualReaderApp.swift */,
 				FFC2FD190791DB4676689F5F /* Info.plist */,
+				E662218020EDB28D9165D73D /* Models */,
+				16601F8E94BA2CEE66D8C2A2 /* Services */,
+				FBE7E929CF26843AFD2C06AD /* Views */,
 			);
 			name = mobile_ios;
 			path = .;
@@ -128,6 +136,7 @@
 				159815F66B6C0D29720BE1A9 /* BookshelfView.swift */,
 				F25A14856419E8E55800C330 /* LayoutOptionButton.swift */,
 				6AD4860B8B690109EFB9878A /* LoginView.swift */,
+				5E341E7B15F9E2813CF700F1 /* ReaderAppearancePopoverView.swift */,
 				FB921731167CE40A439D7728 /* ReaderView.swift */,
 			);
 			path = Views;
@@ -222,6 +231,8 @@
 				83039E648CE6CD6CFEEBAA03 /* LayoutOptionButton.swift in Sources */,
 				8CBD3ECD5460D98952AEEDCF /* LoginView.swift in Sources */,
 				DF56599B9222CA17FAE427D3 /* NowPlayingManager.swift in Sources */,
+				7C19A50549D258B2238352DA /* ReaderAppearance.swift in Sources */,
+				B2528F06BC90C5DE221A6817 /* ReaderAppearancePopoverView.swift in Sources */,
 				04D65506177CC1C5E2EEC4D6 /* ReaderView.swift in Sources */,
 				3C4D11C51133DA736E21CACF /* RealtimeVoiceEngine.swift in Sources */,
 				1690126573FBE98AC4C4EDA9 /* VocaService.swift in Sources */,
@@ -242,7 +253,7 @@
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSAppTransportSecurity = "[\"NSAllowsArbitraryLoads\": true]";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AI Companion cần quyền truy cập microphone để hội thoại bằng giọng nói với bạn về cuốn sách đang đọc.";
-				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageName\": \"SplashIcon\", \"UIImageRespectsSafeAreaInsets\": false, \"UIColorName\": \"SplashBackground\"]";
+				INFOPLIST_KEY_UILaunchScreen = "[\"UIColorName\": \"SplashBackground\", \"UIImageName\": \"SplashIcon\", \"UIImageRespectsSafeAreaInsets\": false]";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -385,7 +396,7 @@
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSAppTransportSecurity = "[\"NSAllowsArbitraryLoads\": true]";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AI Companion cần quyền truy cập microphone để hội thoại bằng giọng nói với bạn về cuốn sách đang đọc.";
-				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageName\": \"SplashIcon\", \"UIImageRespectsSafeAreaInsets\": false, \"UIColorName\": \"SplashBackground\"]";
+				INFOPLIST_KEY_UILaunchScreen = "[\"UIColorName\": \"SplashBackground\", \"UIImageName\": \"SplashIcon\", \"UIImageRespectsSafeAreaInsets\": false]";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -410,7 +421,7 @@
 				565BF9E84B077291DBC51E85 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		AFDC2266A6E7C754B2E6869E /* Build configuration list for PBXNativeTarget "BilingualReader" */ = {
 			isa = XCConfigurationList;
@@ -419,7 +430,7 @@
 				9E9AC5FF940D9C33B395F160 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
