@@ -226,6 +226,15 @@ export const READER_FONTS: ReaderFontOption[] = [
     googleFontUrl:
       'https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400..700&display=swap',
   },
+  {
+    id: 'kalam',
+    label: 'Kalam',
+    sublabel: 'Nét bút mực tự nhiên',
+    category: 'handwriting',
+    family: "'Kalam', cursive, sans-serif",
+    googleFontUrl:
+      'https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&display=swap',
+  },
   // Monospace / Typewriter
   {
     id: 'jetbrains-mono',
@@ -235,6 +244,15 @@ export const READER_FONTS: ReaderFontOption[] = [
     family: "'JetBrains Mono', 'Courier New', Courier, monospace",
     googleFontUrl:
       'https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&display=swap',
+  },
+  {
+    id: 'courier-prime',
+    label: 'Courier Prime',
+    sublabel: 'Phong cách máy đánh chữ cổ điển',
+    category: 'mono',
+    family: "'Courier Prime', 'Courier New', Courier, monospace",
+    googleFontUrl:
+      'https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&display=swap',
   },
 ];
 

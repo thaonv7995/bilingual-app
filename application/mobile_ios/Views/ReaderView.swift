@@ -111,8 +111,18 @@ struct ReaderView: View {
         self._isBookFinished = State(initialValue: book.isFinished == true)
 
         let localOverride = ReaderAppearance.loadLocalOverride(slug: book.slug)
-        self._localReaderFont = State(initialValue: localOverride.readerFont)
-        self._localReaderTheme = State(initialValue: localOverride.readerTheme)
+        let initialUserFont = book.readerFont ?? localOverride.readerFont
+        let initialUserTheme = book.readerTheme != nil
+            ? ReaderAppearance.serializeThemeDescriptor(ReaderAppearance.parseThemeDescriptor(book.readerTheme))
+            : localOverride.readerTheme
+        let resolvedUserTheme = initialUserTheme == "default" && (book.readerTheme ?? "").isEmpty ? "" : initialUserTheme
+        ReaderAppearance.saveLocalOverride(
+            slug: book.slug,
+            readerFont: initialUserFont,
+            readerTheme: resolvedUserTheme
+        )
+        self._localReaderFont = State(initialValue: initialUserFont)
+        self._localReaderTheme = State(initialValue: resolvedUserTheme)
         self._bookDefaultFont = State(initialValue: ReaderAppearance.getFont(book.defaultFont).id)
         self._bookDefaultTheme = State(
             initialValue: ReaderAppearance.serializeThemeDescriptor(
@@ -122,22 +132,18 @@ struct ReaderView: View {
     }
 
     private var effectiveFontId: String {
-        let userFont = !localReaderFont.isEmpty ? localReaderFont : (book.readerFont ?? "")
-        return !userFont.isEmpty ? ReaderAppearance.getFont(userFont).id : bookDefaultFont
+        !localReaderFont.isEmpty ? ReaderAppearance.getFont(localReaderFont).id : bookDefaultFont
     }
 
     private var effectiveThemeId: String {
-        let userTheme = !localReaderTheme.isEmpty ? localReaderTheme : (book.readerTheme ?? "")
-        return !userTheme.isEmpty
-            ? ReaderAppearance.serializeThemeDescriptor(ReaderAppearance.parseThemeDescriptor(userTheme))
+        !localReaderTheme.isEmpty
+            ? ReaderAppearance.serializeThemeDescriptor(ReaderAppearance.parseThemeDescriptor(localReaderTheme))
             : bookDefaultTheme
     }
 
     private var hasUserAppearanceOverride: Bool {
-        let userFont = !localReaderFont.isEmpty ? localReaderFont : (book.readerFont ?? "")
-        let userTheme = !localReaderTheme.isEmpty ? localReaderTheme : (book.readerTheme ?? "")
-        return (!userFont.isEmpty && effectiveFontId != bookDefaultFont)
-            || (!userTheme.isEmpty && effectiveThemeId != bookDefaultTheme)
+        (!localReaderFont.isEmpty && effectiveFontId != bookDefaultFont)
+            || (!localReaderTheme.isEmpty && effectiveThemeId != bookDefaultTheme)
     }
 
     private var hasCustomAppearance: Bool {
@@ -1132,30 +1138,39 @@ struct ReaderView: View {
 
     private func selectAppearanceFont(_ fontId: String) {
         let nextFont = fontId == bookDefaultFont ? "" : fontId
+        let currentTheme = localReaderTheme
         localReaderFont = nextFont
         ReaderAppearance.saveLocalOverride(
             slug: book.slug,
             readerFont: nextFont,
-            readerTheme: localReaderTheme
+            readerTheme: currentTheme
         )
         applyAppearanceToMountedWebViews(fontId: effectiveFontId, themeId: effectiveThemeId)
         Task {
-            _ = try? await api.updateBookState(slug: book.slug, patch: ["readerFont": nextFont])
+            _ = try? await api.updateBookState(
+                slug: book.slug,
+                patch: ["readerFont": nextFont, "readerTheme": currentTheme]
+            )
             NotificationCenter.default.post(name: NSNotification.Name("BookStateUpdated"), object: nil)
         }
     }
 
     private func selectAppearanceTheme(_ themeId: String) {
-        let nextTheme = themeId == bookDefaultTheme ? "" : themeId
+        let canonical = ReaderAppearance.serializeThemeDescriptor(ReaderAppearance.parseThemeDescriptor(themeId))
+        let nextTheme = canonical == bookDefaultTheme ? "" : canonical
+        let currentFont = localReaderFont
         localReaderTheme = nextTheme
         ReaderAppearance.saveLocalOverride(
             slug: book.slug,
-            readerFont: localReaderFont,
+            readerFont: currentFont,
             readerTheme: nextTheme
         )
         applyAppearanceToMountedWebViews(fontId: effectiveFontId, themeId: effectiveThemeId)
         Task {
-            _ = try? await api.updateBookState(slug: book.slug, patch: ["readerTheme": nextTheme])
+            _ = try? await api.updateBookState(
+                slug: book.slug,
+                patch: ["readerFont": currentFont, "readerTheme": nextTheme]
+            )
             NotificationCenter.default.post(name: NSNotification.Name("BookStateUpdated"), object: nil)
         }
     }
@@ -2091,6 +2106,52 @@ struct ReaderView: View {
             } catch {
                 // Offline / transient: keep the local copy untouched.
                 print("Failed to fetch progress from server: \(error)")
+            }
+        }
+
+        // Pull latest per-book appearance settings (defaultFont, defaultTheme, readerFont, readerTheme)
+        // from the server when opening the book so changes made on Web / other iOS devices sync immediately.
+        Task {
+            do {
+                let fetchedBooks = try await api.fetchBooks()
+                guard let freshBook = fetchedBooks.first(where: { $0.slug == book.slug }) else { return }
+                await MainActor.run {
+                    let serverDefaultFont = ReaderAppearance.getFont(freshBook.defaultFont).id
+                    let serverDefaultTheme = ReaderAppearance.serializeThemeDescriptor(
+                        ReaderAppearance.parseThemeDescriptor(freshBook.defaultTheme)
+                    )
+                    let rawUserFont = (freshBook.readerFont ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    let rawUserTheme = (freshBook.readerTheme ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    let serverUserFont = rawUserFont.isEmpty ? "" : ReaderAppearance.getFont(rawUserFont).id
+                    let serverUserTheme = rawUserTheme.isEmpty
+                        ? ""
+                        : ReaderAppearance.serializeThemeDescriptor(
+                            ReaderAppearance.parseThemeDescriptor(rawUserTheme)
+                        )
+
+                    let changed = self.bookDefaultFont != serverDefaultFont
+                        || self.bookDefaultTheme != serverDefaultTheme
+                        || self.localReaderFont != serverUserFont
+                        || self.localReaderTheme != serverUserTheme
+
+                    self.bookDefaultFont = serverDefaultFont
+                    self.bookDefaultTheme = serverDefaultTheme
+                    self.localReaderFont = serverUserFont
+                    self.localReaderTheme = serverUserTheme
+                    ReaderAppearance.saveLocalOverride(
+                        slug: book.slug,
+                        readerFont: serverUserFont,
+                        readerTheme: serverUserTheme
+                    )
+                    if changed {
+                        self.applyAppearanceToMountedWebViews(
+                            fontId: self.effectiveFontId,
+                            themeId: self.effectiveThemeId
+                        )
+                    }
+                }
+            } catch {
+                // Offline: retain cached local appearance override
             }
         }
     }

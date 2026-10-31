@@ -1,5 +1,5 @@
 import Foundation
-import SwiftUI
+import UIKit
 
 enum ReaderFontCategory: String, CaseIterable {
     case `default` = "default"
@@ -11,10 +11,10 @@ enum ReaderFontCategory: String, CaseIterable {
     var groupLabel: String {
         switch self {
         case .default: return "Mặc định"
-        case .serif: return "Serif (Có chân)"
-        case .sans: return "Sans-serif (Không chân)"
-        case .handwriting: return "Handwriting (Viết tay)"
-        case .mono: return "Monospace (Kỹ thuật)"
+        case .serif: return "Có chân (Serif)"
+        case .sans: return "Không chân (Sans)"
+        case .handwriting: return "Chữ viết tay (Handwriting)"
+        case .mono: return "Đơn cách (Monospace)"
         }
     }
 }
@@ -36,6 +36,7 @@ struct ReaderThemeOption: Identifiable, Equatable {
     let canvas: String
     let ink: String
     let mutedInk: String
+    let accent: String
     let ruleColor: String
     let codeBg: String
     let isDark: Bool
@@ -55,6 +56,7 @@ struct ReaderTextureOption: Identifiable, Equatable {
 
 struct ReaderThemeDescriptor: Equatable {
     var themeId: String = "default"
+    var customPaperColor: String = ""
     var fontScale: Int = 100
     var lineHeight: String = "default"
     var pageMargin: String = "default"
@@ -73,7 +75,7 @@ enum ReaderAppearance {
         ReaderFontOption(
             id: "default",
             label: "Mặc định sách",
-            sublabel: "Theo thiết kế gốc",
+            sublabel: "Theo thiết kế gốc của sách",
             category: .default,
             family: "",
             googleFontUrl: nil
@@ -82,7 +84,7 @@ enum ReaderAppearance {
         ReaderFontOption(
             id: "literata",
             label: "Literata",
-            sublabel: "Serif chuyên đọc sách",
+            sublabel: "Serif chuyên dụng đọc sách",
             category: .serif,
             family: "'Literata', Georgia, 'Times New Roman', serif",
             googleFontUrl: "https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..700&display=swap"
@@ -92,7 +94,7 @@ enum ReaderAppearance {
             label: "Merriweather",
             sublabel: "Cổ điển, đậm nét",
             category: .serif,
-            family: "'Merriweather', Georgia, serif",
+            family: "'Merriweather', Georgia, 'Times New Roman', serif",
             googleFontUrl: "https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400;1,700&display=swap"
         ),
         ReaderFontOption(
@@ -100,54 +102,54 @@ enum ReaderAppearance {
             label: "Lora",
             sublabel: "Văn học, thanh lịch",
             category: .serif,
-            family: "'Lora', Georgia, serif",
+            family: "'Lora', Georgia, 'Times New Roman', serif",
             googleFontUrl: "https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&display=swap"
-        ),
-        ReaderFontOption(
-            id: "crimson-pro",
-            label: "Crimson Pro",
-            sublabel: "Sách in học thuật",
-            category: .serif,
-            family: "'Crimson Pro', Georgia, serif",
-            googleFontUrl: "https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400..700;1,400..700&display=swap"
         ),
         ReaderFontOption(
             id: "noto-serif",
             label: "Noto Serif",
-            sublabel: "Chuẩn dấu tiếng Việt",
+            sublabel: "Học thuật, dấu tiếng Việt chuẩn",
             category: .serif,
-            family: "'Noto Serif', Georgia, serif",
+            family: "'Noto Serif', Georgia, 'Times New Roman', serif",
             googleFontUrl: "https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400..700;1,400..700&display=swap"
+        ),
+        ReaderFontOption(
+            id: "playfair",
+            label: "Playfair Display",
+            sublabel: "Tiêu đề & văn chương cổ điển",
+            category: .serif,
+            family: "'Playfair Display', Georgia, 'Times New Roman', serif",
+            googleFontUrl: "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..700;1,400..700&display=swap"
         ),
         ReaderFontOption(
             id: "charter",
             label: "Charter / Georgia",
             sublabel: "Sách in truyền thống",
             category: .serif,
-            family: "Charter, 'Bitstream Charter', 'Sitka Text', Georgia, serif",
+            family: "Charter, 'Bitstream Charter', Georgia, 'Times New Roman', serif",
             googleFontUrl: nil
         ),
         // Sans
         ReaderFontOption(
             id: "inter",
             label: "Inter",
-            sublabel: "Hiện đại, sắc nét",
+            sublabel: "Sans hiện đại, sách kỹ thuật",
             category: .sans,
-            family: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+            family: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
             googleFontUrl: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
         ),
         ReaderFontOption(
             id: "plus-jakarta",
             label: "Plus Jakarta Sans",
-            sublabel: "Mềm mại, dễ đọc",
+            sublabel: "Sans mềm mại, dễ đọc",
             category: .sans,
             family: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif",
             googleFontUrl: "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400..700;1,400..700&display=swap"
         ),
         ReaderFontOption(
-            id: "be-vietnam-pro",
+            id: "be-vietnam",
             label: "Be Vietnam Pro",
-            sublabel: "Tối ưu tiếng Việt",
+            sublabel: "Sans tối ưu tiếng Việt",
             category: .sans,
             family: "'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, sans-serif",
             googleFontUrl: "https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
@@ -157,14 +159,14 @@ enum ReaderAppearance {
             label: "System Sans",
             sublabel: "SF Pro hệ thống",
             category: .sans,
-            family: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif",
+            family: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif",
             googleFontUrl: nil
         ),
         // Handwriting
         ReaderFontOption(
             id: "playpen-sans",
             label: "Playpen Sans",
-            sublabel: "Viết tay tự nhiên, dễ đọc",
+            sublabel: "Viết tay hiện đại, rõ chữ",
             category: .handwriting,
             family: "'Playpen Sans', cursive, sans-serif",
             googleFontUrl: "https://fonts.googleapis.com/css2?family=Playpen+Sans:wght@400;500;600;700&display=swap"
@@ -172,31 +174,31 @@ enum ReaderAppearance {
         ReaderFontOption(
             id: "patrick-hand",
             label: "Patrick Hand",
-            sublabel: "Chữ viết tay sổ ghi chép",
+            sublabel: "Chữ viết tay gọn gàng, rõ nét",
             category: .handwriting,
-            family: "'Patrick Hand', cursive, sans-serif",
-            googleFontUrl: "https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap"
+            family: "'Patrick Hand', 'Bradley Hand', cursive, sans-serif",
+            googleFontUrl: "https://fonts.googleapis.com/css2?family=Patrick+Hand&subset=vietnamese&display=swap"
         ),
         ReaderFontOption(
             id: "caveat",
             label: "Caveat",
-            sublabel: "Bút mực phóng khoáng",
+            sublabel: "Phóng khoáng như sổ tay",
             category: .handwriting,
-            family: "'Caveat', cursive, sans-serif",
+            family: "'Caveat', 'Snell Roundhand', cursive",
             googleFontUrl: "https://fonts.googleapis.com/css2?family=Caveat:wght@400..700&display=swap"
         ),
         ReaderFontOption(
             id: "mali",
             label: "Mali",
-            sublabel: "Viết tay tròn trịa, ấm áp",
+            sublabel: "Nét viết tay tròn trịa, thân thiện",
             category: .handwriting,
             family: "'Mali', cursive, sans-serif",
-            googleFontUrl: "https://fonts.googleapis.com/css2?family=Mali:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+            googleFontUrl: "https://fonts.googleapis.com/css2?family=Mali:ital,wght@0,400;0,500;0,600;1,400&display=swap"
         ),
         ReaderFontOption(
             id: "itim",
             label: "Itim",
-            sublabel: "Bút bi học trò",
+            sublabel: "Viết tay bút bi thanh thoát",
             category: .handwriting,
             family: "'Itim', cursive, sans-serif",
             googleFontUrl: "https://fonts.googleapis.com/css2?family=Itim&display=swap"
@@ -204,172 +206,211 @@ enum ReaderAppearance {
         ReaderFontOption(
             id: "dancing-script",
             label: "Dancing Script",
-            sublabel: "Thư pháp mềm mại",
+            sublabel: "Chữ viết tay mềm mại, bay bổng",
             category: .handwriting,
-            family: "'Dancing Script', cursive, serif",
-            googleFontUrl: "https://fonts.googleapis.com/css2?family=Dancing+Script:wght@500;600;700&display=swap"
+            family: "'Dancing Script', 'Snell Roundhand', cursive",
+            googleFontUrl: "https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400..700&display=swap"
+        ),
+        ReaderFontOption(
+            id: "kalam",
+            label: "Kalam",
+            sublabel: "Nét bút mực tự nhiên",
+            category: .handwriting,
+            family: "'Kalam', cursive, sans-serif",
+            googleFontUrl: "https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&display=swap"
         ),
         // Monospace
         ReaderFontOption(
             id: "jetbrains-mono",
             label: "JetBrains Mono",
-            sublabel: "Monospace kỹ thuật",
+            sublabel: "Monospace sắc nét, hiện đại",
             category: .mono,
             family: "'JetBrains Mono', 'SF Mono', Menlo, monospace",
-            googleFontUrl: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&display=swap"
+            googleFontUrl: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&display=swap"
+        ),
+        ReaderFontOption(
+            id: "courier-prime",
+            label: "Courier Prime",
+            sublabel: "Phong cách máy đánh chữ cổ điển",
+            category: .mono,
+            family: "'Courier Prime', 'Courier New', Courier, monospace",
+            googleFontUrl: "https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&display=swap"
         ),
     ]
 
+    /// Theme IDs match Web (`READER_THEMES` in `readerAppearance.ts`) 1:1 so settings sync seamlessly via the server.
     static let themes: [ReaderThemeOption] = [
         ReaderThemeOption(
             id: "default",
-            label: "Mặc định",
-            sublabel: "Màu gốc",
-            paper: "",
-            canvas: "",
-            ink: "",
-            mutedInk: "",
-            ruleColor: "",
-            codeBg: "",
+            label: "Gốc",
+            sublabel: "Theo màu gốc của sách",
+            paper: "#f4f1ea",
+            canvas: "#f4f1ea",
+            ink: "#111111",
+            mutedInk: "#57534e",
+            accent: "#1e4088",
+            ruleColor: "#d6d3d1",
+            codeBg: "#ebe6dc",
             isDark: false
         ),
         ReaderThemeOption(
             id: "paper-white",
             label: "Trắng sáng",
-            sublabel: "Giấy trắng tinh",
+            sublabel: "Giấy trắng tinh khiết",
             paper: "#ffffff",
             canvas: "#f1f5f9",
-            ink: "#111827",
-            mutedInk: "#4b5563",
-            ruleColor: "#d1d5db",
-            codeBg: "#f3f4f6",
+            ink: "#18181b",
+            mutedInk: "#52525b",
+            accent: "#1d4ed8",
+            ruleColor: "#e4e4e7",
+            codeBg: "#f4f4f5",
             isDark: false
         ),
         ReaderThemeOption(
-            id: "warm-cream",
+            id: "paper-cream",
             label: "Kem ấm",
-            sublabel: "Giấy kem dịu mắt",
-            paper: "#fdf8ee",
-            canvas: "#efe6d5",
-            ink: "#231f20",
-            mutedInk: "#5c5346",
-            ruleColor: "#dccmb2".replacingOccurrences(of: "m", with: "f"),
-            codeBg: "#f5ebd6",
+            sublabel: "Dịu mắt khi đọc lâu",
+            paper: "#fdf9f0",
+            canvas: "#f3ede0",
+            ink: "#26211c",
+            mutedInk: "#6b5e51",
+            accent: "#1e4088",
+            ruleColor: "#e5dec9",
+            codeBg: "#f4eee1",
             isDark: false
         ),
         ReaderThemeOption(
-            id: "sepia",
+            id: "paper-sepia",
             label: "Sepia cổ điển",
-            sublabel: "Vàng nâu sách cổ",
-            paper: "#f4ecd8",
-            canvas: "#e4d8bc",
-            ink: "#3c2f23",
-            mutedInk: "#6b5744",
-            ruleColor: "#d3c29f",
-            codeBg: "#eadec3",
+            sublabel: "Màu giấy sách xưa",
+            paper: "#f2e7cf",
+            canvas: "#e6d8bc",
+            ink: "#3b2e22",
+            mutedInk: "#6e5a47",
+            accent: "#854d0e",
+            ruleColor: "#d9c8ad",
+            codeBg: "#e8d9bc",
             isDark: false
         ),
         ReaderThemeOption(
-            id: "vintage-kraft",
-            label: "Giấy Kraft",
-            sublabel: "Giấy tái chế trầm",
-            paper: "#e6d7be",
-            canvas: "#d4c3a6",
-            ink: "#2c2218",
-            mutedInk: "#5c4938",
-            ruleColor: "#c4b090",
-            codeBg: "#dccaa9",
+            id: "paper-oat",
+            label: "Giấy lụa",
+            sublabel: "Nền giấy ngà tự nhiên",
+            paper: "#eae4d7",
+            canvas: "#ded7c8",
+            ink: "#272421",
+            mutedInk: "#57534e",
+            accent: "#1e3a8a",
+            ruleColor: "#d1c9b8",
+            codeBg: "#e0d8c7",
             isDark: false
         ),
         ReaderThemeOption(
-            id: "rose-blush",
+            id: "paper-rose",
             label: "Hồng phấn",
-            sublabel: "Giấy hồng dịu",
-            paper: "#fdf2f4",
-            canvas: "#f3e1e5",
-            ink: "#2d1e24",
-            mutedInk: "#684f58",
-            ruleColor: "#e5cad1",
-            codeBg: "#f7e6ea",
+            sublabel: "Ánh hồng pastel ấm áp",
+            paper: "#fbf0f2",
+            canvas: "#f2dfe3",
+            ink: "#2d1c22",
+            mutedInk: "#6e4f58",
+            accent: "#9d174d",
+            ruleColor: "#e8d0d6",
+            codeBg: "#f3e2e6",
             isDark: false
         ),
         ReaderThemeOption(
-            id: "sage-green",
+            id: "paper-sage",
             label: "Xanh dịu mắt",
             sublabel: "Chống mỏi mắt",
-            paper: "#eaf3ec",
+            paper: "#e6efe7",
             canvas: "#d8e6db",
-            ink: "#1c2d24",
-            mutedInk: "#486353",
-            ruleColor: "#bfd6c5",
-            codeBg: "#dfece2",
+            ink: "#1b2b21",
+            mutedInk: "#4a6352",
+            accent: "#166534",
+            ruleColor: "#c5d9c8",
+            codeBg: "#dae6dc",
             isDark: false
         ),
         ReaderThemeOption(
-            id: "nordic-mist",
+            id: "paper-mist",
             label: "Xanh sương",
             sublabel: "Mát dịu ban ngày",
-            paper: "#eef3f8",
+            paper: "#edf2f7",
             canvas: "#dde6f0",
-            ink: "#1a2533",
-            mutedInk: "#4c5d73",
-            ruleColor: "#c5d3e3",
-            codeBg: "#e3ebf3",
+            ink: "#1e293b",
+            mutedInk: "#475569",
+            accent: "#0369a1",
+            ruleColor: "#cbd5e1",
+            codeBg: "#e2e8f0",
             isDark: false
         ),
         ReaderThemeOption(
-            id: "slate-dark",
+            id: "paper-dark",
             label: "Tối dịu",
             sublabel: "Đọc buổi tối",
-            paper: "#1e2430",
+            paper: "#1a202c",
             canvas: "#141821",
             ink: "#e2e8f0",
             mutedInk: "#94a3b8",
+            accent: "#60a5fa",
             ruleColor: "#334155",
-            codeBg: "#151a24",
+            codeBg: "#111621",
             isDark: true
         ),
         ReaderThemeOption(
-            id: "oled-night",
+            id: "paper-oled",
             label: "Đen đêm",
             sublabel: "Tương phản dịu",
-            paper: "#121316",
+            paper: "#101216",
             canvas: "#090a0c",
             ink: "#d4d4d8",
-            mutedInk: "#8e8e96",
+            mutedInk: "#8e8e93",
+            accent: "#38bdf8",
             ruleColor: "#27272a",
-            codeBg: "#1a1c20",
+            codeBg: "#181b22",
             isDark: true
         ),
     ]
 
+    private static let legacyThemeAliases: [String: String] = [
+        "white": "paper-white",
+        "warm-cream": "paper-cream",
+        "classic-sepia": "paper-sepia",
+        "silk-paper": "paper-oat",
+        "rose-tint": "paper-rose",
+        "sage-green": "paper-sage",
+        "nordic-mist": "paper-mist",
+        "slate-dark": "paper-dark",
+        "oled-night": "paper-oled",
+    ]
+
     static let inks: [ReaderInkOption] = [
-        ReaderInkOption(id: "auto", label: "Tự động", color: ""),
-        ReaderInkOption(id: "#111827", label: "Đen mực", color: "#111827"),
-        ReaderInkOption(id: "#374151", label: "Xám than", color: "#374151"),
-        ReaderInkOption(id: "#3c2f23", label: "Nâu Espresso", color: "#3c2f23"),
-        ReaderInkOption(id: "#1e3a5f", label: "Xanh bút máy", color: "#1e3a5f"),
-        ReaderInkOption(id: "#1c3b2b", label: "Xanh rừng", color: "#1c3b2b"),
-        ReaderInkOption(id: "#4c1d3d", label: "Đỏ rượu vang", color: "#4c1d3d"),
-        ReaderInkOption(id: "#e2e8f0", label: "Trắng bạc", color: "#e2e8f0"),
+        ReaderInkOption(id: "auto", label: "Tự động theo giấy", color: "auto"),
+        ReaderInkOption(id: "#111111", label: "Đen mực (Classic)", color: "#111111"),
+        ReaderInkOption(id: "#334155", label: "Than chì (Slate)", color: "#334155"),
+        ReaderInkOption(id: "#3b2818", label: "Nâu trầm (Espresso)", color: "#3b2818"),
+        ReaderInkOption(id: "#172554", label: "Xanh mực (Navy)", color: "#172554"),
+        ReaderInkOption(id: "#143323", label: "Xanh rêu (Forest)", color: "#143323"),
+        ReaderInkOption(id: "#e2e8f0", label: "Trắng dịu (Light)", color: "#e2e8f0"),
+        ReaderInkOption(id: "#fde68a", label: "Hổ phách (Amber)", color: "#fde68a"),
     ]
 
     static let textures: [ReaderTextureOption] = [
-        ReaderTextureOption(id: "default", label: "Mặc định (Trơn)", sublabel: "Không hiệu ứng vân giấy"),
-        ReaderTextureOption(id: "paper-grain", label: "Vân giấy mịn", sublabel: "Hạt giấy tự nhiên"),
-        ReaderTextureOption(id: "vintage", label: "Giấy cổ điển", sublabel: "Viền bóng ấm hoài cổ"),
-        ReaderTextureOption(id: "linen", label: "Vải lanh (Linen)", sublabel: "Sợi dệt ngang dọc"),
-        ReaderTextureOption(id: "parchment", label: "Giấy da (Parchment)", sublabel: "Loang màu cổ xưa"),
-        ReaderTextureOption(id: "dot-grid", label: "Chấm bi (Dot Grid)", sublabel: "Sổ tay chấm bi"),
-        ReaderTextureOption(id: "ruled", label: "Kẻ ngang (Ruled)", sublabel: "Dòng kẻ sổ ghi chép"),
+        ReaderTextureOption(id: "default", label: "Trơn (Mặc định)", sublabel: "Không hiệu ứng vân giấy"),
+        ReaderTextureOption(id: "paper-grain", label: "Giấy in sách (Grain)", sublabel: "Hạt giấy tự nhiên"),
+        ReaderTextureOption(id: "vintage", label: "Giấy cổ điển (Vintage)", sublabel: "Viền bóng ấm hoài cổ"),
+        ReaderTextureOption(id: "linen", label: "Vân vải lanh (Linen)", sublabel: "Sợi dệt ngang dọc"),
+        ReaderTextureOption(id: "parchment", label: "Giấy da cừu (Parchment)", sublabel: "Loang màu cổ xưa"),
+        ReaderTextureOption(id: "dot-grid", label: "Sổ chấm bi (Dot Grid)", sublabel: "Sổ tay chấm bi"),
+        ReaderTextureOption(id: "ruled", label: "Sổ kẻ ngang (Ruled)", sublabel: "Dòng kẻ sổ ghi chép"),
     ]
 
     static let lineHeightOptions: [(id: String, label: String)] = [
         ("default", "Gốc"),
-        ("1.35", "Chặt"),
-        ("1.5", "Vừa"),
-        ("1.65", "Thoáng"),
-        ("1.8", "Rộng"),
+        ("1.35", "1.35"),
+        ("1.5", "1.5"),
+        ("1.65", "1.65"),
+        ("1.8", "1.8"),
     ]
 
     static let pageMarginOptions: [(id: String, label: String)] = [
@@ -404,42 +445,72 @@ enum ReaderAppearance {
         let normalized = hex.lowercased()
         let dark = isHexColorDark(normalized)
         return ReaderThemeOption(
-            id: normalized,
-            label: "Tùy chỉnh (\(normalized.uppercased()))",
-            sublabel: "Màu giấy tự chọn",
+            id: "custom",
+            label: "Tuỳ chọn (\(normalized.uppercased()))",
+            sublabel: normalized.uppercased(),
             paper: normalized,
             canvas: normalized,
-            ink: dark ? "#e2e8f0" : "#1f2937",
-            mutedInk: dark ? "#94a3b8" : "#4b5563",
-            ruleColor: dark ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.15)",
-            codeBg: dark ? "rgba(0,0,0,0.28)" : "rgba(0,0,0,0.05)",
+            ink: dark ? "#e2e8f0" : "#18181b",
+            mutedInk: dark ? "#94a3b8" : "#52525b",
+            accent: dark ? "#60a5fa" : "#1d4ed8",
+            ruleColor: dark ? "#334155" : "#d4d4d8",
+            codeBg: dark ? "#111621" : "#f4f4f5",
             isDark: dark
         )
     }
 
+    /// Parses both the canonical Web/Server `;` + `=` format
+    /// (`paper-sepia;ink=#3b2818;tex=vintage;scale=110;lh=1.5;margin=compact`)
+    /// and legacy `|` + `:` descriptors.
     static func parseThemeDescriptor(_ raw: String?) -> ReaderThemeDescriptor {
         var result = ReaderThemeDescriptor()
         let trimmed = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != "default" else { return result }
 
-        let parts = trimmed.split(separator: "|").map { String($0).trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let separator: Character = trimmed.contains(";") ? ";" : "|"
+        let parts = trimmed
+            .split(separator: separator)
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
         guard !parts.isEmpty else { return result }
 
         let first = parts[0]
         var startIdx = 0
-        if !first.contains(":") {
-            if themes.contains(where: { $0.id == first }) || isValidHexColor(first) {
-                result.themeId = isValidHexColor(first) ? first.lowercased() : first
+        if !first.contains("=") && !first.contains(":") {
+            let mapped = legacyThemeAliases[first] ?? first
+            if mapped == "custom" {
+                result.themeId = "custom"
+            } else if themes.contains(where: { $0.id == mapped }) {
+                result.themeId = mapped
+            } else if isValidHexColor(mapped) {
+                result.themeId = "custom"
+                result.customPaperColor = mapped.lowercased()
             }
             startIdx = 1
         }
 
         for i in startIdx..<parts.count {
             let token = parts[i]
-            guard let colonIdx = token.firstIndex(of: ":") else { continue }
-            let key = String(token[..<colonIdx])
-            let val = String(token[token.index(after: colonIdx)...])
+            let kvSep: Character? = token.contains("=") ? "=" : (token.contains(":") ? ":" : nil)
+            guard let sep = kvSep, let sepIdx = token.firstIndex(of: sep) else { continue }
+            let key = String(token[..<sepIdx]).trimmingCharacters(in: .whitespaces)
+            let val = String(token[token.index(after: sepIdx)...]).trimmingCharacters(in: .whitespaces)
+            guard !val.isEmpty else { continue }
+
             switch key {
+            case "paper":
+                if isValidHexColor(val) {
+                    result.themeId = "custom"
+                    result.customPaperColor = val.lowercased()
+                }
+            case "ink":
+                if val == "auto" || isValidHexColor(val) {
+                    result.inkColor = val.lowercased()
+                }
+            case "tex":
+                if textures.contains(where: { $0.id == val }) {
+                    result.textureId = val
+                }
             case "scale":
                 if let n = Int(val) {
                     result.fontScale = max(80, min(140, n))
@@ -452,52 +523,68 @@ enum ReaderAppearance {
                 if ["default", "compact", "normal", "wide"].contains(val) {
                     result.pageMargin = val
                 }
-            case "ink":
-                if val == "auto" || isValidHexColor(val) {
-                    result.inkColor = val.lowercased()
-                }
-            case "tex":
-                if textures.contains(where: { $0.id == val }) {
-                    result.textureId = val
-                }
             default:
                 break
             }
         }
+
+        if result.themeId == "custom" && !isValidHexColor(result.customPaperColor) {
+            result.themeId = "default"
+            result.customPaperColor = ""
+        }
         return result
     }
 
+    /// Serializes into the exact same `;` + `=` format as Web (`readerAppearance.ts`)
+    /// so server-stored `readerTheme` and `defaultTheme` sync identically across Web, iPhone, and iPad.
     static func serializeThemeDescriptor(_ desc: ReaderThemeDescriptor) -> String {
-        let base = desc.themeId.isEmpty ? "default" : desc.themeId
-        var tokens: [String] = [base]
-        if desc.fontScale != 100 {
-            tokens.append("scale:\(max(80, min(140, desc.fontScale)))")
+        var normalized = desc
+        if isValidHexColor(normalized.themeId) {
+            normalized.customPaperColor = normalized.themeId.lowercased()
+            normalized.themeId = "custom"
+        } else if let mapped = legacyThemeAliases[normalized.themeId] {
+            normalized.themeId = mapped
         }
-        if !desc.lineHeight.isEmpty && desc.lineHeight != "default" {
-            tokens.append("lh:\(desc.lineHeight)")
+
+        let base: String
+        if normalized.themeId == "custom" && isValidHexColor(normalized.customPaperColor) {
+            base = "custom"
+        } else if themes.contains(where: { $0.id == normalized.themeId }) {
+            base = normalized.themeId
+        } else {
+            base = "default"
         }
-        if !desc.pageMargin.isEmpty && desc.pageMargin != "default" {
-            tokens.append("margin:\(desc.pageMargin)")
+
+        var segments: [String] = [base]
+        if base == "custom" && isValidHexColor(normalized.customPaperColor) {
+            segments.append("paper=\(normalized.customPaperColor.lowercased())")
         }
-        if !desc.inkColor.isEmpty && desc.inkColor != "auto" {
-            tokens.append("ink:\(desc.inkColor.lowercased())")
+        if !normalized.inkColor.isEmpty && normalized.inkColor != "auto" && isValidHexColor(normalized.inkColor) {
+            segments.append("ink=\(normalized.inkColor.lowercased())")
         }
-        if !desc.textureId.isEmpty && desc.textureId != "default" {
-            tokens.append("tex:\(desc.textureId)")
+        if !normalized.textureId.isEmpty && normalized.textureId != "default" {
+            segments.append("tex=\(normalized.textureId)")
         }
-        if tokens.count == 1 && tokens[0] == "default" {
-            return "default"
+        if normalized.fontScale != 100 {
+            segments.append("scale=\(max(80, min(140, normalized.fontScale)))")
         }
-        return tokens.joined(separator: "|")
+        if !normalized.lineHeight.isEmpty && normalized.lineHeight != "default" {
+            segments.append("lh=\(normalized.lineHeight)")
+        }
+        if !normalized.pageMargin.isEmpty && normalized.pageMargin != "default" {
+            segments.append("margin=\(normalized.pageMargin)")
+        }
+
+        return segments.joined(separator: ";")
     }
 
     static func getTheme(_ themeIdOrDescriptor: String?) -> ReaderThemeOption {
         let desc = parseThemeDescriptor(themeIdOrDescriptor)
+        if desc.themeId == "custom" && isValidHexColor(desc.customPaperColor) {
+            return buildCustomThemeFromHex(desc.customPaperColor)
+        }
         if let found = themes.first(where: { $0.id == desc.themeId }) {
             return found
-        }
-        if isValidHexColor(desc.themeId) {
-            return buildCustomThemeFromHex(desc.themeId)
         }
         return themes[0]
     }
@@ -593,6 +680,7 @@ enum ReaderAppearance {
             const paperColor = "\(theme.paper)";
             const effectiveInk = "\(effectiveInk)";
             const mutedInk = "\(theme.mutedInk)";
+            const accentColor = "\(theme.accent)";
             const ruleColor = "\(theme.ruleColor)";
             const codeBg = "\(theme.codeBg)";
             const isDarkSurface = \(isDarkSurface ? "true" : "false");
@@ -616,25 +704,84 @@ enum ReaderAppearance {
                 fontLink.remove();
             }
 
+            const SVG_NOISE_DATA_URI = 'url("data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'160\\' height=\\'160\\'%3E%3Cfilter id=\\'n\\'%3E%3CfeTurbulence type=\\'fractalNoise\\' baseFrequency=\\'0.82\\' numOctaves=\\'4\\' stitchTiles=\\'stitch\\'/%3E%3C/filter%3E%3Crect width=\\'100%25\\' height=\\'100%25\\' filter=\\'url(%23n)\\' opacity=\\'0.065\\'/%3E%3C/svg%3E")';
+
             function buildTextureCss(tex, isDark) {
-                const lineAlpha = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-                const dotAlpha = isDark ? 'rgba(255,255,255,0.11)' : 'rgba(0,0,0,0.11)';
+                if (!tex || tex === 'default') return '';
+                const lineAlpha = isDark ? 'rgba(255, 255, 255, 0.055)' : 'rgba(60, 42, 24, 0.075)';
+                const dotAlpha = isDark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(60, 42, 24, 0.14)';
+
+                let bgImage = '';
+                let bgSize = '';
+                let boxShadow = '';
+
                 switch (tex) {
                     case 'paper-grain':
-                        return `background-image: radial-gradient(${isDark ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.035)'} 1px, transparent 0), radial-gradient(${isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.025)'} 1px, transparent 0) !important; background-size: 16px 16px, 23px 23px !important; background-position: 0 0, 7px 11px !important;`;
+                        bgImage = SVG_NOISE_DATA_URI;
+                        bgSize = '160px 160px';
+                        break;
                     case 'vintage':
-                        return `box-shadow: inset 0 0 54px ${isDark ? 'rgba(0,0,0,0.55)' : 'rgba(120,82,40,0.18)'}, inset 0 0 14px ${isDark ? 'rgba(0,0,0,0.35)' : 'rgba(120,82,40,0.1)'} !important;`;
+                        bgImage = `radial-gradient(ellipse at center, transparent 52%, ${isDark ? 'rgba(0, 0, 0, 0.42)' : 'rgba(120, 82, 38, 0.16)'} 100%), ${SVG_NOISE_DATA_URI}`;
+                        bgSize = '100% 100%, 160px 160px';
+                        boxShadow = isDark
+                            ? 'inset 0 0 36px rgba(0, 0, 0, 0.48)'
+                            : 'inset 0 0 38px rgba(110, 74, 32, 0.18)';
+                        break;
                     case 'linen':
-                        return `background-image: repeating-linear-gradient(0deg, ${lineAlpha} 0px, ${lineAlpha} 1px, transparent 1px, transparent 6px), repeating-linear-gradient(90deg, ${lineAlpha} 0px, ${lineAlpha} 1px, transparent 1px, transparent 6px) !important;`;
+                        bgImage = `repeating-linear-gradient(0deg, ${lineAlpha} 0px, ${lineAlpha} 1px, transparent 1px, transparent 4px), repeating-linear-gradient(90deg, ${lineAlpha} 0px, ${lineAlpha} 1px, transparent 1px, transparent 4px)`;
+                        bgSize = '4px 4px';
+                        break;
                     case 'parchment':
-                        return `background-image: radial-gradient(ellipse at 20% 15%, ${isDark ? 'rgba(255,255,255,0.03)' : 'rgba(160,115,60,0.1)'} 0%, transparent 55%), radial-gradient(ellipse at 80% 85%, ${isDark ? 'rgba(0,0,0,0.25)' : 'rgba(135,95,45,0.12)'} 0%, transparent 60%) !important; box-shadow: inset 0 0 42px ${isDark ? 'rgba(0,0,0,0.45)' : 'rgba(125,85,35,0.14)'} !important;`;
+                        bgImage = `radial-gradient(circle at 20% 25%, ${isDark ? 'rgba(255, 215, 150, 0.04)' : 'rgba(180, 130, 65, 0.10)'} 0%, transparent 55%), radial-gradient(circle at 80% 75%, ${isDark ? 'rgba(0, 0, 0, 0.35)' : 'rgba(145, 98, 42, 0.13)'} 0%, transparent 60%), ${SVG_NOISE_DATA_URI}`;
+                        bgSize = '100% 100%, 100% 100%, 160px 160px';
+                        boxShadow = isDark
+                            ? 'inset 0 0 42px rgba(0, 0, 0, 0.5)'
+                            : 'inset 0 0 42px rgba(120, 80, 30, 0.18)';
+                        break;
                     case 'dot-grid':
-                        return `background-image: radial-gradient(${dotAlpha} 1px, transparent 1px) !important; background-size: 18px 18px !important;`;
+                        bgImage = `radial-gradient(${dotAlpha} 1.1px, transparent 1.1px)`;
+                        bgSize = '18px 18px';
+                        break;
                     case 'ruled':
-                        return `background-image: repeating-linear-gradient(to bottom, transparent 0px, transparent 25px, ${lineAlpha} 25px, ${lineAlpha} 26px) !important;`;
+                        bgImage = `repeating-linear-gradient(to bottom, transparent 0px, transparent 25px, ${lineAlpha} 25px, ${lineAlpha} 26px)`;
+                        bgSize = '100% 26px';
+                        break;
                     default:
                         return '';
                 }
+
+                // Render texture on a single full-viewport fixed overlay (`body::before`)
+                // and make inner `.book-page` containers transparent so the page is NEVER
+                // split into two regions when `.book-page` is shorter than the screen height.
+                return `
+                    html, body, body.book-standalone {
+                        min-height: 100vh !important;
+                    }
+                    .book-page, .book-page--sheet, .sheet-flow, .prose-page, .toc-page, .title-page, main, article {
+                        background: transparent !important;
+                        background-color: transparent !important;
+                        background-image: none !important;
+                        box-shadow: none !important;
+                        position: relative !important;
+                        z-index: 2 !important;
+                    }
+                    .book-page--sheet::after {
+                        display: none !important;
+                        content: none !important;
+                    }
+                    body::before {
+                        content: '' !important;
+                        position: fixed !important;
+                        inset: 0 !important;
+                        width: 100vw !important;
+                        height: 100vh !important;
+                        pointer-events: none !important;
+                        z-index: 1 !important;
+                        background-image: ${bgImage} !important;
+                        ${bgSize ? `background-size: ${bgSize} !important;` : ''}
+                        ${boxShadow ? `box-shadow: ${boxShadow} !important;` : ''}
+                    }
+                `;
             }
 
             function buildCss(scalePct, lhVal, marginVal) {
@@ -694,7 +841,8 @@ enum ReaderAppearance {
                             .prose-page,
                             .prose-page p,
                             .prose-page li,
-                            .prose-page blockquote {
+                            .prose-page blockquote,
+                            .prose-page .exercise-instruction {
                                 line-height: ${lhVal} !important;
                             }
                         `);
@@ -736,13 +884,24 @@ enum ReaderAppearance {
                 if (hasCustomPaper || hasCustomInk) {
                     blocks.push(`
                         :root {
-                            ${hasCustomPaper ? `--paper: ${paperColor} !important; --canvas: ${paperColor} !important; --rule: ${ruleColor} !important; --rule-soft: ${ruleColor} !important; --code-bg: ${codeBg} !important;` : ''}
-                            ${effectiveInk ? `--ink: ${effectiveInk} !important;` : ''}
+                            ${hasCustomPaper ? `--book-paper: ${paperColor} !important; --paper: ${paperColor} !important; --canvas: ${paperColor} !important; --muted: ${mutedInk} !important; --book-accent: ${accentColor} !important; --accent: ${accentColor} !important; --book-rule: ${ruleColor} !important; --rule: ${ruleColor} !important; --rule-soft: ${ruleColor} !important; --code-bg: ${codeBg} !important;` : ''}
+                            ${effectiveInk ? `--book-ink: ${effectiveInk} !important; --ink: ${effectiveInk} !important;` : ''}
                             ${mutedInk ? `--muted-ink: ${mutedInk} !important;` : ''}
                         }
                         ${hasCustomPaper ? `
-                        html, body, body.book-standalone, .book-page, .book-page--sheet, .sheet-flow, .prose-page, .toc-page, .title-page {
+                        html, body, body.book-standalone {
+                            min-height: 100vh !important;
                             background-color: ${paperColor} !important;
+                            background: ${paperColor} !important;
+                        }
+                        .book-page, .book-page--sheet, .sheet-flow, .prose-page, .toc-page, .title-page, main, article {
+                            background-color: transparent !important;
+                            background: transparent !important;
+                            box-shadow: none !important;
+                        }
+                        .book-page--sheet::after {
+                            display: none !important;
+                            content: none !important;
                         }
                         ` : ''}
                         ${effectiveInk ? `
@@ -767,11 +926,7 @@ enum ReaderAppearance {
                 if (textureId && textureId !== 'default') {
                     const texCss = buildTextureCss(textureId, isDarkSurface);
                     if (texCss) {
-                        blocks.push(`
-                            body, body.book-standalone, .book-page, .book-page--sheet {
-                                ${texCss}
-                            }
-                        `);
+                        blocks.push(texCss);
                     }
                 }
 
@@ -786,6 +941,26 @@ enum ReaderAppearance {
                 const vh = window.innerHeight || docEl.clientHeight || 0;
                 if (vh <= 0) return false;
                 return Math.max(docEl.scrollHeight, bodyEl.scrollHeight) > vh + 6;
+            }
+
+            if (!document.documentElement.dataset.bkbOriginalPaper) {
+                const rootCs = getComputedStyle(document.documentElement);
+                const tokenPaper = (rootCs.getPropertyValue('--book-paper') || rootCs.getPropertyValue('--paper') || '').trim();
+                const bodyBg = document.body ? getComputedStyle(document.body).backgroundColor : '';
+                document.documentElement.dataset.bkbOriginalPaper = tokenPaper || bodyBg || '#f4f1ea';
+            }
+
+            if (!hasCustomPaper) {
+                const origPaper = document.documentElement.dataset.bkbOriginalPaper || '#f4f1ea';
+                document.documentElement.style.setProperty('background-color', origPaper, 'important');
+                if (document.body) {
+                    document.body.style.setProperty('background-color', origPaper, 'important');
+                }
+            } else {
+                document.documentElement.style.setProperty('background-color', paperColor, 'important');
+                if (document.body) {
+                    document.body.style.setProperty('background-color', paperColor, 'important');
+                }
             }
 
             let styleEl = document.getElementById(STYLE_ID);
@@ -845,8 +1020,6 @@ enum ReaderAppearance {
             // Compute effective background RGBA for WKWebView native canvas
             let rgba = null;
             const candidates = [
-                document.querySelector('.book-page'),
-                document.querySelector('article'),
                 document.body,
                 document.documentElement
             ];
@@ -857,10 +1030,6 @@ enum ReaderAppearance {
                 if (!match) continue;
                 const alpha = match[4] == null ? 1 : Number(match[4]);
                 if (alpha <= 0) continue;
-                document.documentElement.style.setProperty('background-color', value, 'important');
-                if (document.body) {
-                    document.body.style.setProperty('background-color', value, 'important');
-                }
                 rgba = [Number(match[1]), Number(match[2]), Number(match[3]), alpha];
                 break;
             }
@@ -875,4 +1044,3 @@ enum ReaderAppearance {
         """
     }
 }
-

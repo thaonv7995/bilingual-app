@@ -249,7 +249,7 @@ struct BilingualWebView: UIViewRepresentable {
                             width: 100% !important;
                             max-width: 100% !important;
                             height: auto !important;
-                            min-height: 100% !important;
+                            min-height: 100vh !important;
                             box-sizing: border-box !important;
                             overflow-x: hidden !important;
                             overflow-y: auto !important;
@@ -260,7 +260,7 @@ struct BilingualWebView: UIViewRepresentable {
                             width: 100% !important;
                             max-width: 100% !important;
                             height: auto !important;
-                            min-height: 100% !important;
+                            min-height: 100vh !important;
                             box-sizing: border-box !important;
                             display: block !important;
                             overflow-x: hidden !important;
@@ -272,6 +272,8 @@ struct BilingualWebView: UIViewRepresentable {
                             width: 100% !important;
                             max-width: 100% !important;
                             box-sizing: border-box !important;
+                            background: transparent !important;
+                            background-color: transparent !important;
                         }
                         .book-page, .book-page--sheet, .sheet-flow {
                             margin: 0 auto !important;
@@ -283,6 +285,13 @@ struct BilingualWebView: UIViewRepresentable {
                             max-height: none !important;
                             box-sizing: border-box !important;
                             overflow: visible !important;
+                            background: transparent !important;
+                            background-color: transparent !important;
+                            box-shadow: none !important;
+                        }
+                        .book-page--sheet::after {
+                            display: none !important;
+                            content: none !important;
                         }
                         * {
                             box-sizing: border-box !important;

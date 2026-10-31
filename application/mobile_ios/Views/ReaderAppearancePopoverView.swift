@@ -370,7 +370,10 @@ struct ReaderAppearancePopoverView: View {
                     ForEach(ReaderAppearance.themes) { t in
                         let isSelected = desc.themeId == t.id
                         Button(action: {
-                            updateDescriptor { $0.themeId = t.id }
+                            updateDescriptor {
+                                $0.themeId = t.id
+                                $0.customPaperColor = ""
+                            }
                         }) {
                             ZStack {
                                 if t.id == "default" {
@@ -406,14 +409,17 @@ struct ReaderAppearancePopoverView: View {
                         "",
                         selection: Binding(
                             get: {
-                                let hex = ReaderAppearance.isValidHexColor(desc.themeId)
-                                    ? desc.themeId
+                                let hex = (desc.themeId == "custom" && ReaderAppearance.isValidHexColor(desc.customPaperColor))
+                                    ? desc.customPaperColor
                                     : (currentTheme.paper.isEmpty ? "#fdf8ee" : currentTheme.paper)
                                 return Color(hex: String(hex.dropFirst()))
                             },
                             set: { newColor in
                                 let hex = hexString(from: newColor)
-                                updateDescriptor { $0.themeId = hex }
+                                updateDescriptor {
+                                    $0.themeId = "custom"
+                                    $0.customPaperColor = hex
+                                }
                             }
                         ),
                         supportsOpacity: false

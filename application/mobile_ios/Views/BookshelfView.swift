@@ -310,6 +310,21 @@ struct BookshelfView: View {
             await MainActor.run {
                 self.books = fetched
                 self.isLoading = false
+                for book in fetched {
+                    let rawFont = (book.readerFont ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    let rawTheme = (book.readerTheme ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    let normFont = rawFont.isEmpty ? "" : ReaderAppearance.getFont(rawFont).id
+                    let normTheme = rawTheme.isEmpty
+                        ? ""
+                        : ReaderAppearance.serializeThemeDescriptor(
+                            ReaderAppearance.parseThemeDescriptor(rawTheme)
+                        )
+                    ReaderAppearance.saveLocalOverride(
+                        slug: book.slug,
+                        readerFont: normFont,
+                        readerTheme: normTheme
+                    )
+                }
             }
             
             // Sync progress for each book from server in background
