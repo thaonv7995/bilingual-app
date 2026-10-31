@@ -25,14 +25,10 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
     @ViewBuilder var content: (Int) -> Content
     
     func makeUIViewController(context: Context) -> UIPageViewController {
-        // Use pageCurl on iPad for the book feel, scroll on iPhone to avoid
-        // gesture conflicts with WKWebView's scroll view
-        let isIPad = UIDevice.current.userInterfaceIdiom == .pad
-        let style: UIPageViewController.TransitionStyle = isIPad ? .pageCurl : .scroll
         let pvc = UIPageViewController(
-            transitionStyle: style,
+            transitionStyle: .pageCurl,
             navigationOrientation: .horizontal,
-            options: [UIPageViewController.OptionsKey.interPageSpacing: 16]
+            options: nil
         )
         pvc.dataSource = context.coordinator
         pvc.delegate = context.coordinator
@@ -118,11 +114,6 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
             
             if needsUpdate {
                 let dir: UIPageViewController.NavigationDirection = (currentPage >= context.coordinator.lastPage) ? .forward : .reverse
-                // Phone: slide programmatic jumps (jump-to-page, sync catch-up)
-                // instead of snapping. Not on the very first presentation
-                // (lastSinglePage == -1), and left untouched on iPad.
-                let animateJump = UIDevice.current.userInterfaceIdiom == .phone
-                    && context.coordinator.lastSinglePage != -1
                 context.coordinator.lastPage = currentPage
                 context.coordinator.lastSinglePage = currentPage
                 context.coordinator.lastOverlayRevision = overlayRevision
@@ -130,7 +121,7 @@ struct BookPagerView<Content: View>: UIViewControllerRepresentable {
                 let vc = context.coordinator.createVC(page: currentPage)
 
                 if uiViewController.spineLocation == .min || uiViewController.spineLocation == .max || uiViewController.spineLocation == .none {
-                    uiViewController.setViewControllers([vc], direction: dir, animated: animateJump)
+                    uiViewController.setViewControllers([vc], direction: dir, animated: false)
                 }
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
