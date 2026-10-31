@@ -87,28 +87,30 @@ struct ReaderAppearancePopoverView: View {
                     paperColorRow
                     textureRow
                 }
+                .padding(.vertical, 6)
             }
-            .frame(maxHeight: 380)
+            .frame(maxHeight: 500)
 
             footerView
         }
-        .frame(width: UIDevice.current.userInterfaceIdiom == .phone ? nil : 330)
+        .padding(.vertical, 4)
+        .frame(width: UIDevice.current.userInterfaceIdiom == .phone ? nil : 388)
         .background(Color(hex: "0d1321"))
         .preferredColorScheme(.dark)
     }
 
     private var headerView: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Text("Giao diện & Phông chữ")
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 14, weight: .bold))
                 .foregroundColor(Color(hex: "f8fafc"))
 
             if hasUserOverride {
                 Text("Tùy chỉnh")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 10.5, weight: .semibold))
                     .foregroundColor(Color(hex: "7dd3fc"))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
                     .background(Color(hex: "38bdf8").opacity(0.16))
                     .overlay(
                         Capsule().stroke(Color(hex: "38bdf8").opacity(0.35), lineWidth: 1)
@@ -120,16 +122,16 @@ struct ReaderAppearancePopoverView: View {
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11.5, weight: .bold))
                     .foregroundColor(Color(hex: "94a3b8"))
-                    .frame(width: 24, height: 24)
+                    .frame(width: 28, height: 28)
                     .background(Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 16)
         .background(Color.white.opacity(0.02))
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -143,17 +145,17 @@ struct ReaderAppearancePopoverView: View {
         let disablePlus = a4Status.atMaxA4Scale || desc.fontScale >= 140
 
         return settingRow {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 Text("Cỡ chữ")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(Color(hex: "cbd5e1"))
 
                 if a4Status.atMaxA4Scale || a4Status.clampedByA4 {
                     Text("Max A4")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9.5, weight: .bold))
                         .foregroundColor(Color(hex: "fbbf24"))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
                         .background(Color(hex: "f59e0b").opacity(0.18))
                         .overlay(
                             RoundedRectangle(cornerRadius: 4)
@@ -170,9 +172,9 @@ struct ReaderAppearancePopoverView: View {
                     updateDescriptor { $0.fontScale = max(80, shownScale - 5) }
                 }) {
                     Text("A−")
-                        .font(.system(size: 11.5, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundColor(shownScale <= 80 ? Color.gray.opacity(0.4) : Color(hex: "cbd5e1"))
-                        .frame(width: 34, height: 26)
+                        .frame(width: 38, height: 30)
                 }
                 .disabled(shownScale <= 80)
 
@@ -180,37 +182,37 @@ struct ReaderAppearancePopoverView: View {
                     updateDescriptor { $0.fontScale = 100 }
                 }) {
                     Text("\(shownScale)%")
-                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
                         .foregroundColor(Color(hex: "f1f5f9"))
-                        .frame(minWidth: 46, minHeight: 26)
+                        .frame(minWidth: 52, minHeight: 30)
                 }
 
                 Button(action: {
                     updateDescriptor { $0.fontScale = min(140, shownScale + 5) }
                 }) {
                     Text("A+")
-                        .font(.system(size: 11.5, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundColor(disablePlus ? Color.gray.opacity(0.4) : Color(hex: "cbd5e1"))
-                        .frame(width: 34, height: 26)
+                        .frame(width: 38, height: 30)
                 }
                 .disabled(disablePlus)
             }
             .background(Color.white.opacity(0.05))
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: 7)
                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .clipShape(RoundedRectangle(cornerRadius: 7))
         }
     }
 
     private var lineHeightRow: some View {
         settingRow {
             Text("Giãn dòng")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(Color(hex: "cbd5e1"))
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 10)
 
             segmentedButtons(
                 options: ReaderAppearance.lineHeightOptions,
@@ -225,10 +227,10 @@ struct ReaderAppearancePopoverView: View {
     private var fontFamilyRow: some View {
         settingRow {
             Text("Phông chữ")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(Color(hex: "cbd5e1"))
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 10)
 
             Menu {
                 ForEach(ReaderFontCategory.allCases, id: \.rawValue) { category in
@@ -251,26 +253,26 @@ struct ReaderAppearancePopoverView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Text(currentFont.label)
-                        .font(.system(size: 11.5, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(Color(hex: "f1f5f9"))
                         .lineLimit(1)
-                    Spacer(minLength: 4)
+                    Spacer(minLength: 6)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10.5, weight: .bold))
                         .foregroundColor(Color(hex: "94a3b8"))
                 }
-                .padding(.leading, 9)
-                .padding(.trailing, 9)
-                .frame(height: 27)
-                .frame(maxWidth: 195)
+                .padding(.leading, 12)
+                .padding(.trailing, 11)
+                .frame(height: 32)
+                .frame(maxWidth: 210)
                 .background(Color.white.opacity(0.05))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: 7)
                         .stroke(Color.white.opacity(0.11), lineWidth: 1)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(RoundedRectangle(cornerRadius: 7))
             }
         }
     }
@@ -278,10 +280,10 @@ struct ReaderAppearancePopoverView: View {
     private var pageMarginRow: some View {
         settingRow {
             Text("Lề trang")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(Color(hex: "cbd5e1"))
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 10)
 
             segmentedButtons(
                 options: ReaderAppearance.pageMarginOptions,
@@ -298,122 +300,130 @@ struct ReaderAppearancePopoverView: View {
             ?? (desc.inkColor == "auto" ? "Tự động" : desc.inkColor.uppercased())
 
         return stackedSettingRow(label: "Màu chữ", hint: hintText) {
-            HStack(spacing: 6) {
-                ForEach(ReaderAppearance.inks) { ink in
-                    let isSelected = desc.inkColor == ink.id
-                    Button(action: {
-                        updateDescriptor { $0.inkColor = ink.id }
-                    }) {
-                        ZStack {
-                            if ink.id == "auto" {
-                                Circle()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [Color(hex: "1e293b"), Color(hex: "475569")],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(ReaderAppearance.inks) { ink in
+                        let isSelected = desc.inkColor == ink.id
+                        Button(action: {
+                            updateDescriptor { $0.inkColor = ink.id }
+                        }) {
+                            ZStack {
+                                if ink.id == "auto" {
+                                    Circle()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [Color(hex: "1e293b"), Color(hex: "475569")],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
                                         )
-                                    )
-                                Text("Auto")
-                                    .font(.system(size: 7.5, weight: .bold))
-                                    .foregroundColor(.white)
-                            } else {
-                                Circle()
-                                    .fill(Color(hex: String(ink.color.dropFirst())))
+                                    Text("Auto")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundColor(.white)
+                                } else {
+                                    Circle()
+                                        .fill(Color(hex: String(ink.color.dropFirst())))
+                                }
                             }
+                            .frame(width: 26, height: 26)
+                            .overlay(
+                                Circle()
+                                    .stroke(
+                                        isSelected ? Color(hex: "38bdf8") : Color.white.opacity(0.28),
+                                        lineWidth: isSelected ? 2.2 : 1.2
+                                    )
+                            )
                         }
-                        .frame(width: 22, height: 22)
-                        .overlay(
-                            Circle()
-                                .stroke(
-                                    isSelected ? Color(hex: "38bdf8") : Color.white.opacity(0.28),
-                                    lineWidth: isSelected ? 2 : 1.2
-                                )
-                        )
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                }
 
-                ColorPicker(
-                    "",
-                    selection: Binding(
-                        get: {
-                            let hex = ReaderAppearance.isValidHexColor(desc.inkColor)
-                                ? desc.inkColor
-                                : (currentTheme.ink.isEmpty ? "#111827" : currentTheme.ink)
-                            return Color(hex: String(hex.dropFirst()))
-                        },
-                        set: { newColor in
-                            let hex = hexString(from: newColor)
-                            updateDescriptor { $0.inkColor = hex }
-                        }
-                    ),
-                    supportsOpacity: false
-                )
-                .labelsHidden()
-                .scaleEffect(0.82)
-                .frame(width: 24, height: 24)
+                    ColorPicker(
+                        "",
+                        selection: Binding(
+                            get: {
+                                let hex = ReaderAppearance.isValidHexColor(desc.inkColor)
+                                    ? desc.inkColor
+                                    : (currentTheme.ink.isEmpty ? "#111827" : currentTheme.ink)
+                                return Color(hex: String(hex.dropFirst()))
+                            },
+                            set: { newColor in
+                                let hex = hexString(from: newColor)
+                                updateDescriptor { $0.inkColor = hex }
+                            }
+                        ),
+                        supportsOpacity: false
+                    )
+                    .labelsHidden()
+                    .scaleEffect(0.9)
+                    .frame(width: 28, height: 28)
+                }
+                .padding(.vertical, 2)
+                .padding(.horizontal, 1)
             }
         }
     }
 
     private var paperColorRow: some View {
         stackedSettingRow(label: "Màu giấy", hint: currentTheme.label) {
-            HStack(spacing: 6) {
-                ForEach(ReaderAppearance.themes) { t in
-                    let isSelected = desc.themeId == t.id
-                    Button(action: {
-                        updateDescriptor { $0.themeId = t.id }
-                    }) {
-                        ZStack {
-                            if t.id == "default" {
-                                Circle()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [Color(hex: "1e293b"), Color(hex: "475569")],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(ReaderAppearance.themes) { t in
+                        let isSelected = desc.themeId == t.id
+                        Button(action: {
+                            updateDescriptor { $0.themeId = t.id }
+                        }) {
+                            ZStack {
+                                if t.id == "default" {
+                                    Circle()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [Color(hex: "1e293b"), Color(hex: "475569")],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
                                         )
-                                    )
-                                Text("Gốc")
-                                    .font(.system(size: 7.5, weight: .bold))
-                                    .foregroundColor(.white)
-                            } else {
-                                Circle()
-                                    .fill(Color(hex: String(t.paper.dropFirst())))
+                                    Text("Gốc")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundColor(.white)
+                                } else {
+                                    Circle()
+                                        .fill(Color(hex: String(t.paper.dropFirst())))
+                                }
                             }
+                            .frame(width: 26, height: 26)
+                            .overlay(
+                                Circle()
+                                    .stroke(
+                                        isSelected ? Color(hex: "38bdf8") : Color.white.opacity(0.28),
+                                        lineWidth: isSelected ? 2.2 : 1.2
+                                    )
+                            )
                         }
-                        .frame(width: 22, height: 22)
-                        .overlay(
-                            Circle()
-                                .stroke(
-                                    isSelected ? Color(hex: "38bdf8") : Color.white.opacity(0.28),
-                                    lineWidth: isSelected ? 2 : 1.2
-                                )
-                        )
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                }
 
-                ColorPicker(
-                    "",
-                    selection: Binding(
-                        get: {
-                            let hex = ReaderAppearance.isValidHexColor(desc.themeId)
-                                ? desc.themeId
-                                : (currentTheme.paper.isEmpty ? "#fdf8ee" : currentTheme.paper)
-                            return Color(hex: String(hex.dropFirst()))
-                        },
-                        set: { newColor in
-                            let hex = hexString(from: newColor)
-                            updateDescriptor { $0.themeId = hex }
-                        }
-                    ),
-                    supportsOpacity: false
-                )
-                .labelsHidden()
-                .scaleEffect(0.82)
-                .frame(width: 24, height: 24)
+                    ColorPicker(
+                        "",
+                        selection: Binding(
+                            get: {
+                                let hex = ReaderAppearance.isValidHexColor(desc.themeId)
+                                    ? desc.themeId
+                                    : (currentTheme.paper.isEmpty ? "#fdf8ee" : currentTheme.paper)
+                                return Color(hex: String(hex.dropFirst()))
+                            },
+                            set: { newColor in
+                                let hex = hexString(from: newColor)
+                                updateDescriptor { $0.themeId = hex }
+                            }
+                        ),
+                        supportsOpacity: false
+                    )
+                    .labelsHidden()
+                    .scaleEffect(0.9)
+                    .frame(width: 28, height: 28)
+                }
+                .padding(.vertical, 2)
+                .padding(.horizontal, 1)
             }
         }
     }
@@ -421,10 +431,10 @@ struct ReaderAppearancePopoverView: View {
     private var textureRow: some View {
         settingRow {
             Text("Chất liệu giấy")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(Color(hex: "cbd5e1"))
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 10)
 
             Menu {
                 ForEach(ReaderAppearance.textures) { tex in
@@ -440,26 +450,26 @@ struct ReaderAppearancePopoverView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Text(currentTexture.label)
-                        .font(.system(size: 11.5, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(Color(hex: "f1f5f9"))
                         .lineLimit(1)
-                    Spacer(minLength: 4)
+                    Spacer(minLength: 6)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10.5, weight: .bold))
                         .foregroundColor(Color(hex: "94a3b8"))
                 }
-                .padding(.leading, 9)
-                .padding(.trailing, 9)
-                .frame(height: 27)
-                .frame(maxWidth: 195)
+                .padding(.leading, 12)
+                .padding(.trailing, 11)
+                .frame(height: 32)
+                .frame(maxWidth: 210)
                 .background(Color.white.opacity(0.05))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: 7)
                         .stroke(Color.white.opacity(0.11), lineWidth: 1)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(RoundedRectangle(cornerRadius: 7))
             }
         }
     }
@@ -468,29 +478,29 @@ struct ReaderAppearancePopoverView: View {
         let saveTextColor: Color = isAlreadySavedAsBookDefault ? Color.white.opacity(0.55) : .white
         let saveBgOpacity: Double = isAlreadySavedAsBookDefault ? 0.45 : 1.0
 
-        return HStack(spacing: 8) {
+        return HStack(spacing: 10) {
             Button(action: onResetToBookDefault) {
                 Text("Về mặc định")
-                    .font(Font.system(size: 11.5, weight: .semibold))
+                    .font(Font.system(size: 12, weight: .semibold))
                     .foregroundColor(isAtBookDefault ? Color.gray.opacity(0.45) : Color(hex: "cbd5e1"))
-                    .padding(.horizontal, 10)
-                    .frame(height: 28)
+                    .padding(.horizontal, 14)
+                    .frame(height: 34)
                     .background(Color.white.opacity(0.05))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
+                        RoundedRectangle(cornerRadius: 7)
                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
             }
             .disabled(isAtBookDefault)
             .buttonStyle(.plain)
 
             Button(action: onSaveAsBookDefault) {
                 Text(saveDefaultButtonTitle)
-                    .font(Font.system(size: 11.5, weight: .semibold))
+                    .font(Font.system(size: 12, weight: .semibold))
                     .foregroundColor(saveTextColor)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 28)
+                    .frame(height: 34)
                     .background(
                         LinearGradient(
                             colors: [Color(hex: "0284c7"), Color(hex: "2563eb")],
@@ -500,16 +510,16 @@ struct ReaderAppearancePopoverView: View {
                         .opacity(saveBgOpacity)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
+                        RoundedRectangle(cornerRadius: 7)
                             .stroke(Color(hex: "38bdf8").opacity(0.4), lineWidth: 1)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
             }
             .disabled(isSavingDefault || isAlreadySavedAsBookDefault)
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 15)
         .background(Color.black.opacity(0.25))
         .overlay(alignment: .top) {
             Rectangle()
@@ -520,11 +530,11 @@ struct ReaderAppearancePopoverView: View {
 
     @ViewBuilder
     private func settingRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             content()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 14)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Color.white.opacity(0.055))
@@ -538,21 +548,21 @@ struct ReaderAppearancePopoverView: View {
         hint: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(label)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(Color(hex: "cbd5e1"))
                 Spacer()
                 Text(hint)
-                    .font(.system(size: 10.5, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(Color(hex: "38bdf8"))
                     .lineLimit(1)
             }
             content()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 14)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Color.white.opacity(0.055))
@@ -566,29 +576,29 @@ struct ReaderAppearancePopoverView: View {
         selected: String,
         onSelect: @escaping (String) -> Void
     ) -> some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 3) {
             ForEach(options, id: \.id) { opt in
                 let active = selected == opt.id
                 Button(action: { onSelect(opt.id) }) {
                     Text(opt.label)
-                        .font(.system(size: 10.5, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(active ? Color(hex: "38bdf8") : Color(hex: "94a3b8"))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
                         .background(
-                            RoundedRectangle(cornerRadius: 4.5)
+                            RoundedRectangle(cornerRadius: 5)
                                 .fill(active ? Color(hex: "38bdf8").opacity(0.2) : Color.clear)
                         )
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(2)
+        .padding(3)
         .background(Color.white.opacity(0.05))
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: 7)
                 .stroke(Color.white.opacity(0.09), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
     }
 }
