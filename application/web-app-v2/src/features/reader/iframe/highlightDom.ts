@@ -8,6 +8,7 @@
 import type { Highlight, HighlightLang } from '@/types/api';
 import { HIGHLIGHT_COLORS, setToolbarIcon } from '../highlightColors';
 import { loadHighlights } from '../highlightsStorage';
+import { applyInterlinearToDoc, clearInterlinearFromDoc } from './interlinearDom';
 import { getParagraphs, segmentDocSentences } from './segmentation';
 
 export interface SelectionInfo {
@@ -135,7 +136,9 @@ export function reapplyHighlightsInIframes(slug: string, pageNum: number, lang: 
   const iframe = document.querySelector<HTMLIFrameElement>(selector);
   const doc = iframe?.contentDocument;
   if (!doc) return;
+  const wasInterlinear = doc.documentElement.classList.contains('bilingual-interlinear-doc');
   removeReaderHighlightUI(doc);
+  clearInterlinearFromDoc(doc);
   doc.querySelectorAll('mark.reader-highlight').forEach((el) => {
     const parent = el.parentNode;
     if (!parent) return;
@@ -144,6 +147,14 @@ export function reapplyHighlightsInIframes(slug: string, pageNum: number, lang: 
   });
   segmentDocSentences(doc);
   applyStoredHighlights(doc, slug, pageNum, lang);
+  if (wasInterlinear) {
+    void applyInterlinearToDoc(doc, {
+      slug,
+      page: pageNum,
+      sourceLang: lang,
+      enabled: true,
+    });
+  }
 }
 
 // -- transient UI cleanup ----------------------------------------------------

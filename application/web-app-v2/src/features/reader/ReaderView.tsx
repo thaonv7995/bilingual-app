@@ -47,6 +47,12 @@ import {
   resolveBookBackground,
   setVocaPanelCss,
 } from './iframe/readerStyles';
+import {
+  applyInterlinearToDoc,
+  clearInterlinearFromDoc,
+  fetchOppositeInterlinearIndex,
+  measureInterlinearPageHeight,
+} from './iframe/interlinearDom';
 import { segmentDocSentences } from './iframe/segmentation';
 
 // Make the voca lookup-panel CSS part of the styles injected into each iframe.
@@ -197,8 +203,17 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   const hasCustomAppearance = effectiveFontId !== 'default' || effectiveThemeId !== 'default';
 
   const appearanceRef = useRef({ fontId: effectiveFontId, themeId: effectiveThemeId });
+  appearanceRef.current = { fontId: effectiveFontId, themeId: effectiveThemeId };
   const appearanceOpenRef = useRef(appearanceOpen);
   appearanceOpenRef.current = appearanceOpen;
+  const iframeResizeObserversRef = useRef<{ en?: ResizeObserver; vi?: ResizeObserver }>({});
+  useEffect(() => {
+    const observers = iframeResizeObserversRef.current;
+    return () => {
+      observers.en?.disconnect();
+      observers.vi?.disconnect();
+    };
+  }, []);
   const paneA4Ref = useRef<{
     en?: { appliedFontScale: number; clampedByA4: boolean; atMaxA4Scale: boolean };
     vi?: { appliedFontScale: number; clampedByA4: boolean; atMaxA4Scale: boolean };
@@ -213,26 +228,93 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     atMaxA4Scale: false,
   });
 
+  // -- scaling (A4 page -> fit) — ported from app.js:1098-1135 ---------------
+  const scaleIframes = useCallback(() => {
+    const wrappers = document.querySelectorAll<HTMLElement>('.iframe-wrapper');
+    let displayedScale: number | null = null;
+
+    wrappers.forEach((wrapper) => {
+      const iframe = wrapper.querySelector<HTMLIFrameElement>('.reader-iframe');
+      const stage = wrapper.querySelector<HTMLElement>('.iframe-stage');
+      if (!iframe || !stage) return;
+
+      const availableWidth = Math.max(wrapper.clientWidth - READER_VIEWPORT_PADDING, 100);
+      const availableHeight = Math.max(wrapper.clientHeight - READER_VIEWPORT_PADDING, 100);
+      const fitWidthScale = availableWidth / READER_PAGE_WIDTH;
+      const fitPageScale = Math.min(fitWidthScale, availableHeight / READER_PAGE_HEIGHT);
+
+      let scale = manualZoomRef.current;
+      if (zoomModeRef.current === 'fit-page') scale = fitPageScale;
+      if (zoomModeRef.current === 'fit-width') scale = fitWidthScale;
+      scale = clampReaderZoom(scale, 0.2);
+
+      const pageHeight = measureInterlinearPageHeight(iframe.contentDocument);
+      const scaledHeight = pageHeight * scale;
+
+      iframe.style.transform = `scale(${scale})`;
+      iframe.style.width = `${READER_PAGE_WIDTH}px`;
+      iframe.style.height = `${pageHeight}px`;
+      stage.style.width = `${READER_PAGE_WIDTH * scale}px`;
+      stage.style.height = `${scaledHeight}px`;
+      if (scaledHeight < availableHeight) {
+        stage.style.marginTop = `${Math.floor((availableHeight - scaledHeight) / 2)}px`;
+        stage.style.marginBottom = '0px';
+      } else {
+        stage.style.marginTop = '0px';
+        stage.style.marginBottom = '24px';
+      }
+      wrapper.dataset.zoomScale = String(scale);
+      if (displayedScale === null) displayedScale = scale;
+    });
+
+    if (displayedScale !== null) {
+      currentZoomRef.current = displayedScale;
+      if (displayedScale !== shownZoomRef.current) {
+        shownZoomRef.current = displayedScale;
+        setDisplayedZoom(displayedScale);
+      }
+    }
+  }, []);
+
   const syncAppearanceAndMeasureA4 = useCallback(
     (fontId: string, themeId: string, measureMaxScale = appearanceOpenRef.current) => {
+      const desc = parseThemeDescriptor(themeId);
       const results = [];
       if (enIframeRef.current?.contentDocument) {
-        const enRes = applyBookAppearance(
-          enIframeRef.current.contentDocument,
-          enIframeRef.current,
-          { fontId, themeId, measureMaxScale },
-        );
+        const enDoc = enIframeRef.current.contentDocument;
+        clearInterlinearFromDoc(enDoc);
+        const enRes = applyBookAppearance(enDoc, enIframeRef.current, {
+          fontId,
+          themeId,
+          measureMaxScale,
+        });
         paneA4Ref.current.en = enRes;
         results.push(enRes);
+        void applyInterlinearToDoc(enDoc, {
+          slug: book.slug,
+          page: requestedPageRef.current,
+          sourceLang: 'en',
+          enabled: desc.interlinear,
+          onLayoutUpdated: () => scaleIframes(),
+        });
       }
       if (viIframeRef.current?.contentDocument) {
-        const viRes = applyBookAppearance(
-          viIframeRef.current.contentDocument,
-          viIframeRef.current,
-          { fontId, themeId, measureMaxScale },
-        );
+        const viDoc = viIframeRef.current.contentDocument;
+        clearInterlinearFromDoc(viDoc);
+        const viRes = applyBookAppearance(viDoc, viIframeRef.current, {
+          fontId,
+          themeId,
+          measureMaxScale,
+        });
         paneA4Ref.current.vi = viRes;
         results.push(viRes);
+        void applyInterlinearToDoc(viDoc, {
+          slug: book.slug,
+          page: requestedPageRef.current,
+          sourceLang: 'vi',
+          enabled: desc.interlinear,
+          onLayoutUpdated: () => scaleIframes(),
+        });
       }
       if (results.length > 0) {
         const appliedFontScale = Math.min(...results.map((r) => r.appliedFontScale));
@@ -241,7 +323,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         setA4Status({ appliedFontScale, clampedByA4, atMaxA4Scale });
         return { appliedFontScale, clampedByA4, atMaxA4Scale };
       }
-      const reqScale = parseThemeDescriptor(themeId).fontScale || 100;
+      const reqScale = desc.fontScale || 100;
       const fallback = {
         appliedFontScale: reqScale,
         clampedByA4: false,
@@ -250,7 +332,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       setA4Status(fallback);
       return fallback;
     },
-    [],
+    [book.slug, scaleIframes],
   );
 
   useEffect(() => {
@@ -278,8 +360,13 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
 
   const handleSelectTheme = useCallback(
     (themeId: string) => {
-      const prevScale = parseThemeDescriptor(effectiveThemeId).fontScale || 100;
+      const prevDesc = parseThemeDescriptor(effectiveThemeId);
+      const prevScale = prevDesc.fontScale || 100;
       const requestedDesc = parseThemeDescriptor(themeId);
+      if (requestedDesc.interlinear && !prevDesc.interlinear && viewMode === 'split') {
+        setViewModeState('en');
+        writeString(STORAGE_KEYS.viewMode, 'en');
+      }
       const measured = syncAppearanceAndMeasureA4(effectiveFontId, themeId, true);
 
       let finalThemeId = themeId;
@@ -316,6 +403,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       syncAppearanceAndMeasureA4,
       toast,
       updateBookState,
+      viewMode,
     ],
   );
 
@@ -438,44 +526,6 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   const enPageUrl = `/books/${encodeURIComponent(book.slug)}/output/en/page_${padPage(page)}.html`;
   const viPageUrl = `/books/${encodeURIComponent(book.slug)}/output/vi/page_${padPage(page)}.html`;
 
-  // -- scaling (A4 page -> fit) — ported from app.js:1098-1135 ---------------
-  const scaleIframes = useCallback(() => {
-    const wrappers = document.querySelectorAll<HTMLElement>('.iframe-wrapper');
-    let displayedScale: number | null = null;
-
-    wrappers.forEach((wrapper) => {
-      const iframe = wrapper.querySelector<HTMLElement>('.reader-iframe');
-      const stage = wrapper.querySelector<HTMLElement>('.iframe-stage');
-      if (!iframe || !stage) return;
-
-      const availableWidth = Math.max(wrapper.clientWidth - READER_VIEWPORT_PADDING, 100);
-      const availableHeight = Math.max(wrapper.clientHeight - READER_VIEWPORT_PADDING, 100);
-      const fitWidthScale = availableWidth / READER_PAGE_WIDTH;
-      const fitPageScale = Math.min(fitWidthScale, availableHeight / READER_PAGE_HEIGHT);
-
-      let scale = manualZoomRef.current;
-      if (zoomModeRef.current === 'fit-page') scale = fitPageScale;
-      if (zoomModeRef.current === 'fit-width') scale = fitWidthScale;
-      scale = clampReaderZoom(scale, 0.2);
-
-      iframe.style.transform = `scale(${scale})`;
-      iframe.style.width = `${READER_PAGE_WIDTH}px`;
-      iframe.style.height = `${READER_PAGE_HEIGHT}px`;
-      stage.style.width = `${READER_PAGE_WIDTH * scale}px`;
-      stage.style.height = `${READER_PAGE_HEIGHT * scale}px`;
-      wrapper.dataset.zoomScale = String(scale);
-      if (displayedScale === null) displayedScale = scale;
-    });
-
-    if (displayedScale !== null) {
-      currentZoomRef.current = displayedScale;
-      if (displayedScale !== shownZoomRef.current) {
-        shownZoomRef.current = displayedScale;
-        setDisplayedZoom(displayedScale);
-      }
-    }
-  }, []);
-
   const selectZoomMode = useCallback(
     (mode: ZoomMode) => {
       zoomModeRef.current = mode;
@@ -592,8 +642,24 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     [audiobook, viewMode, setViewMode],
   );
 
+  const handleToggleInterlinear = useCallback(() => {
+    const nextEnabled = !resolvedAppearance.effectiveDescriptor.interlinear;
+    const nextTheme = serializeThemeDescriptor({
+      ...resolvedAppearance.effectiveDescriptor,
+      interlinear: nextEnabled,
+    });
+    handleSelectTheme(nextTheme);
+  }, [resolvedAppearance.effectiveDescriptor, handleSelectTheme]);
+
   const handleSetViewMode = useCallback(
     (newViewMode: ViewMode) => {
+      if (newViewMode === 'split' && resolvedAppearance.effectiveDescriptor.interlinear) {
+        const nextTheme = serializeThemeDescriptor({
+          ...resolvedAppearance.effectiveDescriptor,
+          interlinear: false,
+        });
+        handleSelectTheme(nextTheme);
+      }
       setViewMode(newViewMode);
       if (audiobookOpen) {
         if (newViewMode === 'en' && audiobook.mode === 'vi') {
@@ -603,7 +669,13 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         }
       }
     },
-    [setViewMode, audiobookOpen, audiobook],
+    [
+      setViewMode,
+      audiobookOpen,
+      audiobook,
+      resolvedAppearance.effectiveDescriptor,
+      handleSelectTheme,
+    ],
   );
 
   // -- iframe load: auth-retry, BKB paper sync, hide internal nav --------------
@@ -667,6 +739,28 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
 
         segmentDocSentences(doc);
         applyStoredHighlights(doc, book.slug, loadedPage, lang);
+        const currentDesc = parseThemeDescriptor(appearanceRef.current.themeId);
+        void applyInterlinearToDoc(doc, {
+          slug: book.slug,
+          page: loadedPage,
+          sourceLang: lang,
+          enabled: currentDesc.interlinear,
+          onLayoutUpdated: () => scaleIframes(),
+        });
+
+        iframeResizeObserversRef.current[lang]?.disconnect();
+        if (typeof ResizeObserver !== 'undefined') {
+          const ro = new ResizeObserver(() => {
+            scaleIframes();
+          });
+          const bookPageEl = doc.querySelector<HTMLElement>('.book-page');
+          const flowEl = doc.querySelector<HTMLElement>('.prose-page, .toc-page, .sheet-flow');
+          if (bookPageEl) ro.observe(bookPageEl);
+          if (flowEl && flowEl !== bookPageEl) ro.observe(flowEl);
+          if (doc.body) ro.observe(doc.body);
+          iframeResizeObserversRef.current[lang] = ro;
+        }
+
         const win = iframeEl.contentWindow;
         if (win) registerIframeHighlightListeners(win, doc, lang);
       } catch (err) {
@@ -730,7 +824,10 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       setViewMode('vi');
     } else if (e.key === '3' && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
-      setViewMode('split');
+      handleSetViewMode('split');
+    } else if (key === 'i' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      handleToggleInterlinear();
     } else if (key === 'a' && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
       setAppearanceOpen((v) => !v);
@@ -848,22 +945,28 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       const candidates = [page + 1, page + 2, page - 1].filter(
         (p) => p >= 1 && p <= book.pageCount,
       );
+      const isInterlinear = parseThemeDescriptor(effectiveThemeId).interlinear;
       for (const candidatePage of candidates) {
         for (const lang of langs) {
           const url = `/books/${encodeURIComponent(book.slug)}/output/${lang}/page_${padPage(candidatePage)}.html`;
-          if (prefetchedUrlsRef.current.has(url)) continue;
-          prefetchedUrlsRef.current.add(url);
-          void fetch(url, { credentials: 'include', priority: 'low' } as RequestInit).catch(
-            () => {
-              prefetchedUrlsRef.current.delete(url);
-            },
-          );
+          if (!prefetchedUrlsRef.current.has(url)) {
+            prefetchedUrlsRef.current.add(url);
+            void fetch(url, { credentials: 'include', priority: 'low' } as RequestInit).catch(
+              () => {
+                prefetchedUrlsRef.current.delete(url);
+              },
+            );
+          }
+          if (isInterlinear) {
+            const targetLang = lang === 'en' ? 'vi' : 'en';
+            void fetchOppositeInterlinearIndex(book.slug, candidatePage, targetLang);
+          }
         }
       }
     }, 120);
 
     return () => window.clearTimeout(timer);
-  }, [book.slug, book.pageCount, page, showEn, showVi]);
+  }, [book.slug, book.pageCount, page, showEn, showVi, effectiveThemeId]);
 
   return (
     <div className="reader-view">
@@ -894,6 +997,8 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         onOpenSettings={() => setSettingsOpen(true)}
         audiobookOpen={audiobookOpen}
         onToggleAudiobook={() => setAudiobookOpen((v) => !v)}
+        interlinear={resolvedAppearance.effectiveDescriptor.interlinear}
+        onToggleInterlinear={handleToggleInterlinear}
         appearanceOpen={appearanceOpen}
         hasCustomAppearance={hasCustomAppearance}
         onToggleAppearance={() => setAppearanceOpen((v) => !v)}

@@ -564,6 +564,98 @@ export function applyBookAppearance(
       cssBlocks.push(buildTextureCss(desc.textureId, isDarkSurface));
     }
 
+    if (desc.interlinear) {
+      const alpha = ((desc.interlinearOpacity || 55) / 100).toFixed(2);
+      const subColor = isDarkSurface
+        ? `rgba(186, 198, 216, ${alpha})`
+        : `rgba(88, 78, 66, ${alpha})`;
+      cssBlocks.push(`
+        html,
+        body,
+        body.book-standalone {
+          height: auto !important;
+          min-height: 0 !important;
+          max-height: none !important;
+          overflow: hidden !important;
+          display: block !important;
+        }
+        .book-page,
+        .book-page.book-page--sheet {
+          height: auto !important;
+          min-height: 297mm !important;
+          max-height: none !important;
+          overflow: visible !important;
+          margin: 0 auto !important;
+          padding-bottom: 0 !important;
+        }
+        .book-page--sheet::after,
+        .book-page::after {
+          display: none !important;
+          content: none !important;
+        }
+        .sheet-flow,
+        .prose-page,
+        .prose-page.chapter-page,
+        .prose-page.chapter-body-page,
+        .prose-page.manning-chapter-page,
+        .prose-page.ocp-chapter-page,
+        .prose-page.copy,
+        .prose-page.preface-page,
+        .sheet-flow.prose-page,
+        .toc-page,
+        .unit-page,
+        article.sheet-flow,
+        article.prose-page {
+          height: auto !important;
+          min-height: 297mm !important;
+          max-height: none !important;
+          overflow: visible !important;
+          padding-bottom: 24mm !important;
+        }
+        .prose-content,
+        .toc-columns-container,
+        .copy-content {
+          height: auto !important;
+          max-height: none !important;
+          overflow: visible !important;
+        }
+        .prose-page p,
+        .prose-page li,
+        .prose-page blockquote,
+        .prose-page dd p {
+          text-align: left !important;
+        }
+        .bilingual-subline {
+          display: block !important;
+          font-family: -apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Segoe UI', sans-serif !important;
+          font-size: 0.74em !important;
+          line-height: 1.36 !important;
+          font-weight: 400 !important;
+          font-style: normal !important;
+          color: ${subColor} !important;
+          background: transparent !important;
+          margin: 1.5px 0 7px 0 !important;
+          padding: 0 0 3px 0 !important;
+          text-indent: 0 !important;
+          text-align: left !important;
+          letter-spacing: normal !important;
+          user-select: none !important;
+          -webkit-user-select: none !important;
+          pointer-events: none !important;
+          border-bottom: 1px dotted ${
+            isDarkSurface ? 'rgba(148, 163, 184, 0.10)' : 'rgba(120, 113, 108, 0.13)'
+          } !important;
+        }
+        .bilingual-subline::before {
+          content: attr(data-subtext);
+        }
+        .sentence-node.highlight-sync .bilingual-subline {
+          color: ${isDarkSurface ? 'rgba(226, 232, 240, 0.92)' : 'rgba(41, 37, 36, 0.88)'} !important;
+          font-weight: 500 !important;
+        }
+      `);
+    }
+
     return cssBlocks;
   };
 
@@ -597,7 +689,7 @@ export function applyBookAppearance(
     appliedLineHeight !== 'default' ||
     appliedMargin === 'wide';
 
-  if (hasTypographyChange && doesDocOverflowA4(doc)) {
+  if (!desc.interlinear && hasTypographyChange && doesDocOverflowA4(doc)) {
     const minScale = font.id !== 'default' ? 85 : 100;
     while (appliedScale > minScale && doesDocOverflowA4(doc)) {
       appliedScale = Math.max(minScale, appliedScale - 2);
@@ -619,8 +711,8 @@ export function applyBookAppearance(
   // Probe whether +5% fontScale would overflow A4 only when the appearance
   // popover is open (measureMaxScale === true), avoiding 2 extra full-page
   // synchronous reflows on every single page turn while reading normally.
-  let atMaxA4Scale = appliedScale >= 140 || clampedByA4;
-  if (options.measureMaxScale && !atMaxA4Scale) {
+  let atMaxA4Scale = appliedScale >= 140 || (!desc.interlinear && clampedByA4);
+  if (!desc.interlinear && options.measureMaxScale && !atMaxA4Scale) {
     writeCss(buildCssForScale(appliedScale + 5, appliedLineHeight, appliedMargin));
     if (doesDocOverflowA4(doc)) {
       atMaxA4Scale = true;

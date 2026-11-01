@@ -480,6 +480,9 @@ struct BilingualWebView: UIViewRepresentable {
         };
 
         window.applyStoredHighlights = function(highlights) {
+            if (window.clearIOSInterlinear) {
+                window.clearIOSInterlinear();
+            }
             // Remove existing highlights first
             document.querySelectorAll('mark.reader-highlight').forEach(el => {
                 const parent = el.parentNode;
@@ -493,6 +496,9 @@ struct BilingualWebView: UIViewRepresentable {
                 if (!paragraph) return;
                 window.wrapTextRange(paragraph, h.startOffset, h.endOffset, h);
             });
+            if (window.reapplyIOSInterlinearIfNeeded) {
+                window.reapplyIOSInterlinearIfNeeded();
+            }
         };
 
         window.getSelectionInfo = function(selection) {
@@ -896,6 +902,230 @@ struct BilingualWebView: UIViewRepresentable {
             });
         };
 
+        window.__iosInterlinearPayload = null;
+        window.__iosOppositePageKey = null;
+        window.__iosOppositeParagraphs = null;
+
+        window.clearIOSInterlinear = function() {
+            const sublines = document.querySelectorAll('.bilingual-subline');
+            if (!sublines.length) return;
+            const parents = new Set();
+            sublines.forEach((el) => {
+                if (el.parentNode) parents.add(el.parentNode);
+                el.remove();
+            });
+            parents.forEach((p) => {
+                try { p.normalize(); } catch (_) {}
+            });
+        };
+
+        function distributeWordsByWeights(words, weights) {
+            if (!weights.length) return [];
+            if (!words.length) return weights.map(() => '');
+            if (weights.length === 1) return [words.join(' ')];
+            const safeWeights = weights.map((w) => Math.max(1, w));
+            const totalWeight = safeWeights.reduce((a, b) => a + b, 0);
+            const totalWords = words.length;
+            const out = [];
+            let cumWeight = 0;
+            let prevIdx = 0;
+            for (let i = 0; i < safeWeights.length; i++) {
+                cumWeight += safeWeights[i];
+                const nextIdx = i === safeWeights.length - 1
+                    ? totalWords
+                    : Math.max(prevIdx, Math.min(totalWords, Math.round((cumWeight / totalWeight) * totalWords)));
+                out.push(words.slice(prevIdx, nextIdx).join(' '));
+                prevIdx = nextIdx;
+            }
+            return out;
+        }
+
+        function allocateTargetToVisualLines(lines, targetSentences) {
+            if (!lines.length) return [];
+            const cleaned = (targetSentences || []).map((s) => String(s || '').replace(/\\s+/g, ' ').trim()).filter(Boolean);
+            if (!cleaned.length) return lines.map(() => '');
+            if (lines.length === 1) return [cleaned.join(' ')];
+
+            let maxSentenceIdx = 0;
+            lines.forEach((l) => {
+                l.tokens.forEach((t) => {
+                    if (t.sentenceIndex > maxSentenceIdx) maxSentenceIdx = t.sentenceIndex;
+                });
+            });
+            const sourceSentenceCount = maxSentenceIdx + 1;
+
+            if (sourceSentenceCount === cleaned.length) {
+                const buckets = lines.map(() => []);
+                for (let sIdx = 0; sIdx < sourceSentenceCount; sIdx++) {
+                    const words = cleaned[sIdx].split(/\\s+/).filter(Boolean);
+                    if (!words.length) continue;
+                    const lineIndices = [];
+                    const weights = [];
+                    lines.forEach((line, lIdx) => {
+                        let w = 0;
+                        line.tokens.forEach((t) => {
+                            if (t.sentenceIndex === sIdx) w += t.weight;
+                        });
+                        if (w > 0) {
+                            lineIndices.push(lIdx);
+                            weights.push(w);
+                        }
+                    });
+                    if (!lineIndices.length) continue;
+                    const slices = distributeWordsByWeights(words, weights);
+                    lineIndices.forEach((lIdx, idx) => {
+                        if (slices[idx]) buckets[lIdx].push(slices[idx]);
+                    });
+                }
+                return buckets.map((parts) => parts.join(' ').trim());
+            }
+
+            const allWords = cleaned.join(' ').split(/\\s+/).filter(Boolean);
+            return distributeWordsByWeights(allWords, lines.map((l) => Math.max(1, l.totalWeight)));
+        }
+
+        function getOppositeParagraphMap(html, pageKey) {
+            if (window.__iosOppositePageKey === pageKey && window.__iosOppositeParagraphs) {
+                return window.__iosOppositeParagraphs;
+            }
+            const parsedDoc = new DOMParser().parseFromString(html || '', 'text/html');
+            segmentDocSentences(parsedDoc);
+            const article = parsedDoc.querySelector('article') || parsedDoc.body;
+            const paragraphs = new Map();
+            if (article) {
+                Array.from(article.querySelectorAll(PARAGRAPH_SELECTOR)).forEach((p, pIdx) => {
+                    const nodes = Array.from(p.querySelectorAll('.sentence-node'));
+                    const list = [];
+                    nodes.forEach((node) => {
+                        const text = (node.textContent || '').replace(/\\s+/g, ' ').trim();
+                        if (text) list.push(text);
+                    });
+                    if (!list.length) {
+                        const fallback = (p.textContent || '').replace(/\\s+/g, ' ').trim();
+                        if (fallback) list.push(fallback);
+                    }
+                    if (list.length) paragraphs.set(pIdx, list);
+                });
+            }
+            window.__iosOppositePageKey = pageKey;
+            window.__iosOppositeParagraphs = paragraphs;
+            return paragraphs;
+        }
+
+        function measureVisualLinesInParagraph(p) {
+            if (p.closest('pre, code, .code-block, .ascii-figure, .math, .formula, .formula-display')) {
+                return [];
+            }
+            const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+            const wordTokens = [];
+            while (walker.nextNode()) {
+                const textNode = walker.currentNode;
+                const parentEl = textNode.parentElement;
+                if (!parentEl) continue;
+                if (parentEl.closest('.bilingual-subline, pre, .code-block, .ascii-figure')) continue;
+                const raw = textNode.nodeValue || '';
+                if (!raw.trim()) continue;
+                const span = parentEl.closest('.sentence-node');
+                const mId = span && span.dataset.sentenceId ? /^p-\\d+-s-(\\d+)$/.exec(span.dataset.sentenceId) : null;
+                const sIdx = mId ? parseInt(mId[1], 10) : 0;
+                const wordRegex = /\\S+/g;
+                let match;
+                while ((match = wordRegex.exec(raw)) !== null) {
+                    const start = match.index;
+                    const end = start + match[0].length;
+                    let trailingEnd = end;
+                    while (trailingEnd < raw.length && (raw[trailingEnd] === ' ' || raw[trailingEnd] === '\\t')) {
+                        trailingEnd++;
+                    }
+                    wordTokens.push({
+                        node: textNode,
+                        start,
+                        end,
+                        trailingEnd,
+                        weight: Math.max(1, match[0].length),
+                        sentenceIndex: sIdx
+                    });
+                }
+            }
+            if (!wordTokens.length) return [];
+            const range = document.createRange();
+            const lines = [];
+            for (const token of wordTokens) {
+                try {
+                    range.setStart(token.node, token.start);
+                    range.setEnd(token.node, token.end);
+                    const rect = range.getBoundingClientRect();
+                    if (rect.width === 0 && rect.height === 0) continue;
+                    const currentLine = lines[lines.length - 1];
+                    if (!currentLine || Math.abs(rect.top - currentLine.top) > 6) {
+                        lines.push({
+                            top: rect.top,
+                            tokens: [{ sentenceIndex: token.sentenceIndex, weight: token.weight }],
+                            totalWeight: token.weight,
+                            lastToken: token
+                        });
+                    } else {
+                        currentLine.tokens.push({ sentenceIndex: token.sentenceIndex, weight: token.weight });
+                        currentLine.totalWeight += token.weight;
+                        currentLine.lastToken = token;
+                    }
+                } catch (_) {}
+            }
+            return lines;
+        }
+
+        window.applyIOSInterlinear = function(payload) {
+            window.clearIOSInterlinear();
+            if (!payload || !payload.enabled) {
+                window.__iosInterlinearPayload = null;
+                return;
+            }
+            window.__iosInterlinearPayload = payload;
+            const paragraphMap = getOppositeParagraphMap(payload.targetHtml || '', payload.pageKey || '');
+            const paragraphs = window.getParagraphs ? window.getParagraphs() : [];
+            paragraphs.forEach((p, pIdx) => {
+                const targetSentences = paragraphMap.get(pIdx);
+                if (!targetSentences || !targetSentences.length) return;
+                const sourceFull = (p.textContent || '').replace(/\\s+/g, ' ').trim();
+                const targetFull = targetSentences.join(' ').replace(/\\s+/g, ' ').trim();
+                if (!sourceFull || !targetFull) return;
+                if (sourceFull.toLowerCase() === targetFull.toLowerCase()) return;
+
+                const lines = measureVisualLinesInParagraph(p);
+                if (!lines.length) return;
+                const subTexts = allocateTargetToVisualLines(lines, targetSentences);
+                for (let i = lines.length - 1; i >= 0; i--) {
+                    const subText = (subTexts[i] || '').trim();
+                    if (!subText) continue;
+                    const sub = document.createElement('span');
+                    sub.className = 'bilingual-subline';
+                    sub.setAttribute('data-bilingual-sub', '1');
+                    sub.setAttribute('data-subtext', subText);
+                    sub.setAttribute('aria-hidden', 'true');
+                    if (i === lines.length - 1) {
+                        p.appendChild(sub);
+                    } else {
+                        const lastToken = lines[i].lastToken;
+                        try {
+                            const insertRange = document.createRange();
+                            const safeOffset = Math.min(lastToken.trailingEnd, (lastToken.node.nodeValue || '').length);
+                            insertRange.setStart(lastToken.node, safeOffset);
+                            insertRange.collapse(true);
+                            insertRange.insertNode(sub);
+                        } catch (_) {
+                            p.appendChild(sub);
+                        }
+                    }
+                }
+            });
+        };
+
+        window.reapplyIOSInterlinearIfNeeded = function() {
+            if (window.__iosInterlinearPayload && window.__iosInterlinearPayload.enabled) {
+                window.applyIOSInterlinear(window.__iosInterlinearPayload);
+            }
+        };
+
         // Run sentence segmentation on current document deferred
         requestAnimationFrame(() => {
             setTimeout(() => {
@@ -1092,6 +1322,7 @@ struct BilingualWebView: UIViewRepresentable {
         var contentSizeObserver: NSKeyValueObservation?
         var lastLoadedPageKey: String?
         var isDrawingLoading = false
+        static var oppositeHtmlCache: [String: String] = [:]
         
         init(_ parent: BilingualWebView) {
             self.parent = parent
@@ -1291,6 +1522,8 @@ struct BilingualWebView: UIViewRepresentable {
 
         func applyBookAppearance(in webView: WKWebView) {
             let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+            let desc = ReaderAppearance.parseThemeDescriptor(parent.effectiveThemeId)
+            webView.evaluateJavaScript("if (window.clearIOSInterlinear) { window.clearIOSInterlinear(); }", completionHandler: nil)
             let js = ReaderAppearance.buildApplyAppearanceJS(
                 fontId: parent.effectiveFontId,
                 themeId: parent.effectiveThemeId,
@@ -1299,6 +1532,15 @@ struct BilingualWebView: UIViewRepresentable {
             )
             webView.evaluateJavaScript(js) { [weak self] result, _ in
                 guard let self = self else { return }
+                Self.syncInterlinear(
+                    in: webView,
+                    slug: self.parent.bookSlug,
+                    page: self.parent.page,
+                    sourceLang: self.parent.lang,
+                    enabled: desc.interlinear,
+                    serverUrl: self.parent.api.serverUrl,
+                    token: self.parent.api.token
+                )
                 if let dict = result as? [String: Any] {
                     if let components = dict["rgba"] as? [NSNumber], components.count == 4 {
                         let color = UIColor(
@@ -1331,6 +1573,77 @@ struct BilingualWebView: UIViewRepresentable {
                 } else {
                     self.syncBookBackground(in: webView)
                 }
+            }
+        }
+
+        static func fetchOppositePageHtml(slug: String, page: Int, targetLang: String, serverUrl: String, token: String, completion: @escaping (String?) -> Void) {
+            let cacheKey = "\(slug):\(page):\(targetLang)"
+            if let cached = Self.oppositeHtmlCache[cacheKey] {
+                completion(cached)
+                return
+            }
+
+            if let localURL = BookCacheManager.shared.localPageURL(slug: slug, lang: targetLang, page: page),
+               let html = try? String(contentsOf: localURL, encoding: .utf8), !html.isEmpty {
+                if Self.oppositeHtmlCache.count > 40 {
+                    Self.oppositeHtmlCache.removeAll()
+                }
+                Self.oppositeHtmlCache[cacheKey] = html
+                completion(html)
+                return
+            }
+
+            let padPage = String(format: "%04d", max(1, page))
+            let urlStr = "\(serverUrl)/books/\(slug)/output/\(targetLang)/page_\(padPage).html?token=\(token)"
+            guard let url = URL(string: urlStr) else {
+                completion(nil)
+                return
+            }
+
+            URLSession.shared.dataTask(with: url) { data, response, _ in
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                      let data = data,
+                      let html = String(data: data, encoding: .utf8), !html.isEmpty else {
+                    DispatchQueue.main.async { completion(nil) }
+                    return
+                }
+                DispatchQueue.main.async {
+                    if Self.oppositeHtmlCache.count > 40 {
+                        Self.oppositeHtmlCache.removeAll()
+                    }
+                    Self.oppositeHtmlCache[cacheKey] = html
+                    completion(html)
+                }
+            }.resume()
+        }
+
+        static func syncInterlinear(
+            in webView: WKWebView,
+            slug: String,
+            page: Int,
+            sourceLang: String,
+            enabled: Bool,
+            serverUrl: String,
+            token: String
+        ) {
+            guard enabled else {
+                webView.evaluateJavaScript("if (window.clearIOSInterlinear) { window.clearIOSInterlinear(); }", completionHandler: nil)
+                return
+            }
+            let targetLang = sourceLang == "en" ? "vi" : "en"
+            let pageKey = "\(slug):\(page):\(targetLang)"
+
+            fetchOppositePageHtml(slug: slug, page: page, targetLang: targetLang, serverUrl: serverUrl, token: token) { [weak webView] html in
+                guard let webView = webView, let html = html else { return }
+                let payload: [String: Any] = [
+                    "enabled": true,
+                    "pageKey": pageKey,
+                    "targetHtml": html
+                ]
+                guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
+                      let jsonStr = String(data: data, encoding: .utf8) else { return }
+                let js = "if (window.applyIOSInterlinear) { window.applyIOSInterlinear(\(jsonStr)); }"
+                webView.evaluateJavaScript(js, completionHandler: nil)
             }
         }
 

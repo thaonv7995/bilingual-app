@@ -79,6 +79,7 @@ struct ReaderAppearancePopoverView: View {
 
             ScrollView {
                 VStack(spacing: 0) {
+                    interlinearRow
                     fontScaleRow
                     lineHeightRow
                     fontFamilyRow
@@ -137,6 +138,26 @@ struct ReaderAppearancePopoverView: View {
             Rectangle()
                 .fill(Color.white.opacity(0.08))
                 .frame(height: 1)
+        }
+    }
+
+    private var interlinearRow: some View {
+        settingRow {
+            Text("Độ đậm dòng dịch")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Color(hex: "cbd5e1"))
+
+            Spacer(minLength: 10)
+
+            segmentedButtons(
+                options: ReaderAppearance.interlinearOpacityOptions.map { ("\($0.id)", $0.label) },
+                selected: "\(desc.interlinearOpacity)",
+                onSelect: { val in
+                    if let n = Int(val) {
+                        updateDescriptor { $0.interlinearOpacity = n }
+                    }
+                }
+            )
         }
     }
 

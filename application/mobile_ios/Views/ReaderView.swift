@@ -422,6 +422,13 @@ struct ReaderView: View {
                         .onChange(of: useDoubleSided) { readerUsesDoubleSided = $0 }
                         .onChange(of: viewMode) { newViewMode in
                             readerUsesDoubleSided = useDoubleSided
+                            if newViewMode == "split" {
+                                var desc = ReaderAppearance.parseThemeDescriptor(effectiveThemeId)
+                                if desc.interlinear {
+                                    desc.interlinear = false
+                                    selectAppearanceTheme(ReaderAppearance.serializeThemeDescriptor(desc))
+                                }
+                            }
                             // Keep the audiobook language aligned with the
                             // language page currently shown in the reader.
                             // Split mode preserves the user's last selection.
@@ -488,6 +495,8 @@ struct ReaderView: View {
                                 dismiss()
                             },
                             onToggleFinished: toggleBookFinished,
+                            isInterlinear: ReaderAppearance.parseThemeDescriptor(effectiveThemeId).interlinear,
+                            onToggleInterlinear: toggleInterlinearMode,
                             onFontDecrease: { adjustAppearanceScale(by: -5) },
                             onFontIncrease: { adjustAppearanceScale(by: 5) },
                             onSelectFont: selectAppearanceFont,
@@ -1097,14 +1106,28 @@ struct ReaderView: View {
     }
 
     private func applyAppearanceToMountedWebViews(fontId: String, themeId: String) {
+        let desc = ReaderAppearance.parseThemeDescriptor(themeId)
         let js = ReaderAppearance.buildApplyAppearanceJS(
             fontId: fontId,
             themeId: themeId,
             isPhone: isPhone,
             viewMode: viewMode
         )
-        for (_, wv) in webViews {
+        for (key, wv) in webViews {
+            let parts = key.split(separator: "-")
+            let parsedPage = parts.last.flatMap { Int($0) } ?? page
+            let parsedLang = parts.count >= 2 ? String(parts[parts.count - 2]) : (viewMode == "vi" ? "vi" : "en")
+            wv.evaluateJavaScript("if (window.clearIOSInterlinear) { window.clearIOSInterlinear(); }", completionHandler: nil)
             wv.evaluateJavaScript(js) { result, _ in
+                BilingualWebView.Coordinator.syncInterlinear(
+                    in: wv,
+                    slug: self.book.slug,
+                    page: parsedPage,
+                    sourceLang: parsedLang,
+                    enabled: desc.interlinear,
+                    serverUrl: self.api.serverUrl,
+                    token: self.api.token
+                )
                 if let dict = result as? [String: Any] {
                     if let components = dict["rgba"] as? [NSNumber], components.count == 4 {
                         let color = UIColor(
@@ -1156,7 +1179,12 @@ struct ReaderView: View {
     }
 
     private func selectAppearanceTheme(_ themeId: String) {
-        let canonical = ReaderAppearance.serializeThemeDescriptor(ReaderAppearance.parseThemeDescriptor(themeId))
+        let prevDesc = ReaderAppearance.parseThemeDescriptor(effectiveThemeId)
+        let nextDesc = ReaderAppearance.parseThemeDescriptor(themeId)
+        if nextDesc.interlinear && !prevDesc.interlinear && viewMode == "split" {
+            viewMode = "en"
+        }
+        let canonical = ReaderAppearance.serializeThemeDescriptor(nextDesc)
         let nextTheme = canonical == bookDefaultTheme ? "" : canonical
         let currentFont = localReaderFont
         localReaderTheme = nextTheme
@@ -1178,6 +1206,12 @@ struct ReaderView: View {
     private func adjustAppearanceScale(by deltaPct: Int) {
         var desc = ReaderAppearance.parseThemeDescriptor(effectiveThemeId)
         desc.fontScale = max(60, min(200, desc.fontScale + deltaPct))
+        selectAppearanceTheme(ReaderAppearance.serializeThemeDescriptor(desc))
+    }
+
+    private func toggleInterlinearMode() {
+        var desc = ReaderAppearance.parseThemeDescriptor(effectiveThemeId)
+        desc.interlinear.toggle()
         selectAppearanceTheme(ReaderAppearance.serializeThemeDescriptor(desc))
     }
 
@@ -3969,6 +4003,8 @@ struct ReaderHeaderView: View {
     
     var onDismiss: () -> Void
     var onToggleFinished: () -> Void
+    var isInterlinear: Bool = false
+    var onToggleInterlinear: () -> Void = {}
     // Phone-only: font stepper actions in the view-mode menu.
     var onFontDecrease: () -> Void = {}
     var onFontIncrease: () -> Void = {}
@@ -4075,6 +4111,14 @@ struct ReaderHeaderView: View {
                         .stroke(Color.white.opacity(0.1), lineWidth: 1)
                 )
             }
+
+            Button(action: onToggleInterlinear) {
+                Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(isInterlinear ? Color(hex: "38bdf8") : .white)
+                    .frame(width: 28, height: 28)
+            }
+            .accessibilityLabel("Đọc song ngữ trên 1 trang")
 
             Button(action: { isAppearanceOpen.toggle() }) {
                 ZStack(alignment: .topTrailing) {
@@ -4228,6 +4272,27 @@ struct ReaderHeaderView: View {
                 .opacity(isUpdatingFinished ? 0.5 : 1)
             }
             
+            Button(action: onToggleInterlinear) {
+                Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(isInterlinear ? Color(hex: "38bdf8") : .white)
+                    .frame(width: 30, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isInterlinear ? Color(hex: "38bdf8").opacity(0.18) : Color(hex: "1e293b"))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(
+                                isInterlinear
+                                    ? Color(hex: "38bdf8").opacity(0.45)
+                                    : Color.white.opacity(0.1),
+                                lineWidth: 1
+                            )
+                    )
+            }
+            .accessibilityLabel("Đọc song ngữ trên 1 trang")
+
             Button(action: { isAppearanceOpen.toggle() }) {
                 ZStack(alignment: .topTrailing) {
                     Text("Aa")

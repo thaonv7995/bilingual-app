@@ -48,6 +48,7 @@ export interface ReaderTextureOption {
 
 export type PageMarginPreset = 'default' | 'compact' | 'normal' | 'wide';
 export type LineHeightPreset = 'default' | '1.35' | '1.5' | '1.65' | '1.8';
+export type InterlinearOpacityPreset = 35 | 55 | 80;
 
 export interface ParsedThemeDescriptor {
   /** Preset theme ID ('default', 'paper-sepia', ...) or 'custom' when customPaperColor is set */
@@ -64,6 +65,10 @@ export interface ParsedThemeDescriptor {
   lineHeight: LineHeightPreset;
   /** Horizontal page margin preset ('default' | 'compact' | 'normal' | 'wide') */
   pageMargin: PageMarginPreset;
+  /** Single-page line-by-line bilingual interlinear mode */
+  interlinear: boolean;
+  /** Opacity percentage for the secondary translation subline (35 | 55 | 80) */
+  interlinearOpacity: InterlinearOpacityPreset;
 }
 
 export const DEFAULT_THEME_DESCRIPTOR: ParsedThemeDescriptor = {
@@ -74,6 +79,8 @@ export const DEFAULT_THEME_DESCRIPTOR: ParsedThemeDescriptor = {
   fontScale: 100,
   lineHeight: 'default',
   pageMargin: 'default',
+  interlinear: false,
+  interlinearOpacity: 55,
 };
 
 export const READER_FONTS: ReaderFontOption[] = [
@@ -416,6 +423,12 @@ export const LINE_HEIGHT_OPTIONS: { id: LineHeightPreset; label: string }[] = [
   { id: '1.8', label: '1.8' },
 ];
 
+export const INTERLINEAR_OPACITY_OPTIONS: { id: InterlinearOpacityPreset; label: string }[] = [
+  { id: 35, label: 'Mờ 35%' },
+  { id: 55, label: 'Dịu 55%' },
+  { id: 80, label: 'Rõ 80%' },
+];
+
 export function getReaderFont(fontId?: string | null): ReaderFontOption {
   if (!fontId) return READER_FONTS[0]!;
   return READER_FONTS.find((f) => f.id === fontId) ?? READER_FONTS[0]!;
@@ -513,6 +526,13 @@ export function parseThemeDescriptor(raw?: string | null): ParsedThemeDescriptor
       out.lineHeight = val as LineHeightPreset;
     } else if (key === 'margin' && VALID_MARGINS.has(val as PageMarginPreset)) {
       out.pageMargin = val as PageMarginPreset;
+    } else if (key === 'il') {
+      out.interlinear = val === '1' || val === 'true';
+    } else if (key === 'ilop') {
+      const n = parseInt(val, 10);
+      if (n === 35 || n === 55 || n === 80) {
+        out.interlinearOpacity = n;
+      }
     }
   }
 
@@ -553,6 +573,12 @@ export function serializeThemeDescriptor(desc: Partial<ParsedThemeDescriptor>): 
   }
   if (merged.pageMargin && merged.pageMargin !== 'default') {
     segments.push(`margin=${merged.pageMargin}`);
+  }
+  if (merged.interlinear) {
+    segments.push('il=1');
+  }
+  if (merged.interlinearOpacity && merged.interlinearOpacity !== 55) {
+    segments.push(`ilop=${merged.interlinearOpacity}`);
   }
 
   return segments.join(';');

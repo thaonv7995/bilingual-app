@@ -468,7 +468,7 @@
   height: 1123px;
   position: relative;
   flex: 0 0 auto;
-  margin: auto;
+  margin: 0 auto;
 }
 
 .reader-iframe {
@@ -1129,3 +1129,4 @@
 .reader-appearance-btn--primary:hover:not(:disabled) {
   filter: brightness(1.08);
 }
+

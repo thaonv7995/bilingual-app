@@ -62,6 +62,8 @@ struct ReaderThemeDescriptor: Equatable {
     var pageMargin: String = "default"
     var inkColor: String = "auto"
     var textureId: String = "default"
+    var interlinear: Bool = false
+    var interlinearOpacity: Int = 55
 }
 
 struct ReaderA4Status: Equatable {
@@ -420,6 +422,12 @@ enum ReaderAppearance {
         ("wide", "Rộng"),
     ]
 
+    static let interlinearOpacityOptions: [(id: Int, label: String)] = [
+        (35, "Mờ 35%"),
+        (55, "Dịu 55%"),
+        (80, "Rõ 80%"),
+    ]
+
     static func getFont(_ fontId: String?) -> ReaderFontOption {
         let trimmed = (fontId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return fonts.first(where: { $0.id == trimmed }) ?? fonts[0]
@@ -523,6 +531,12 @@ enum ReaderAppearance {
                 if ["default", "compact", "normal", "wide"].contains(val) {
                     result.pageMargin = val
                 }
+            case "il":
+                result.interlinear = (val == "1" || val == "true")
+            case "ilop":
+                if let n = Int(val), [35, 55, 80].contains(n) {
+                    result.interlinearOpacity = n
+                }
             default:
                 break
             }
@@ -573,6 +587,12 @@ enum ReaderAppearance {
         }
         if !normalized.pageMargin.isEmpty && normalized.pageMargin != "default" {
             segments.append("margin=\(normalized.pageMargin)")
+        }
+        if normalized.interlinear {
+            segments.append("il=1")
+        }
+        if normalized.interlinearOpacity != 55 && [35, 55, 80].contains(normalized.interlinearOpacity) {
+            segments.append("ilop=\(normalized.interlinearOpacity)")
         }
 
         return segments.joined(separator: ";")
@@ -685,6 +705,8 @@ enum ReaderAppearance {
             const codeBg = "\(theme.codeBg)";
             const isDarkSurface = \(isDarkSurface ? "true" : "false");
             const textureId = "\(desc.textureId)";
+            const interlinear = \(desc.interlinear ? "true" : "false");
+            const interlinearOpacity = \(desc.interlinearOpacity);
             const isPhone = \(isPhone ? "true" : "false");
             const viewMode = "\(viewMode)";
 
@@ -928,6 +950,62 @@ enum ReaderAppearance {
                     if (texCss) {
                         blocks.push(texCss);
                     }
+                }
+
+                if (interlinear) {
+                    const alpha = ((interlinearOpacity || 55) / 100.0).toFixed(2);
+                    const subColor = isDarkSurface
+                        ? `rgba(186, 198, 216, ${alpha})`
+                        : `rgba(88, 78, 66, ${alpha})`;
+                    const dotColor = isDarkSurface
+                        ? 'rgba(148, 163, 184, 0.10)'
+                        : 'rgba(120, 113, 108, 0.13)';
+                    blocks.push(`
+                        html, body, body.book-standalone,
+                        .book-page, .book-page.book-page--sheet,
+                        .sheet-flow, .prose-page, .prose-page.chapter-page,
+                        .prose-page.chapter-body-page, .prose-page.manning-chapter-page,
+                        .prose-page.ocp-chapter-page, .prose-page.copy,
+                        .prose-page.preface-page, .sheet-flow.prose-page,
+                        .toc-page, .unit-page, .prose-content, .toc-columns-container,
+                        article.sheet-flow, article.prose-page {
+                            height: auto !important;
+                            max-height: none !important;
+                            overflow: visible !important;
+                        }
+                        .book-page--sheet::after, .book-page::after {
+                            display: none !important;
+                            content: none !important;
+                        }
+                        .prose-page, .sheet-flow {
+                            padding-bottom: 24mm !important;
+                        }
+                        .prose-page p, .prose-page li, .prose-page blockquote, .prose-page dd p {
+                            text-align: left !important;
+                        }
+                        .bilingual-subline {
+                            display: block !important;
+                            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif !important;
+                            font-size: 0.74em !important;
+                            line-height: 1.36 !important;
+                            font-weight: 400 !important;
+                            font-style: normal !important;
+                            color: ${subColor} !important;
+                            background: transparent !important;
+                            margin: 1.5px 0 7px 0 !important;
+                            padding: 0 0 3px 0 !important;
+                            text-indent: 0 !important;
+                            text-align: left !important;
+                            letter-spacing: normal !important;
+                            user-select: none !important;
+                            -webkit-user-select: none !important;
+                            pointer-events: none !important;
+                            border-bottom: 1px dotted ${dotColor} !important;
+                        }
+                        .bilingual-subline::before {
+                            content: attr(data-subtext);
+                        }
+                    `);
                 }
 
                 return blocks.join('\\n');

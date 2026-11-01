@@ -30,6 +30,8 @@ export function ReaderTopbar({
   onToggleFinished,
   audiobookOpen,
   onToggleAudiobook,
+  interlinear,
+  onToggleInterlinear,
   appearanceOpen,
   hasCustomAppearance,
   onToggleAppearance,
@@ -56,6 +58,8 @@ export function ReaderTopbar({
   onToggleFinished: () => void;
   audiobookOpen?: boolean;
   onToggleAudiobook?: () => void;
+  interlinear?: boolean;
+  onToggleInterlinear?: () => void;
   appearanceOpen?: boolean;
   hasCustomAppearance?: boolean;
   onToggleAppearance?: () => void;
@@ -208,6 +212,22 @@ export function ReaderTopbar({
             </button>
           ))}
         </div>
+
+        {onToggleInterlinear && (
+          <button
+            className={`btn-icon btn-reader-interlinear ${interlinear ? 'active' : ''}`}
+            onClick={onToggleInterlinear}
+            title={
+              interlinear
+                ? 'Tắt đọc song ngữ trên 1 trang (I)'
+                : 'Bật đọc song ngữ trên 1 trang — Line-by-Line (I)'
+            }
+            aria-label="Đọc song ngữ trên 1 trang"
+            aria-pressed={Boolean(interlinear)}
+          >
+            <InterlinearIcon />
+          </button>
+        )}
 
         {onToggleAppearance && (
           <button
@@ -391,6 +411,26 @@ function HeadphonesIcon() {
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
       <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+    </svg>
+  );
+}
+
+function InterlinearIcon() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="3" y1="5" x2="21" y2="5" strokeWidth="2.2" />
+      <line x1="6" y1="9.5" x2="18" y2="9.5" strokeWidth="1.6" strokeDasharray="2.5 2.5" opacity="0.78" />
+      <line x1="3" y1="15" x2="21" y2="15" strokeWidth="2.2" />
+      <line x1="6" y1="19.5" x2="16" y2="19.5" strokeWidth="1.6" strokeDasharray="2.5 2.5" opacity="0.78" />
     </svg>
   );
 }

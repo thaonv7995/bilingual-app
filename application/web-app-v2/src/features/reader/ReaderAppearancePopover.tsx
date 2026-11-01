@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import {
+  INTERLINEAR_OPACITY_OPTIONS,
   LINE_HEIGHT_OPTIONS,
   PAGE_MARGIN_OPTIONS,
   READER_FONTS,
@@ -11,6 +12,7 @@ import {
   parseThemeDescriptor,
   preloadReaderFontsInAppDocument,
   serializeThemeDescriptor,
+  type InterlinearOpacityPreset,
   type LineHeightPreset,
   type PageMarginPreset,
   type PaperTextureId,
@@ -132,7 +134,30 @@ export function ReaderAppearancePopover({
 
       {/* Compact Settings List */}
       <div className="reader-appearance-list">
-        {/* 1. Page Margin */}
+        {/* 1. Subline Opacity for Single-Page Interlinear Mode */}
+        <div className="reader-setting-row">
+          <span className="reader-setting-row__label">Độ đậm dòng dịch</span>
+          <div className="reader-setting-row__control">
+            <div className="reader-segmented reader-segmented--full">
+              {INTERLINEAR_OPACITY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={`reader-segmented__btn ${
+                    (desc.interlinearOpacity || 55) === opt.id ? 'is-active' : ''
+                  }`}
+                  onClick={() =>
+                    updateDescriptor({ interlinearOpacity: opt.id as InterlinearOpacityPreset })
+                  }
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Page Margin */}
         <div className="reader-setting-row">
           <span className="reader-setting-row__label">Lề trang</span>
           <div className="reader-setting-row__control">
