@@ -56,7 +56,13 @@ export function BookCard({
           <StarIcon filled={book.isPriority} />
         </button>
         {book.cover ? (
-          <img className={styles.coverImg} src={book.cover} alt={book.title} />
+          <img
+            className={styles.coverImg}
+            src={book.cover}
+            alt={book.title}
+            loading={index < 8 ? 'eager' : 'lazy'}
+            decoding="async"
+          />
         ) : (
           <div className={styles.coverFallback}>
             <h4>{book.title}</h4>

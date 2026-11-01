@@ -25,6 +25,8 @@ export interface HighlightContext {
   deleteHighlight: (id: string) => void;
   /** Voca lookup (Phase 5). Receives the raw selected text + anchor. */
   onLookup?: (text: string, doc: Document, anchorRect: DOMRect) => void;
+  /** Forward non-editable keydown events from inside book iframes to the parent reader. */
+  onKeyDown?: (event: KeyboardEvent) => void;
 }
 
 let currentContext: HighlightContext | null = null;
@@ -341,11 +343,30 @@ export function clearAllHighlights(): void {
 
 // -- listeners ---------------------------------------------------------------
 
+const boundDocuments = new WeakSet<Document>();
+
 export function registerIframeHighlightListeners(
   win: Window,
   doc: Document,
   lang: HighlightLang,
 ): void {
+  if (boundDocuments.has(doc)) return;
+  boundDocuments.add(doc);
+
+  doc.addEventListener('keydown', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+    currentContext?.onKeyDown?.(e);
+  });
+
   doc.addEventListener('mousedown', (e) => {
     const target = e.target as Element;
     if (target.closest('mark.reader-highlight, .reader-highlight-toolbar, .reader-highlight-sticky, .voca-lookup-panel')) return;

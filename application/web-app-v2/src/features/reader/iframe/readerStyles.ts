@@ -300,7 +300,7 @@ export interface ApplyAppearanceResult {
 export function applyBookAppearance(
   doc: Document | null | undefined,
   iframeEl: HTMLIFrameElement | null | undefined,
-  options: { fontId: string; themeId: string },
+  options: { fontId: string; themeId: string; measureMaxScale?: boolean },
 ): ApplyAppearanceResult {
   const desc = parseThemeDescriptor(options.themeId);
   const defaultResult: ApplyAppearanceResult = {
@@ -616,9 +616,11 @@ export function applyBookAppearance(
     }
   }
 
-  // Probe whether +5% fontScale would overflow A4 so the UI can disable the A+ button
+  // Probe whether +5% fontScale would overflow A4 only when the appearance
+  // popover is open (measureMaxScale === true), avoiding 2 extra full-page
+  // synchronous reflows on every single page turn while reading normally.
   let atMaxA4Scale = appliedScale >= 140 || clampedByA4;
-  if (!atMaxA4Scale) {
+  if (options.measureMaxScale && !atMaxA4Scale) {
     writeCss(buildCssForScale(appliedScale + 5, appliedLineHeight, appliedMargin));
     if (doesDocOverflowA4(doc)) {
       atMaxA4Scale = true;

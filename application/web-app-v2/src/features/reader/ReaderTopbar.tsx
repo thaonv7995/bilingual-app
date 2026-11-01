@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { ProfileMenu } from '@/components/ProfileMenu';
 import type { Book, ViewMode } from '@/types/api';
 import { formatReaderZoom, type ZoomMode } from './readerConstants';
@@ -61,6 +62,25 @@ export function ReaderTopbar({
   onOpenSettings: () => void;
   onLogout: () => void;
 }) {
+  const [draftPage, setDraftPage] = useState(() => String(page));
+
+  useEffect(() => {
+    setDraftPage(String(page));
+  }, [page]);
+
+  const commitDraftPage = () => {
+    const parsed = parseInt(draftPage, 10);
+    if (isNaN(parsed)) {
+      setDraftPage(String(page));
+      return;
+    }
+    const clamped = Math.max(1, Math.min(book.pageCount || 1, parsed));
+    setDraftPage(String(clamped));
+    if (clamped !== page) {
+      onGoToPage(clamped);
+    }
+  };
+
   return (
     <div className="reader-topbar">
       <div className="reader-topbar__left">
@@ -74,6 +94,7 @@ export function ReaderTopbar({
         <div className="reader-nav">
           <button
             className="nav-btn page-nav__menu"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               const val = prompt(`Nhập số trang cần chuyển (1 - ${book.pageCount}):`, String(page));
               if (val) {
@@ -91,6 +112,7 @@ export function ReaderTopbar({
           <button
             className="nav-btn page-nav__arrow"
             disabled={page <= 1}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => onStep(-1)}
             aria-label="Trang trước"
           >
@@ -102,12 +124,19 @@ export function ReaderTopbar({
               type="number"
               min={1}
               max={book.pageCount}
-              value={page}
-              onChange={(e) => {
-                let val = parseInt(e.target.value, 10);
-                if (isNaN(val) || val < 1) val = 1;
-                if (val > book.pageCount) val = book.pageCount;
-                onGoToPage(val);
+              value={draftPage}
+              onChange={(e) => setDraftPage(e.target.value)}
+              onBlur={commitDraftPage}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitDraftPage();
+                  e.currentTarget.blur();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setDraftPage(String(page));
+                  e.currentTarget.blur();
+                }
               }}
               aria-label="Số trang hiện tại"
             />
@@ -116,6 +145,7 @@ export function ReaderTopbar({
           <button
             className="nav-btn page-nav__arrow"
             disabled={page >= book.pageCount}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => onStep(1)}
             aria-label="Trang sau"
           >

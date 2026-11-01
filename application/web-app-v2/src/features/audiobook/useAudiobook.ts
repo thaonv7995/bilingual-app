@@ -34,6 +34,7 @@ interface UseAudiobookOptions {
   viewMode: 'en' | 'vi' | 'split';
   enIframeRef: React.RefObject<HTMLIFrameElement | null>;
   viIframeRef: React.RefObject<HTMLIFrameElement | null>;
+  enabled?: boolean;
   onNextPage: () => void;
   onPrevPage?: () => void;
 }
@@ -45,6 +46,7 @@ export function useAudiobook({
   viewMode,
   enIframeRef,
   viIframeRef,
+  enabled = true,
   onNextPage,
   onPrevPage,
 }: UseAudiobookOptions) {
@@ -665,6 +667,7 @@ export function useAudiobook({
 
   // Connect Web MediaSession action handlers (Lock Screen & Media Key controls)
   useEffect(() => {
+    if (!enabled) return;
     setupMediaSessionActionHandlers({
       onPlay: () => play(),
       onPause: () => pause(),
@@ -674,7 +677,7 @@ export function useAudiobook({
       onSkipForward: () => nextSentence(),
       onSkipBackward: () => prevSentence(),
     });
-  }, [play, pause, nextSentence, prevSentence]);
+  }, [enabled, play, pause, nextSentence, prevSentence]);
 
   // Re-extract sentences when page or viewMode changes, and auto-continue playback on page change
   useEffect(() => {
@@ -687,13 +690,20 @@ export function useAudiobook({
     // audio synthesized for the previous page. Automatic audiobook page turns
     // are the only page transition allowed to continue playback.
     if (pageChanged && !shouldContinueOnNewPage) {
-      playingRef.current = false;
-      setIsPlaying(false);
-      stopCurrentAudio();
-      setMediaSessionPlaybackState('paused');
-      highlightSentence(null);
+      if (playingRef.current) {
+        playingRef.current = false;
+        setIsPlaying(false);
+        stopCurrentAudio();
+        setMediaSessionPlaybackState('paused');
+        highlightSentence(null);
+      }
       currentSentenceIndexRef.current = 0;
       setCurrentSentenceIndex(0);
+    }
+
+    // Do not scan DOM or re-fetch HTML on every page turn while Audiobook bar is closed.
+    if (!enabled && !playingRef.current && !shouldContinueOnNewPage) {
+      return;
     }
 
     // Check memory cache first
@@ -738,6 +748,7 @@ export function useAudiobook({
       clearTimeout(timer);
     };
   }, [
+    enabled,
     currentPage,
     viewMode,
     mode,
@@ -746,6 +757,7 @@ export function useAudiobook({
     startFullPagePlayback,
     bookSlug,
     fetchSentencesDirectly,
+    highlightSentence,
   ]);
 
   // Clean up on unmount

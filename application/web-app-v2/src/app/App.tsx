@@ -5,8 +5,11 @@ import { ToastProvider } from '@/components/Toast';
 import { ConfirmProvider } from '@/components/Modal';
 import { LoginView } from '@/features/auth/LoginView';
 import { LibraryView } from '@/features/library/LibraryView';
+import { BOOKS_QUERY_KEY } from '@/features/library/useBooks';
 import { ReaderView } from '@/features/reader/ReaderView';
 import { useAuthStore } from '@/features/auth/authStore';
+import { apiJson } from '@/lib/api-client';
+import type { Book } from '@/types/api';
 import {
   getServerSettings,
   migrateLegacySecrets,
@@ -47,18 +50,22 @@ export function App() {
 function AuthGate() {
   const status = useAuthStore((s) => s.status);
   const bootstrap = useAuthStore((s) => s.bootstrap);
-  const settingsHydrated = useSettingsStore((s) => s.hydrated);
 
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
 
   // The server is the single source of truth. After authentication:
-  // 1. migrate legacy secrets and public preferences once;
-  // 2. fetch the canonical server state;
-  // 3. hydrate the synchronous runtime store used by feature modules.
+  // kick off the book shelf fetch immediately in parallel with background
+  // settings hydration so neither the library nor deep-linked reader pages
+  // wait behind a sequential settings splash screen.
   useEffect(() => {
     if (status !== 'authenticated') return;
+
+    void queryClient.prefetchQuery({
+      queryKey: BOOKS_QUERY_KEY,
+      queryFn: () => apiJson<Book[]>('/api/books'),
+    });
 
     let cancelled = false;
 
@@ -109,7 +116,6 @@ function AuthGate() {
 
   if (status === 'loading') return <SplashScreen />;
   if (status !== 'authenticated') return <LoginView />;
-  if (!settingsHydrated) return <SettingsSplashScreen />;
 
   return (
     <Routes>
@@ -118,16 +124,6 @@ function AuthGate() {
       <Route path="/read/:slug/page/:page" element={<ReaderView />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-  );
-}
-
-function SettingsSplashScreen() {
-  return (
-    <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}>
-      <p style={{ color: 'var(--text-muted)' }}>
-        Đang đồng bộ cài đặt từ server…
-      </p>
-    </div>
   );
 }
 

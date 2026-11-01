@@ -629,6 +629,20 @@ export function resolveEffectiveBookAppearance(
 }
 
 let previewFontsPreloaded = false;
+/** Load a single Google Font into the parent document so browser font cache stays warm across iframe page turns. */
+export function preloadSingleReaderFont(fontId: string): void {
+  if (typeof document === 'undefined' || !fontId || fontId === 'default') return;
+  const font = getReaderFont(fontId);
+  if (!font.googleFontUrl) return;
+  const linkId = `bilingual-preview-font-${font.id}`;
+  if (document.getElementById(linkId)) return;
+  const link = document.createElement('link');
+  link.id = linkId;
+  link.rel = 'stylesheet';
+  link.href = font.googleFontUrl;
+  document.head.appendChild(link);
+}
+
 /** Load Google Fonts into the parent document once so font picker previews render accurately. */
 export function preloadReaderFontsInAppDocument(): void {
   if (previewFontsPreloaded || typeof document === 'undefined') return;

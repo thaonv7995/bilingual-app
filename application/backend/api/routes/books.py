@@ -134,8 +134,10 @@ def serve_secure_book_static(slug: str, path: str, request: Request, db: Session
             detail="Book resource file not found."
         )
 
+    suffix = file_path.suffix.lower()
+
     # If it is an HTML page and embed=1 is requested, inject the Smart Quote listener
-    if file_path.suffix.lower() == ".html" and request.query_params.get("embed") == "1":
+    if suffix == ".html" and request.query_params.get("embed") == "1":
         try:
             content = file_path.read_text(encoding="utf-8")
             smart_quote_script = """
@@ -222,11 +224,19 @@ def serve_secure_book_static(slug: str, path: str, request: Request, db: Session
                 content = content.replace("</body>", f"{smart_quote_script}\n</body>")
             else:
                 content += smart_quote_script
-            return HTMLResponse(content=content, media_type="text/html")
+            return HTMLResponse(
+                content=content,
+                media_type="text/html",
+                headers={"Cache-Control": "private, max-age=3600"},
+            )
         except Exception:
             pass
-        
-    return FileResponse(file_path)
+
+    cache_max_age = 3600 if suffix == ".html" else 86400
+    return FileResponse(
+        file_path,
+        headers={"Cache-Control": f"private, max-age={cache_max_age}"},
+    )
 
 # --- Books CRUD APIs ---
 @router.get("")

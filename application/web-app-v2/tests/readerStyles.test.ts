@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  applyBookAppearance,
   doesDocOverflowA4,
   resolveBookBackground,
 } from '../src/features/reader/iframe/readerStyles.ts';
@@ -67,4 +68,72 @@ test('doesDocOverflowA4 detects when prose scrollHeight exceeds A4 sheet clientH
 
   assert.equal(doesDocOverflowA4(docOverflow), true);
   assert.equal(doesDocOverflowA4(docFit), false);
+});
+
+test('applyBookAppearance skips +5% overflow probe unless measureMaxScale is true', () => {
+  let styleWriteCount = 0;
+  let currentCss = '';
+  const elementsById = new Map<string, { id: string; textContent: string; remove: () => void }>();
+
+  const head = {
+    appendChild: (el: { id: string; textContent: string; remove: () => void }) => {
+      elementsById.set(el.id, el);
+    },
+  };
+
+  // Overflows only when scale reaches 105% (i.e. 1.050 ratio in CSS)
+  const flowEl = {
+    get scrollHeight() {
+      return currentCss.includes('1.050') ? 1180 : 1122;
+    },
+    clientHeight: 1122,
+    getBoundingClientRect: () => ({ top: 0, bottom: 1122, height: 1122, width: 794 }),
+    querySelectorAll: () => [],
+  };
+
+  const doc = {
+    head,
+    body: flowEl,
+    documentElement: head,
+    getElementById: (id: string) => elementsById.get(id) ?? null,
+    createElement: () => {
+      const el = {
+        id: '',
+        get textContent() {
+          return currentCss;
+        },
+        set textContent(val: string) {
+          styleWriteCount++;
+          currentCss = val;
+        },
+        remove() {
+          elementsById.delete(el.id);
+          currentCss = '';
+        },
+      };
+      return el;
+    },
+    querySelector: () => flowEl,
+    defaultView: {
+      getComputedStyle: () => ({ backgroundColor: 'rgb(255, 253, 248)' }),
+    },
+  } as unknown as Document;
+
+  // Normal page turn (measureMaxScale omitted): no +5% probe reflow
+  const normalRes = applyBookAppearance(doc, null, {
+    fontId: 'default',
+    themeId: 'paper-sepia',
+  });
+  assert.equal(normalRes.atMaxA4Scale, false);
+  assert.equal(styleWriteCount, 1);
+
+  // Appearance popover open (measureMaxScale: true): runs +5% probe and restores CSS
+  styleWriteCount = 0;
+  const probedRes = applyBookAppearance(doc, null, {
+    fontId: 'default',
+    themeId: 'paper-sepia',
+    measureMaxScale: true,
+  });
+  assert.equal(probedRes.atMaxA4Scale, true);
+  assert.equal(styleWriteCount, 3);
 });

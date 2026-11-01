@@ -3,6 +3,7 @@ import {
   apiJson,
   clearAccessToken,
   ensureFreshAccessToken,
+  getLastRefreshedUser,
   registerSessionExpiredHandler,
   setAccessToken,
 } from '@/lib/api-client';
@@ -29,7 +30,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       // No access token in memory after a reload — mint one from the cookie.
       await ensureFreshAccessToken(true);
-      const user = await apiJson<User>('/api/auth/me');
+      const user = getLastRefreshedUser() ?? (await apiJson<User>('/api/auth/me'));
       set({ status: 'authenticated', user });
     } catch {
       clearAccessToken();

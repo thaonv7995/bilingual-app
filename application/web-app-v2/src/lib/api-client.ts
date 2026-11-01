@@ -16,6 +16,7 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const REFRESH_LOCK = 'bilingual-reader-auth-refresh';
 
 let accessToken = '';
+let lastRefreshedUser: { username: string; is_admin: boolean } | null = null;
 let refreshInFlight: Promise<string> | null = null;
 let onSessionExpired: (() => void) | null = null;
 
@@ -52,6 +53,11 @@ export function getAccessToken(): string {
 
 export function clearAccessToken(): void {
   accessToken = '';
+  lastRefreshedUser = null;
+}
+
+export function getLastRefreshedUser(): { username: string; is_admin: boolean } | null {
+  return lastRefreshedUser;
 }
 
 /** Registered by the auth store so a terminal refresh failure clears the user. */
@@ -104,11 +110,18 @@ async function performRefresh(expected: string): Promise<string> {
     );
   }
 
-  const data = (await res.json()) as { access_token?: string };
+  const data = (await res.json()) as {
+    access_token?: string;
+    username?: string;
+    is_admin?: boolean;
+  };
   if (!data.access_token) {
     throw new AuthRefreshError('Token refresh returned no access token.', res.status, false);
   }
   setAccessToken(data.access_token);
+  if (typeof data.username === 'string' && data.username) {
+    lastRefreshedUser = { username: data.username, is_admin: Boolean(data.is_admin) };
+  }
   return data.access_token;
 }
 

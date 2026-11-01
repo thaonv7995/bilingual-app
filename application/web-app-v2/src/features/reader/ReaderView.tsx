@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '@/components/Toast';
-import { AuthRefreshError, ensureFreshAccessToken } from '@/lib/api-client';
+import {
+  AuthRefreshError,
+  accessTokenExpiresSoon,
+  ensureFreshAccessToken,
+  getAccessToken,
+} from '@/lib/api-client';
 import { readJSON, readString, writeJSON, writeString } from '@/lib/storage';
 import { STORAGE_KEYS } from '@/lib/storageKeys';
 import { ChatSidebar } from '@/features/chat/ChatSidebar';
@@ -28,6 +33,7 @@ import { ReaderAppearancePopover } from './ReaderAppearancePopover';
 import {
   getLocalBookAppearance,
   parseThemeDescriptor,
+  preloadSingleReaderFont,
   resolveEffectiveBookAppearance,
   saveLocalBookAppearance,
   serializeThemeDescriptor,
@@ -191,6 +197,12 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   const hasCustomAppearance = effectiveFontId !== 'default' || effectiveThemeId !== 'default';
 
   const appearanceRef = useRef({ fontId: effectiveFontId, themeId: effectiveThemeId });
+  const appearanceOpenRef = useRef(appearanceOpen);
+  appearanceOpenRef.current = appearanceOpen;
+  const paneA4Ref = useRef<{
+    en?: { appliedFontScale: number; clampedByA4: boolean; atMaxA4Scale: boolean };
+    vi?: { appliedFontScale: number; clampedByA4: boolean; atMaxA4Scale: boolean };
+  }>({});
   const [a4Status, setA4Status] = useState<{
     appliedFontScale: number;
     clampedByA4: boolean;
@@ -202,23 +214,25 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   });
 
   const syncAppearanceAndMeasureA4 = useCallback(
-    (fontId: string, themeId: string) => {
+    (fontId: string, themeId: string, measureMaxScale = appearanceOpenRef.current) => {
       const results = [];
       if (enIframeRef.current?.contentDocument) {
-        results.push(
-          applyBookAppearance(enIframeRef.current.contentDocument, enIframeRef.current, {
-            fontId,
-            themeId,
-          }),
+        const enRes = applyBookAppearance(
+          enIframeRef.current.contentDocument,
+          enIframeRef.current,
+          { fontId, themeId, measureMaxScale },
         );
+        paneA4Ref.current.en = enRes;
+        results.push(enRes);
       }
       if (viIframeRef.current?.contentDocument) {
-        results.push(
-          applyBookAppearance(viIframeRef.current.contentDocument, viIframeRef.current, {
-            fontId,
-            themeId,
-          }),
+        const viRes = applyBookAppearance(
+          viIframeRef.current.contentDocument,
+          viIframeRef.current,
+          { fontId, themeId, measureMaxScale },
         );
+        paneA4Ref.current.vi = viRes;
+        results.push(viRes);
       }
       if (results.length > 0) {
         const appliedFontScale = Math.min(...results.map((r) => r.appliedFontScale));
@@ -240,9 +254,10 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   );
 
   useEffect(() => {
+    preloadSingleReaderFont(effectiveFontId);
     appearanceRef.current = { fontId: effectiveFontId, themeId: effectiveThemeId };
-    syncAppearanceAndMeasureA4(effectiveFontId, effectiveThemeId);
-  }, [effectiveFontId, effectiveThemeId, syncAppearanceAndMeasureA4]);
+    syncAppearanceAndMeasureA4(effectiveFontId, effectiveThemeId, appearanceOpen);
+  }, [effectiveFontId, effectiveThemeId, appearanceOpen, syncAppearanceAndMeasureA4]);
 
   const handleSelectFont = useCallback(
     (fontId: string) => {
@@ -265,7 +280,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     (themeId: string) => {
       const prevScale = parseThemeDescriptor(effectiveThemeId).fontScale || 100;
       const requestedDesc = parseThemeDescriptor(themeId);
-      const measured = syncAppearanceAndMeasureA4(effectiveFontId, themeId);
+      const measured = syncAppearanceAndMeasureA4(effectiveFontId, themeId, true);
 
       let finalThemeId = themeId;
       if (measured.clampedByA4 && requestedDesc.fontScale > measured.appliedFontScale) {
@@ -379,8 +394,13 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     viewMode,
     enIframeRef,
     viIframeRef,
+    enabled: audiobookOpen,
     onNextPage: () => void requestPageChange((p) => p + 1),
   });
+
+  // Ref holds the latest keyboard handler so both parent window and iframe
+  // documents always invoke fresh state/callbacks without re-binding listeners.
+  const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {});
 
   // Refresh the local Voca mirror once per open so lookups answer from cache.
   // Incremental + throttled: costs one tiny request when nothing changed.
@@ -399,6 +419,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       createHighlight,
       updateHighlight,
       deleteHighlight,
+      onKeyDown: (e) => onKeyRef.current(e),
       onLookup: async (text, doc, anchorRect) => {
         const word = cleanWord(text);
         if (!word) return;
@@ -518,7 +539,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     [selectZoomMode, adjustReaderZoom],
   );
 
-  // -- page navigation (sequence-guarded) — ported from app.js:883-914 -------
+  // -- page navigation (sequence-guarded, optimistic) -------------------------
   const requestPageChange = useCallback(
     async (targetOrUpdater: number | ((base: number) => number)) => {
       if (!book.pageCount) return;
@@ -532,8 +553,14 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       userNavigatedRef.current = true;
       const seq = ++navSeqRef.current;
 
-      // Refresh the cookie the iframe uses, if it's about to expire. Best-effort:
-      // offline / cached pages still load, and the iframe onLoad retry recovers.
+      // Fast path: when the token is still fresh, flip page synchronously (0ms delay).
+      const token = getAccessToken();
+      if (token && !accessTokenExpiresSoon(token)) {
+        setPage(target);
+        return;
+      }
+
+      // Refresh the cookie the iframe uses only when missing or expiring within 60s.
       try {
         await ensureFreshAccessToken();
       } catch {
@@ -589,7 +616,10 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         if (!doc) return;
         const isEnglish = iframeEl.classList.contains('en-pane-iframe');
         const lang = isEnglish ? 'en' : 'vi';
-        const retryKey = `${book.slug}:${page}:${lang}`;
+        const pathname = iframeEl.contentWindow?.location?.pathname || '';
+        const pageMatch = pathname.match(/page_(\d+)\.html$/i);
+        const loadedPage = pageMatch ? parseInt(pageMatch[1]!, 10) : requestedPageRef.current;
+        const retryKey = `${book.slug}:${loadedPage}:${lang}`;
         const bodyText = doc.body?.textContent || '';
         const isAuthError = AUTH_ERROR_MARKERS.some((m) => bodyText.includes(m));
 
@@ -615,16 +645,35 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
 
         iframeEl.style.backgroundColor = resolveBookBackground(doc);
         injectReaderStyles(doc, isEnglish);
-        syncAppearanceAndMeasureA4(appearanceRef.current.fontId, appearanceRef.current.themeId);
+
+        // Style only the iframe that just loaded instead of re-measuring both panes twice.
+        const measured = applyBookAppearance(doc, iframeEl, {
+          fontId: appearanceRef.current.fontId,
+          themeId: appearanceRef.current.themeId,
+          measureMaxScale: appearanceOpenRef.current,
+        });
+        paneA4Ref.current[lang] = measured;
+        const activeResults = [
+          enIframeRef.current?.contentDocument ? paneA4Ref.current.en : undefined,
+          viIframeRef.current?.contentDocument ? paneA4Ref.current.vi : undefined,
+        ].filter((r): r is NonNullable<typeof r> => Boolean(r));
+        if (activeResults.length > 0) {
+          setA4Status({
+            appliedFontScale: Math.min(...activeResults.map((r) => r.appliedFontScale)),
+            clampedByA4: activeResults.some((r) => r.clampedByA4),
+            atMaxA4Scale: activeResults.some((r) => r.atMaxA4Scale),
+          });
+        }
+
         segmentDocSentences(doc);
-        applyStoredHighlights(doc, book.slug, page, lang);
+        applyStoredHighlights(doc, book.slug, loadedPage, lang);
         const win = iframeEl.contentWindow;
         if (win) registerIframeHighlightListeners(win, doc, lang);
       } catch (err) {
         console.warn('[Reader] could not style iframe content:', err);
       }
     },
-    [book.slug, page, scaleIframes, toast],
+    [book.slug, scaleIframes, toast],
   );
 
   // Re-scale on any layout-affecting change (app.js:1191-1194).
@@ -647,40 +696,52 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     return () => window.removeEventListener('resize', scaleIframes);
   }, [scaleIframes]);
 
-  // Keyboard navigation + shortcuts (J/K, ArrowLeft/Right, F, 1/2/3, N).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = document.activeElement;
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable)) return;
-      if (handleZoomShortcut(e)) return;
+  // Keyboard navigation + shortcuts (J/K, ArrowLeft/Right, PageUp/Down, F, 1/2/3, A)
+  // Shared between parent `window` and both book `<iframe>` documents via `onKeyRef`.
+  onKeyRef.current = (e: KeyboardEvent) => {
+    const target =
+      (e.target as HTMLElement | null) ?? (document.activeElement as HTMLElement | null);
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+    if (handleZoomShortcut(e)) return;
 
-      const key = e.key.toLowerCase();
-      if (e.key === 'ArrowLeft' || e.key === 'PageUp' || key === 'k') {
-        e.preventDefault();
-        void requestPageChange((p) => p - 1);
-      } else if (e.key === 'ArrowRight' || e.key === 'PageDown' || key === 'j') {
-        e.preventDefault();
-        void requestPageChange((p) => p + 1);
-      } else if (key === 'f') {
-        e.preventDefault();
-        selectZoomMode(zoomMode === 'fit-page' ? 'fit-width' : 'fit-page');
-      } else if (e.key === '1') {
-        e.preventDefault();
-        setViewMode('en');
-      } else if (e.key === '2') {
-        e.preventDefault();
-        setViewMode('vi');
-      } else if (e.key === '3') {
-        e.preventDefault();
-        setViewMode('split');
-      } else if (key === 'a' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        setAppearanceOpen((v) => !v);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [handleZoomShortcut, requestPageChange, zoomMode, selectZoomMode, setViewMode]);
+    const key = e.key.toLowerCase();
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp' || key === 'k') {
+      e.preventDefault();
+      void requestPageChange((p) => p - 1);
+    } else if (e.key === 'ArrowRight' || e.key === 'PageDown' || key === 'j') {
+      e.preventDefault();
+      void requestPageChange((p) => p + 1);
+    } else if (key === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      selectZoomMode(zoomMode === 'fit-page' ? 'fit-width' : 'fit-page');
+    } else if (e.key === '1' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      setViewMode('en');
+    } else if (e.key === '2' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      setViewMode('vi');
+    } else if (e.key === '3' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      setViewMode('split');
+    } else if (key === 'a' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      setAppearanceOpen((v) => !v);
+    }
+  };
+
+  useEffect(() => {
+    const onWindowKey = (e: KeyboardEvent) => onKeyRef.current(e);
+    window.addEventListener('keydown', onWindowKey);
+    return () => window.removeEventListener('keydown', onWindowKey);
+  }, []);
 
   // Scroll-sync EN/VI wrappers for stacked layouts (app.js:1263-1296).
   useEffect(() => {
@@ -773,6 +834,37 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   const showEn = viewMode === 'en' || viewMode === 'split';
   const showVi = viewMode === 'vi' || viewMode === 'split';
 
+  // Background prefetch of adjacent pages (page + 1, page + 2, page - 1) so
+  // turning pages via keyboard or toolbar hits the browser cache immediately.
+  const prefetchedUrlsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!book.pageCount) return;
+    const langs: ('en' | 'vi')[] = [];
+    if (showEn) langs.push('en');
+    if (showVi) langs.push('vi');
+    if (langs.length === 0) return;
+
+    const timer = window.setTimeout(() => {
+      const candidates = [page + 1, page + 2, page - 1].filter(
+        (p) => p >= 1 && p <= book.pageCount,
+      );
+      for (const candidatePage of candidates) {
+        for (const lang of langs) {
+          const url = `/books/${encodeURIComponent(book.slug)}/output/${lang}/page_${padPage(candidatePage)}.html`;
+          if (prefetchedUrlsRef.current.has(url)) continue;
+          prefetchedUrlsRef.current.add(url);
+          void fetch(url, { credentials: 'include', priority: 'low' } as RequestInit).catch(
+            () => {
+              prefetchedUrlsRef.current.delete(url);
+            },
+          );
+        }
+      }
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [book.slug, book.pageCount, page, showEn, showVi]);
+
   return (
     <div className="reader-view">
       <ReaderTopbar
@@ -839,7 +931,6 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
                     ref={enIframeRef}
                     className="reader-iframe en-pane-iframe"
                     src={enPageUrl}
-                    key={`en-${page}`}
                     onLoad={handleIframeLoad}
                     scrolling="no"
                     sandbox="allow-same-origin"
@@ -858,7 +949,6 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
                     ref={viIframeRef}
                     className="reader-iframe vi-pane-iframe"
                     src={viPageUrl}
-                    key={`vi-${page}`}
                     onLoad={handleIframeLoad}
                     scrolling="no"
                     sandbox="allow-same-origin"
