@@ -7,19 +7,23 @@ struct BookshelfView: View {
         case all = "Tất cả"
         case priority = "Ưu tiên"
         case finished = "Đã đọc"
+        case offlineReady = "Đã lưu Offline"
         var id: String { rawValue }
     }
 
     @StateObject private var api = APIService.shared
+    @ObservedObject private var cacheManager = BookCacheManager.shared
     @State private var books: [Book] = []
     @State private var isLoading = false
     @State private var selectedBook: Book?
+    @State private var offlineUnavailableBook: Book?
     @State private var showSettings = false
     @State private var rotationDegrees: Double = 0.0
     @State private var progressUpdateCounter: Int = 0
     @State private var collectionFilter: CollectionFilter = .all
     @State private var hideFinished = UserDefaults.standard.object(forKey: "hideFinishedBooks") as? Bool ?? true
     @State private var searchText = ""
+    @State private var autoDownloadTask: Task<Void, Never>?
     
     // Adaptive grid columns for iPhone/iPad layouts
     let columns = [
@@ -87,6 +91,7 @@ struct BookshelfView: View {
             case .all: return !hideFinished || book.isFinished != true
             case .priority: return book.isPriority == true
             case .finished: return book.isFinished == true
+            case .offlineReady: return cacheManager.isDownloaded(slug: book.slug)
             }
         }
 
@@ -112,55 +117,118 @@ struct BookshelfView: View {
         return lastRead
     }
 
+    private var offlineReadyCount: Int {
+        books.filter { cacheManager.isDownloaded(slug: $0.slug) }.count
+    }
+
     var body: some View {
         NavigationView {
             ZStack {
                 Color(hex: "0f172a").ignoresSafeArea()
                 
-                if isLoading {
+                if isLoading && books.isEmpty {
                     ProgressView("Đang tải danh sách sách...")
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         .foregroundColor(.white)
                 } else if books.isEmpty {
                     VStack(spacing: 15) {
-                        Image(systemName: "book.closed")
+                        Image(systemName: api.isOfflineMode ? "wifi.slash" : "book.closed")
                             .resizable()
-                            .frame(width: 60, height: 60)
-                            .foregroundColor(Color(hex: "475569"))
-                        Text("Tủ sách trống hoặc chưa được cấp quyền")
+                            .scaledToFit()
+                            .frame(width: 56, height: 56)
+                            .foregroundColor(Color(hex: api.isOfflineMode ? "f59e0b" : "475569"))
+                        Text(api.isOfflineMode
+                             ? "Đang ngoại tuyến và chưa có sách nào lưu trên thiết bị"
+                             : "Tủ sách trống hoặc chưa được cấp quyền")
                             .font(.headline)
                             .foregroundColor(Color(hex: "94a3b8"))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 28)
+                        if api.isOfflineMode {
+                            Button("Thử kết nối lại") {
+                                Task {
+                                    await api.verifySession()
+                                    await loadBooks()
+                                }
+                            }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 9)
+                            .background(Color(hex: "6366f1"))
+                            .cornerRadius(10)
+                        }
                     }
                 } else {
-                    ScrollView {
-                        VStack(spacing: 16) {
-                            if sortedBooks.isEmpty {
-                                Text("Không có sách trong mục này")
-                                    .foregroundColor(Color(hex: "94a3b8"))
-                                    .padding(.top, 50)
-                            } else {
-                                LazyVGrid(columns: columns, spacing: 25) {
-                                    ForEach(sortedBooks) { book in
-                                        BookCard(
-                                            book: book,
-                                            onSelect: { selectedBook = book },
-                                            onTogglePriority: {
-                                                updateState(book, key: "isPriority", value: book.isPriority != true)
-                                            }
-                                        )
-                                        .contextMenu {
-                                            Button(book.isPriority == true ? "Bỏ ưu tiên" : "Ưu tiên đọc") {
-                                                updateState(book, key: "isPriority", value: book.isPriority != true)
+                    VStack(spacing: 0) {
+                        offlineStatusBanner
+
+                        ScrollView {
+                            VStack(spacing: 16) {
+                                if sortedBooks.isEmpty {
+                                    Text("Không có sách trong mục này")
+                                        .foregroundColor(Color(hex: "94a3b8"))
+                                        .padding(.top, 50)
+                                } else {
+                                    LazyVGrid(columns: columns, spacing: 25) {
+                                        ForEach(sortedBooks) { book in
+                                            let isCached = cacheManager.isDownloaded(slug: book.slug)
+                                            let status = cacheManager.downloadStatus[book.slug] ?? .notDownloaded
+                                            BookCard(
+                                                book: book,
+                                                isOfflineUnavailable: api.isOfflineMode && !isCached,
+                                                onSelect: { openBook(book) },
+                                                onTogglePriority: {
+                                                    updateState(book, key: "isPriority", value: book.isPriority != true)
+                                                }
+                                            )
+                                            .contextMenu {
+                                                Button("Mở đọc sách") {
+                                                    openBook(book)
+                                                }
+                                                Button(book.isPriority == true ? "Bỏ ưu tiên" : "Ưu tiên đọc") {
+                                                    updateState(book, key: "isPriority", value: book.isPriority != true)
+                                                }
+                                                Button(book.isFinished == true ? "Đánh dấu chưa hoàn thành" : "Đánh dấu đã đọc xong") {
+                                                    updateState(book, key: "isFinished", value: book.isFinished != true)
+                                                }
+                                                Divider()
+                                                if status == .downloading {
+                                                    Button("Hủy tải xuống", role: .destructive) {
+                                                        cacheManager.cancelDownload(slug: book.slug)
+                                                    }
+                                                } else if isCached {
+                                                    if !api.isOfflineMode {
+                                                        Button(cacheManager.needsUpdate(slug: book.slug) ? "Cập nhật bản mới" : "Tải lại từ server") {
+                                                            Task {
+                                                                await cacheManager.downloadBook(
+                                                                    slug: book.slug,
+                                                                    api: api,
+                                                                    forceRedownload: true
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                    Button("Xóa bản lưu offline", role: .destructive) {
+                                                        cacheManager.deleteCache(slug: book.slug)
+                                                    }
+                                                } else if !api.isOfflineMode {
+                                                    Button("Tải về đọc offline") {
+                                                        Task {
+                                                            await cacheManager.downloadBook(slug: book.slug, api: api)
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
+                            .padding(20)
                         }
-                        .padding(20)
-                    }
-                    .refreshable {
-                        await loadBooks()
+                        .refreshable {
+                            await loadBooks()
+                        }
                     }
                 }
             }
@@ -270,6 +338,21 @@ struct BookshelfView: View {
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("BookStateUpdated"))) { _ in
                 Task { await loadBooks() }
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NetworkConnectivityRestored"))) { _ in
+                Task { await loadBooks() }
+            }
+            .alert(
+                "Sách chưa được lưu offline",
+                isPresented: Binding(
+                    get: { offlineUnavailableBook != nil },
+                    set: { if !$0 { offlineUnavailableBook = nil } }
+                ),
+                presenting: offlineUnavailableBook
+            ) { _ in
+                Button("Đóng", role: .cancel) {}
+            } message: { book in
+                Text("\"\(book.title)\" chưa được tải về thiết bị. Hãy kết nối mạng để tải sách trước khi đọc ngoại tuyến.")
+            }
             .onChange(of: selectedBook) { newValue in
                 // When user returns from reader (selectedBook becomes nil),
                 // trigger re-sort so the just-read book appears first
@@ -292,11 +375,97 @@ struct BookshelfView: View {
         .navigationViewStyle(StackNavigationViewStyle())
     }
 
+    @ViewBuilder
+    private var offlineStatusBanner: some View {
+        if api.isOfflineMode {
+            HStack(spacing: 10) {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(Color(hex: "f59e0b"))
+                        .frame(width: 6, height: 6)
+                    Text("Ngoại tuyến")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(hex: "fbbf24"))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color(hex: "f59e0b").opacity(0.16), in: Capsule())
+
+                Text("\(offlineReadyCount)/\(books.count) sách sẵn sàng")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Color(hex: "cbd5e1"))
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                Button {
+                    Task {
+                        await api.verifySession()
+                        await loadBooks()
+                    }
+                } label: {
+                    Text("Thử kết nối")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(hex: "93c5fd"))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color(hex: "3b82f6").opacity(0.18), in: RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color(hex: "f59e0b").opacity(0.1))
+        } else if cacheManager.pendingSyncCount > 0 {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color(hex: "38bdf8"))
+                Text("Có \(cacheManager.pendingSyncCount) thay đổi đọc ngoại tuyến đang chờ đồng bộ")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Color(hex: "cbd5e1"))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Button {
+                    Task {
+                        await api.syncPendingOfflineOperations()
+                        await loadBooks()
+                    }
+                } label: {
+                    Text("Đồng bộ")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(hex: "5eead4"))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color(hex: "14b8a6").opacity(0.18), in: RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 7)
+            .background(Color(hex: "38bdf8").opacity(0.1))
+        }
+    }
+
+    private func openBook(_ book: Book) {
+        if api.isOfflineMode && !cacheManager.isDownloaded(slug: book.slug) {
+            offlineUnavailableBook = book
+            return
+        }
+        selectedBook = book
+    }
+
     private func updateState(_ book: Book, key: String, value: Bool) {
+        if let idx = books.firstIndex(where: { $0.slug == book.slug }) {
+            if key == "isPriority" { books[idx].isPriority = value }
+            if key == "isFinished" { books[idx].isFinished = value }
+        }
         Task {
             do {
                 _ = try await api.updateBookState(slug: book.slug, patch: [key: value])
-                await loadBooks()
+                if !api.isOfflineMode {
+                    await loadBooks()
+                }
             } catch {
                 print("Failed to update book state for \(book.slug): \(error)")
             }
@@ -304,7 +473,18 @@ struct BookshelfView: View {
     }
     
     private func loadBooks() async {
-        await MainActor.run { isLoading = true }
+        await MainActor.run {
+            if self.books.isEmpty {
+                let cached = cacheManager.loadCachedBooks(
+                    serverUrl: api.normalizedServerUrl,
+                    username: api.username
+                )
+                if !cached.isEmpty {
+                    self.books = cached
+                }
+            }
+            isLoading = true
+        }
         do {
             let fetched = try await api.fetchBooks()
             await MainActor.run {
@@ -326,25 +506,34 @@ struct BookshelfView: View {
                     )
                 }
             }
+
+            // Refresh backup manifest in background so incremental updates know contentFingerprint & sizes.
+            Task {
+                _ = try? await api.fetchBackupManifest()
+            }
             
-            // Sync progress for each book from server in background
+            // Sync progress for each book cleanly both ways in background
             Task {
                 for book in fetched {
                     do {
                         let serverProgress = try await api.fetchProgress(slug: book.slug)
-                        var shouldSave = true
+                        var cachedLocal: ReadingProgress?
                         if let cachedData = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
                            let cached = try? JSONDecoder().decode(ReadingProgress.self, from: cachedData) {
-                            let cachedTime = cached.lastRead ?? 0
-                            let serverTime = serverProgress.lastRead ?? 0
-                            if serverTime < cachedTime {
-                                shouldSave = false
-                            }
+                            cachedLocal = cached
                         }
-                        if shouldSave {
-                            if let data = try? JSONEncoder().encode(serverProgress) {
-                                UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
-                            }
+
+                        let cachedTime = cachedLocal?.lastRead ?? 0
+                        let serverTime = serverProgress.lastRead ?? 0
+                        if let cachedLocal, cachedTime > serverTime {
+                            await api.saveProgress(
+                                slug: book.slug,
+                                page: cachedLocal.page,
+                                viewMode: cachedLocal.viewMode,
+                                lastRead: cachedTime
+                            )
+                        } else if let data = try? JSONEncoder().encode(serverProgress) {
+                            UserDefaults.standard.set(data, forKey: "progress_\(book.slug)")
                         }
                     } catch {
                         print("Failed to sync progress for \(book.slug): \(error)")
@@ -355,18 +544,27 @@ struct BookshelfView: View {
                 }
             }
             
-            // Auto-download all books that are not downloaded yet sequentially
-            Task { @MainActor in
-                for book in fetched {
-                    let status = BookCacheManager.shared.downloadStatus[book.slug] ?? .notDownloaded
-                    if status == .notDownloaded {
-                        await BookCacheManager.shared.downloadBook(slug: book.slug, api: api)
+            // Auto-download missing or updated books sequentially when enabled
+            if cacheManager.autoCacheBooks {
+                await MainActor.run {
+                    autoDownloadTask?.cancel()
+                    autoDownloadTask = Task { @MainActor in
+                        await cacheManager.downloadAllMissing(books: fetched, api: api)
                     }
                 }
             }
         } catch {
-            print("Failed to fetch books: \(error)")
-            await MainActor.run { self.isLoading = false }
+            print("Failed to fetch books (falling back to offline cache): \(error)")
+            await MainActor.run {
+                let cached = cacheManager.loadCachedBooks(
+                    serverUrl: api.normalizedServerUrl,
+                    username: api.username
+                )
+                if !cached.isEmpty {
+                    self.books = cached
+                }
+                self.isLoading = false
+            }
         }
     }
 }
@@ -428,12 +626,14 @@ private struct LibraryToolbarSearchField: View {
 
 struct BookCard: View {
     let book: Book
+    var isOfflineUnavailable: Bool = false
     let onSelect: () -> Void
     let onTogglePriority: () -> Void
     @StateObject private var api = APIService.shared
     @ObservedObject private var cacheManager = BookCacheManager.shared
     
     @State private var progress: ReadingProgress? = nil
+    @State private var remoteCoverImage: UIImage? = nil
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -441,30 +641,20 @@ struct BookCard: View {
             ZStack {
                 Color(hex: "1e293b")
                 
-                let localCoverURL = BookCacheManager.shared.localBookDir(slug: book.slug)
-                    .appendingPathComponent("output")
-                    .appendingPathComponent(book.coverPath ?? "")
-                
                 GeometryReader { geo in
-                    if cacheManager.isDownloaded(slug: book.slug),
-                       !(book.coverPath ?? "").isEmpty,
-                       FileManager.default.fileExists(atPath: localCoverURL.path),
-                       let uiImage = UIImage(contentsOfFile: localCoverURL.path) {
+                    if let localURL = cacheManager.localCoverURL(slug: book.slug, coverPath: book.coverPath),
+                       let uiImage = UIImage(contentsOfFile: localURL.path) {
                         Image(uiImage: uiImage)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
                             .frame(width: geo.size.width, height: geo.size.height)
                             .clipped()
-                    } else if let coverPath = book.cover, let coverUrl = URL(string: "\(api.serverUrl)/\(coverPath)") {
-                        AsyncImage(url: coverUrl) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            ProgressView().tint(.white)
-                        }
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .clipped()
+                    } else if let remoteCoverImage {
+                        Image(uiImage: remoteCoverImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .clipped()
                     } else {
                         // Fallback Text Cover
                         VStack(spacing: 8) {
@@ -519,7 +709,7 @@ struct BookCard: View {
                         
                         // Progress Bar
                         if let progress = progress {
-                            let percent = Double(progress.page) / Double(book.pageCount)
+                            let percent = Double(progress.page) / Double(max(1, book.pageCount))
                             GeometryReader { geo in
                                 ZStack(alignment: .leading) {
                                     Capsule()
@@ -551,6 +741,7 @@ struct BookCard: View {
                 downloadStatusOverlay,
                 alignment: .topTrailing
             )
+            .opacity(isOfflineUnavailable ? 0.55 : 1.0)
             .cornerRadius(12)
             .shadow(color: Color.black.opacity(0.4), radius: 8, x: 0, y: 4)
             .contentShape(Rectangle())
@@ -562,7 +753,7 @@ struct BookCard: View {
             HStack(alignment: .top, spacing: 6) {
                 Text(book.title)
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(isOfflineUnavailable ? .white.opacity(0.65) : .white)
                     .lineLimit(2)
                 Spacer(minLength: 0)
                 Button(action: onTogglePriority) {
@@ -584,8 +775,37 @@ struct BookCard: View {
         .onAppear {
             loadLocalProgress()
         }
+        .task(id: "\(book.slug)|\(api.isOfflineMode)") {
+            await loadRemoteCoverIfNeeded()
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ReadingProgressUpdated"))) { _ in
             loadLocalProgress()
+        }
+    }
+
+    private func loadRemoteCoverIfNeeded() async {
+        guard remoteCoverImage == nil,
+              cacheManager.localCoverURL(slug: book.slug, coverPath: book.coverPath) == nil,
+              !api.isOfflineMode,
+              let cover = book.cover else {
+            return
+        }
+        let cleanCover = cover.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !cleanCover.isEmpty,
+              let coverUrl = URL(string: "\(api.normalizedServerUrl)/\(cleanCover)") else {
+            return
+        }
+        var request = URLRequest(url: coverUrl)
+        request.timeoutInterval = 12.0
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              http.statusCode == 200,
+              let img = UIImage(data: data) else {
+            return
+        }
+        cacheManager.saveCachedCoverData(slug: book.slug, data: data)
+        await MainActor.run {
+            self.remoteCoverImage = img
         }
     }
     
@@ -643,6 +863,22 @@ struct BookCard: View {
                 .background(Color.black.opacity(0.6))
                 .clipShape(Circle())
                 .padding(8)
+            } else if status == .downloaded {
+                Image(systemName: cacheManager.needsUpdate(slug: book.slug) ? "arrow.triangle.2.circlepath.circle.fill" : "checkmark.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(hex: cacheManager.needsUpdate(slug: book.slug) ? "38bdf8" : "2dd4bf"))
+                    .padding(4)
+                    .background(Color.black.opacity(0.55))
+                    .clipShape(Circle())
+                    .padding(7)
+            } else if api.isOfflineMode {
+                Image(systemName: "icloud.slash")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Color(hex: "fbbf24"))
+                    .padding(5)
+                    .background(Color.black.opacity(0.65))
+                    .clipShape(Circle())
+                    .padding(7)
             }
         }
     }

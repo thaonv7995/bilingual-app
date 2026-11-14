@@ -1082,15 +1082,111 @@ struct AISettingsView: View {
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
                         
-                        // Section 4: Cache Management
+                        // Section 4: Cache Management & Offline Reading
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Quản lý bộ nhớ đệm")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(.white.opacity(0.9))
-                            
-                            let downloadedBooks = books.filter { cacheManager.isDownloaded(slug: $0.slug) }
+                            let effectiveBooks = books.isEmpty
+                                ? cacheManager.loadCachedBooks(
+                                    serverUrl: api.normalizedServerUrl,
+                                    username: api.username
+                                )
+                                : books
+                            let downloadedBooks = effectiveBooks.filter { cacheManager.isDownloaded(slug: $0.slug) }
+                            let missingOrOutdatedCount = effectiveBooks.filter {
+                                !cacheManager.isDownloaded(slug: $0.slug) || cacheManager.needsUpdate(slug: $0.slug)
+                            }.count
+                            let isAnyDownloading = cacheManager.downloadStatus.values.contains { $0 == .downloading }
                             let visibleDownloadedBooks = Array(downloadedBooks.prefix(visibleCachedBookCount))
-                            
+
+                            HStack {
+                                Text("Bộ nhớ đệm & Đọc Offline")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.9))
+
+                                Spacer()
+
+                                Text("\(downloadedBooks.count) sách • \(cacheManager.formattedTotalCacheSize())")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(Color(hex: "38bdf8"))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color(hex: "38bdf8").opacity(0.12))
+                                    .cornerRadius(6)
+                            }
+
+                            if api.isOfflineMode || cacheManager.pendingSyncCount > 0 {
+                                HStack(spacing: 10) {
+                                    Image(systemName: api.isOfflineMode ? "wifi.slash" : "arrow.triangle.2.circlepath.circle.fill")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(api.isOfflineMode ? Color(hex: "fbbf24") : Color(hex: "38bdf8"))
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        if api.isOfflineMode {
+                                            Text("Đang ngoại tuyến — đọc sách đã lưu & tự đồng bộ khi có mạng")
+                                                .font(.system(size: 11, weight: .semibold))
+                                                .foregroundColor(Color(hex: "fbbf24"))
+                                        }
+                                        if cacheManager.pendingSyncCount > 0 {
+                                            Text("Đang chờ đồng bộ \(cacheManager.pendingSyncCount) thay đổi lên server")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(Color(hex: "94a3b8"))
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    if !api.isOfflineMode && cacheManager.pendingSyncCount > 0 {
+                                        Button("Đồng bộ") {
+                                            Task {
+                                                await api.syncPendingOfflineOperations()
+                                            }
+                                        }
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(Color(hex: "38bdf8").opacity(0.25))
+                                        .cornerRadius(7)
+                                    }
+                                }
+                                .padding(10)
+                                .background(Color.white.opacity(0.04))
+                                .cornerRadius(10)
+                            }
+
+                            Toggle(isOn: $cacheManager.autoCacheBooks) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Tự động tải sách về đọc offline")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(.white)
+                                    Text("Tải gói .bkb nền khi mở tủ sách để luôn sẵn sàng khi mất mạng")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color(hex: "94a3b8"))
+                                }
+                            }
+                            .tint(Color(hex: "14b8a6"))
+                            .padding(.vertical, 4)
+
+                            if !api.isOfflineMode && missingOrOutdatedCount > 0 {
+                                Button(action: {
+                                    Task {
+                                        await cacheManager.downloadAllMissing(books: effectiveBooks, api: api)
+                                    }
+                                }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: isAnyDownloading ? "arrow.down.circle.dotted" : "arrow.down.circle.fill")
+                                            .font(.system(size: 13))
+                                        Text(isAnyDownloading ? "Đang tải sách về máy..." : "Tải tất cả sách (\(missingOrOutdatedCount))")
+                                            .font(.system(size: 12, weight: .bold))
+                                    }
+                                    .foregroundColor(Color(hex: "38bdf8"))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Color(hex: "38bdf8").opacity(0.12))
+                                    .cornerRadius(10)
+                                }
+                                .disabled(isAnyDownloading)
+                            }
+
                             if downloadedBooks.isEmpty {
                                 Text("Chưa có sách nào được tải về thiết bị.")
                                     .font(.system(size: 12))
@@ -1099,19 +1195,41 @@ struct AISettingsView: View {
                             } else {
                                 VStack(spacing: 8) {
                                     ForEach(visibleDownloadedBooks) { book in
-                                        HStack {
+                                        HStack(spacing: 10) {
                                             VStack(alignment: .leading, spacing: 2) {
                                                 Text(book.title)
                                                     .font(.system(size: 13, weight: .semibold))
                                                     .foregroundColor(.white)
                                                     .lineLimit(1)
-                                                Text(book.author ?? "Unknown Author")
+                                                Text("\(book.author ?? "Unknown Author") • \(cacheManager.formattedSize(forSlug: book.slug))")
                                                     .font(.system(size: 11))
                                                     .foregroundColor(Color(hex: "94a3b8"))
+                                                    .lineLimit(1)
                                             }
-                                            
+
                                             Spacer()
-                                            
+
+                                            if !api.isOfflineMode && cacheManager.needsUpdate(slug: book.slug) {
+                                                Button(action: {
+                                                    let fp = cacheManager.serverManifestBySlug[book.slug]?.contentFingerprint
+                                                    Task {
+                                                        await cacheManager.downloadBook(
+                                                            slug: book.slug,
+                                                            api: api,
+                                                            expectedFingerprint: fp,
+                                                            forceRedownload: true
+                                                        )
+                                                    }
+                                                }) {
+                                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                                        .font(.system(size: 12, weight: .semibold))
+                                                        .foregroundColor(Color(hex: "38bdf8"))
+                                                        .frame(width: 28, height: 28)
+                                                        .background(Color(hex: "38bdf8").opacity(0.12))
+                                                        .clipShape(Circle())
+                                                }
+                                            }
+
                                             Button(action: {
                                                 withAnimation {
                                                     cacheManager.deleteCache(slug: book.slug)
@@ -1126,7 +1244,7 @@ struct AISettingsView: View {
                                             }
                                         }
                                         .padding(.vertical, 6)
-                                        
+
                                         if book.id != visibleDownloadedBooks.last?.id {
                                             Divider().background(Color.white.opacity(0.06))
                                         }
@@ -1154,12 +1272,10 @@ struct AISettingsView: View {
                                             .cornerRadius(8)
                                         }
                                     }
-                                    
+
                                     Button(action: {
                                         withAnimation {
-                                            for b in downloadedBooks {
-                                                cacheManager.deleteCache(slug: b.slug)
-                                            }
+                                            cacheManager.clearAllCache(forSlugs: downloadedBooks.map(\.slug))
                                         }
                                     }) {
                                         Text("Xóa toàn bộ bộ nhớ đệm")

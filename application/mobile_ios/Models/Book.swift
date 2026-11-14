@@ -45,9 +45,9 @@ struct Book: Codable, Identifiable, Equatable {
     let createdAt: Int64?
     /// Unix seconds this user last read the book, as known to the server. Optional for the same
     /// reason as `createdAt`; 0/nil means "never read".
-    let lastRead: Int64?
-    let isFinished: Bool?
-    let isPriority: Bool?
+    var lastRead: Int64?
+    var isFinished: Bool?
+    var isPriority: Bool?
     var defaultFont: String?
     var defaultTheme: String?
     var readerFont: String?
@@ -55,11 +55,12 @@ struct Book: Codable, Identifiable, Equatable {
 
     var coverPath: String? {
         guard let cover = cover else { return nil }
+        let trimmed = cover.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let prefix = "books/\(slug)/output/"
-        if cover.hasPrefix(prefix) {
-            return String(cover.dropFirst(prefix.count))
+        if trimmed.hasPrefix(prefix) {
+            return String(trimmed.dropFirst(prefix.count))
         }
-        return cover
+        return trimmed.isEmpty ? nil : trimmed
     }
     
     enum CodingKeys: String, CodingKey {

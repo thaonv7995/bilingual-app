@@ -1,4 +1,5 @@
 import Foundation
+import Network
 
 @MainActor
 class APIService: ObservableObject {
@@ -9,13 +10,25 @@ class APIService: ObservableObject {
     @Published var isAdmin: Bool = false
     @Published var isAuthenticated: Bool = false
     @Published var isVerifyingSession: Bool = false
+    @Published var isNetworkAvailable: Bool = true
+    @Published var isOfflineMode: Bool = false
+    @Published var isServerReachable: Bool = true
     @Published var isAudiobookEnabled: Bool = AppFeatureFlags.clientDefault.audiobookEnabled
-    
-    // Shared highlights state
+
+    // Shared highlights state scoped to the active book slug
     @Published var highlights: [Highlight] = []
-    
+    private var currentHighlightsSlug: String?
+    private var isSyncingOfflineOps: Bool = false
+    private var pathMonitor: NWPathMonitor?
+
     static let shared = APIService()
-    
+
+    var normalizedServerUrl: String {
+        serverUrl
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
     private init() {
         // First run after the Voca-through-the-proxy switch: drop the API key the old build
         // kept on the device, so a stale local copy cannot linger. No-op afterwards.
@@ -39,9 +52,15 @@ class APIService: ObservableObject {
             self.username = ServerUsernameHack()
             self.isAdmin = UserDefaults.standard.bool(forKey: "isAdmin")
             self.isAuthenticated = true
-            
-            // Verify session with server on launch
-            self.isVerifyingSession = true
+
+            BookCacheManager.shared.refreshPendingCount(serverUrl: self.normalizedServerUrl, username: self.username)
+            let hasOfflineShelf = BookCacheManager.shared.hasAnyOfflineBooks(
+                serverUrl: self.normalizedServerUrl,
+                username: self.username
+            )
+            // When cached offline books exist, enter BookshelfView immediately without blocking on network.
+            self.isVerifyingSession = !hasOfflineShelf
+
             Task {
                 await self.fetchAppConfig()
                 await self.verifySession()
@@ -49,72 +68,116 @@ class APIService: ObservableObject {
         } else {
             Task { await self.fetchAppConfig() }
         }
+
+        startNetworkMonitor()
     }
-    
+
+    deinit {
+        pathMonitor?.cancel()
+    }
+
+    private func startNetworkMonitor() {
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            let reachable = path.status == .satisfied
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let wasAvailable = self.isNetworkAvailable
+                self.isNetworkAvailable = reachable
+
+                if !reachable {
+                    self.isOfflineMode = true
+                    self.isServerReachable = false
+                } else if !wasAvailable && self.isAuthenticated {
+                    self.isOfflineMode = false
+                    await self.syncPendingOfflineOperations()
+                    NotificationCenter.default.post(name: NSNotification.Name("NetworkConnectivityRestored"), object: nil)
+                }
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "com.bilingual.reader.network", qos: .utility))
+        self.pathMonitor = monitor
+    }
+
     private func ServerUsernameHack() -> String {
         return UserDefaults.standard.string(forKey: "username") ?? ""
     }
-    
+
     /// Verify the saved session is still valid on app launch.
-    /// If the access token is expired, attempt a refresh. If refresh also fails, logout.
+    /// Preserves session in offline mode on connectivity failures; logs out only on auth rejection.
     func verifySession() async {
         defer { isVerifyingSession = false }
-        
+
         guard !token.isEmpty else {
             logout()
             return
         }
-        
-        guard let url = URL(string: "\(serverUrl)/api/auth/me") else {
-            logout()
+
+        guard isNetworkAvailable else {
+            isOfflineMode = true
+            isServerReachable = false
             return
         }
-        
+
+        guard let url = URL(string: "\(normalizedServerUrl)/api/auth/me") else {
+            isOfflineMode = true
+            isServerReachable = false
+            return
+        }
+
         var request = URLRequest(url: url)
+        request.timeoutInterval = 6.0
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        
+
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse {
                 if httpResponse.statusCode == 200 {
-                    // Session valid — sync user info
                     if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                         self.username = json["username"] as? String ?? self.username
                         self.isAdmin = json["is_admin"] as? Bool ?? self.isAdmin
                         UserDefaults.standard.set(self.username, forKey: "username")
                         UserDefaults.standard.set(self.isAdmin, forKey: "isAdmin")
                     }
+                    self.isOfflineMode = false
+                    self.isServerReachable = true
+                    await syncPendingOfflineOperations()
                     return
                 } else if httpResponse.statusCode == 401 {
-                    // Access token expired, attempt refresh
                     do {
                         _ = try await performTokenRefresh()
-                        // Refresh succeeded, session restored
+                        self.isOfflineMode = false
+                        self.isServerReachable = true
+                        await syncPendingOfflineOperations()
                         return
                     } catch {
-                        // Refresh also failed
-                        logout()
+                        // performTokenRefresh() calls logout() on 400/401/403; network failures preserve session.
+                        if isConnectivityFailure(error) {
+                            self.isOfflineMode = true
+                            self.isServerReachable = false
+                        }
                         return
                     }
                 }
             }
-            // Any other error — keep session but don't logout (could be network issue)
+            self.isOfflineMode = true
+            self.isServerReachable = false
         } catch {
-            // Network error — keep current session, don't force logout on connectivity issues
-            print("[APIService] Session verify failed (network): \(error.localizedDescription)")
+            self.isOfflineMode = true
+            self.isServerReachable = false
+            print("[APIService] Session verify failed (offline/network): \(error.localizedDescription)")
         }
     }
     
     func login(usernameInput: String, passwordInput: String) async throws -> Bool {
-        let cleanUrl = serverUrl
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let cleanUrl = normalizedServerUrl
         guard let url = URL(string: "\(cleanUrl)/api/auth/login") else {
             throw URLError(.badURL)
         }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = 15.0
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(withJSONObject: [
@@ -136,7 +199,10 @@ class APIService: ObservableObject {
         self.username = result.username
         self.isAdmin = result.isAdmin
         self.isAuthenticated = true
+        self.isOfflineMode = false
+        self.isServerReachable = true
         self.serverUrl = cleanUrl
+        self.currentHighlightsSlug = nil
         
         // Save tokens to Keychain and non-sensitive profile metadata to UserDefaults
         KeychainHelper.save(key: "auth.accessToken", value: self.token)
@@ -145,6 +211,7 @@ class APIService: ObservableObject {
         UserDefaults.standard.set(self.username, forKey: "username")
         UserDefaults.standard.set(self.isAdmin, forKey: "isAdmin")
 
+        BookCacheManager.shared.refreshPendingCount(serverUrl: cleanUrl, username: self.username)
         await fetchAppConfig()
         
         return true
@@ -153,13 +220,17 @@ class APIService: ObservableObject {
     func logout() {
         let savedToken = token
         let savedRefreshToken = refreshToken
+        let savedUrl = normalizedServerUrl
         
         token = ""
         refreshToken = ""
         isAuthenticated = false
         isAdmin = false
+        isOfflineMode = false
         username = ""
         highlights = []
+        currentHighlightsSlug = nil
+        BookCacheManager.shared.pendingSyncCount = 0
         
         KeychainHelper.delete(key: "auth.accessToken")
         KeychainHelper.delete(key: "auth.refreshToken")
@@ -174,7 +245,7 @@ class APIService: ObservableObject {
         VocaService.clearCardsCache()
 
         // Notify server with the saved token and refresh token so the DB session is revoked
-        if (!savedToken.isEmpty || !savedRefreshToken.isEmpty), let url = URL(string: "\(serverUrl)/api/auth/logout") {
+        if (!savedToken.isEmpty || !savedRefreshToken.isEmpty), let url = URL(string: "\(savedUrl)/api/auth/logout") {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             if !savedToken.isEmpty {
@@ -190,11 +261,12 @@ class APIService: ObservableObject {
     
     // Perform automatic token refresh
     func performTokenRefresh() async throws -> String {
-        guard let url = URL(string: "\(serverUrl)/api/auth/refresh") else {
+        guard let url = URL(string: "\(normalizedServerUrl)/api/auth/refresh") else {
             throw URLError(.badURL)
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = 10.0
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let payload = ["refresh_token": refreshToken]
@@ -235,6 +307,30 @@ class APIService: ObservableObject {
         try await authorized(request, retryCount: retryCount) { try await URLSession.shared.data(for: $0) }
     }
 
+    private func isConnectivityFailure(_ error: Error) -> Bool {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .timedOut, .cannotFindHost, .cannotConnectToHost,
+                 .networkConnectionLost, .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff:
+                return true
+            default:
+                return false
+            }
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            return true
+        }
+        if !isNetworkAvailable {
+            return true
+        }
+        return false
+    }
+
+    private func encodedPathSegment(_ segment: String) -> String? {
+        segment.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+    }
+
     /// The "sign it, and on a 401 refresh once and try again" rule, in ONE place, for any
     /// transport: `data(for:)` for ordinary calls, `bytes(for:)` for the streamed ones.
     /// The *original* request is re-signed on the retry, so the refreshed token is the one
@@ -272,41 +368,154 @@ class APIService: ObservableObject {
     }
 
     func fetchBooks() async throws -> [Book] {
-        guard let url = URL(string: "\(serverUrl)/api/books") else {
+        guard isNetworkAvailable else {
+            isOfflineMode = true
+            isServerReachable = false
+            throw URLError(.notConnectedToInternet)
+        }
+
+        // Flush any pending offline changes first so server state reflects local offline edits.
+        await syncPendingOfflineOperations()
+
+        guard let url = URL(string: "\(normalizedServerUrl)/api/books") else {
             throw URLError(.badURL)
         }
         
-        let request = URLRequest(url: url)
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10.0
+        do {
+            let (data, response) = try await sendRequest(request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                throw URLError(.badServerResponse)
+            }
+            let decoded = try JSONDecoder().decode([Book].self, from: data)
+            self.isOfflineMode = false
+            self.isServerReachable = true
+            return BookCacheManager.shared.reconcileAndSaveBooks(
+                decoded,
+                serverUrl: normalizedServerUrl,
+                username: username
+            )
+        } catch {
+            if isConnectivityFailure(error) {
+                self.isOfflineMode = true
+                self.isServerReachable = false
+            }
+            throw error
+        }
+    }
+
+    func fetchBackupManifest() async throws -> BackupManifestResponse {
+        guard isNetworkAvailable else {
+            throw URLError(.notConnectedToInternet)
+        }
+        guard let url = URL(string: "\(normalizedServerUrl)/api/backup/manifest") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 12.0
         let (data, response) = try await sendRequest(request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
-        
-        return try JSONDecoder().decode([Book].self, from: data)
+        let manifest = try JSONDecoder().decode(BackupManifestResponse.self, from: data)
+        BookCacheManager.shared.updateServerManifest(manifest)
+        return manifest
     }
 
     func updateBookState(slug: String, patch: [String: Any]) async throws -> BookState {
-        guard let url = URL(string: "\(serverUrl)/api/books/\(slug)/state") else {
+        let isFinishedPatch = patch["isFinished"] as? Bool
+        let isPriorityPatch = patch["isPriority"] as? Bool
+        let readerFontPatch = patch["readerFont"] as? String
+        let readerThemePatch = patch["readerTheme"] as? String
+
+        func optimisticStateAndCache() -> BookState {
+            let cachedBooks = BookCacheManager.shared.loadCachedBooks(serverUrl: normalizedServerUrl, username: username)
+            let existing = cachedBooks.first(where: { $0.slug == slug })
+            let state = BookState(
+                isFinished: isFinishedPatch ?? (existing?.isFinished ?? false),
+                isPriority: isPriorityPatch ?? (existing?.isPriority ?? false),
+                readerFont: readerFontPatch ?? existing?.readerFont,
+                readerTheme: readerThemePatch ?? existing?.readerTheme
+            )
+            BookCacheManager.shared.enqueuePendingOp(
+                .patchBookState(
+                    slug: slug,
+                    isFinished: isFinishedPatch,
+                    isPriority: isPriorityPatch,
+                    readerFont: readerFontPatch,
+                    readerTheme: readerThemePatch
+                ),
+                serverUrl: normalizedServerUrl,
+                username: username
+            )
+            return state
+        }
+
+        guard isNetworkAvailable else {
+            isOfflineMode = true
+            isServerReachable = false
+            return optimisticStateAndCache()
+        }
+
+        guard let encodedSlug = encodedPathSegment(slug),
+              let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/state") else {
             throw URLError(.badURL)
         }
+
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
+        request.timeoutInterval = 10.0
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: patch)
-        let (data, response) = try await sendRequest(request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+
+        do {
+            let (data, response) = try await sendRequest(request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            if httpResponse.statusCode == 200 {
+                self.isOfflineMode = false
+                self.isServerReachable = true
+                let state = try JSONDecoder().decode(BookState.self, from: data)
+                var cached = BookCacheManager.shared.loadCachedBooks(serverUrl: normalizedServerUrl, username: username)
+                if let idx = cached.firstIndex(where: { $0.slug == slug }) {
+                    cached[idx].isFinished = state.isFinished
+                    cached[idx].isPriority = state.isPriority
+                    cached[idx].readerFont = state.readerFont
+                    cached[idx].readerTheme = state.readerTheme
+                    _ = BookCacheManager.shared.reconcileAndSaveBooks(
+                        cached,
+                        serverUrl: normalizedServerUrl,
+                        username: username
+                    )
+                }
+                return state
+            }
+            if (500...599).contains(httpResponse.statusCode) {
+                self.isOfflineMode = true
+                self.isServerReachable = false
+                return optimisticStateAndCache()
+            }
             throw URLError(.badServerResponse)
+        } catch {
+            if isConnectivityFailure(error) {
+                self.isOfflineMode = true
+                self.isServerReachable = false
+                return optimisticStateAndCache()
+            }
+            throw error
         }
-        return try JSONDecoder().decode(BookState.self, from: data)
     }
 
     func updateBookAppearanceDefaults(slug: String, defaultFont: String, defaultTheme: String) async throws {
-        guard let url = URL(string: "\(serverUrl)/api/books/\(slug)/appearance-defaults") else {
+        guard let encodedSlug = encodedPathSegment(slug),
+              let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/appearance-defaults") else {
             throw URLError(.badURL)
         }
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
+        request.timeoutInterval = 10.0
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "defaultFont": defaultFont,
@@ -323,87 +532,424 @@ class APIService: ObservableObject {
     /// overwrite fresher progress from another device. Nil lets the server
     /// stamp its own clock (legacy behaviour).
     func saveProgress(slug: String, page: Int, viewMode: String, lastRead: Int64? = nil) async {
-        guard let url = URL(string: "\(serverUrl)/api/books/\(slug)/progress") else { return }
+        let effectiveLastRead = lastRead ?? Int64(Date().timeIntervalSince1970)
+        func enqueueProgress() {
+            BookCacheManager.shared.enqueuePendingOp(
+                .saveProgress(slug: slug, page: page, viewMode: viewMode, lastRead: effectiveLastRead),
+                serverUrl: normalizedServerUrl,
+                username: username
+            )
+        }
+
+        guard isNetworkAvailable,
+              let encodedSlug = encodedPathSegment(slug),
+              let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/progress") else {
+            if !isNetworkAvailable {
+                isOfflineMode = true
+                isServerReachable = false
+            }
+            enqueueProgress()
+            return
+        }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = 10.0
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        var body: [String: Any] = [
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
             "page": page,
-            "viewMode": viewMode
-        ]
-        if let lastRead = lastRead {
-            body["lastRead"] = lastRead
-        }
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            "viewMode": viewMode,
+            "lastRead": effectiveLastRead
+        ])
 
-        _ = try? await sendRequest(request)
+        do {
+            let (_, response) = try await sendRequest(request)
+            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+                BookCacheManager.shared.removePendingProgress(
+                    slug: slug,
+                    upToLastRead: effectiveLastRead,
+                    serverUrl: normalizedServerUrl,
+                    username: username
+                )
+            } else {
+                enqueueProgress()
+            }
+        } catch {
+            if isConnectivityFailure(error) {
+                isOfflineMode = true
+                isServerReachable = false
+            }
+            enqueueProgress()
+        }
     }
     
     func fetchProgress(slug: String) async throws -> ReadingProgress {
-        guard let url = URL(string: "\(serverUrl)/api/books/\(slug)/progress") else {
-            throw URLError(.badURL)
+        guard isNetworkAvailable else {
+            isOfflineMode = true
+            isServerReachable = false
+            throw URLError(.notConnectedToInternet)
         }
-        
-        let request = URLRequest(url: url)
-        let (data, _) = try await sendRequest(request)
-        return try JSONDecoder().decode(ReadingProgress.self, from: data)
-    }
-    
-    // --- Highlight APIs ---
-    func fetchHighlights(slug: String) async throws -> [Highlight] {
-        guard let url = URL(string: "\(serverUrl)/api/books/\(slug)/highlights") else {
-            throw URLError(.badURL)
-        }
-        
-        let request = URLRequest(url: url)
-        let (data, response) = try await sendRequest(request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
-        
-        struct HighlightResponse: Codable {
-            let highlights: [Highlight]
-        }
-        
-        let result = try JSONDecoder().decode(HighlightResponse.self, from: data)
-        self.highlights = result.highlights
-        return result.highlights
-    }
-    
-    func saveHighlight(slug: String, highlight: Highlight) async throws {
-        guard let url = URL(string: "\(serverUrl)/api/books/\(slug)/highlights") else {
+        guard let encodedSlug = encodedPathSegment(slug),
+              let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/progress") else {
             throw URLError(.badURL)
         }
         
         var request = URLRequest(url: url)
+        request.timeoutInterval = 10.0
+        do {
+            let (data, response) = try await sendRequest(request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                throw URLError(.badServerResponse)
+            }
+            return try JSONDecoder().decode(ReadingProgress.self, from: data)
+        } catch {
+            if isConnectivityFailure(error) {
+                isOfflineMode = true
+                isServerReachable = false
+            }
+            throw error
+        }
+    }
+    
+    // --- Highlight APIs (Offline-Capable) ---
+
+    @discardableResult
+    func fetchHighlights(slug: String) async throws -> [Highlight] {
+        // Scope state immediately to `slug` so another book's highlights never linger in memory.
+        if currentHighlightsSlug != slug || highlights.isEmpty {
+            currentHighlightsSlug = slug
+            highlights = BookCacheManager.shared.loadCachedHighlights(
+                slug: slug,
+                serverUrl: normalizedServerUrl,
+                username: username
+            )
+        }
+
+        guard isNetworkAvailable else {
+            isOfflineMode = true
+            isServerReachable = false
+            return highlights
+        }
+
+        // Flush offline highlight edits for any pending operations before pulling canonical server list.
+        await syncPendingOfflineOperations()
+
+        guard let encodedSlug = encodedPathSegment(slug),
+              let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/highlights") else {
+            throw URLError(.badURL)
+        }
+        
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10.0
+        do {
+            let (data, response) = try await sendRequest(request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                throw URLError(.badServerResponse)
+            }
+            
+            struct HighlightResponse: Codable {
+                let highlights: [Highlight]
+            }
+            
+            let result = try JSONDecoder().decode(HighlightResponse.self, from: data)
+            self.isOfflineMode = false
+            self.isServerReachable = true
+
+            BookCacheManager.shared.saveCachedHighlights(
+                result.highlights,
+                slug: slug,
+                serverUrl: normalizedServerUrl,
+                username: username
+            )
+            let merged = BookCacheManager.shared.mergeHighlightsWithPending(
+                result.highlights,
+                slug: slug,
+                serverUrl: normalizedServerUrl,
+                username: username
+            )
+            if currentHighlightsSlug == slug {
+                self.highlights = merged
+            }
+            return merged
+        } catch {
+            if isConnectivityFailure(error) {
+                self.isOfflineMode = true
+                self.isServerReachable = false
+                let cached = BookCacheManager.shared.loadCachedHighlights(
+                    slug: slug,
+                    serverUrl: normalizedServerUrl,
+                    username: username
+                )
+                if currentHighlightsSlug == slug {
+                    self.highlights = cached
+                }
+                return cached
+            }
+            throw error
+        }
+    }
+    
+    func saveHighlight(slug: String, highlight: Highlight) async throws {
+        // Optimistic update + durable local cache regardless of connectivity
+        var localList = (currentHighlightsSlug == slug)
+            ? highlights
+            : BookCacheManager.shared.loadCachedHighlights(slug: slug, serverUrl: normalizedServerUrl, username: username)
+        if let idx = localList.firstIndex(where: { $0.id == highlight.id }) {
+            localList[idx] = highlight
+        } else {
+            localList.append(highlight)
+        }
+        currentHighlightsSlug = slug
+        highlights = localList
+        BookCacheManager.shared.saveCachedHighlights(
+            localList,
+            slug: slug,
+            serverUrl: normalizedServerUrl,
+            username: username
+        )
+
+        let pendingOp = OfflinePendingOp.upsertHighlight(slug: slug, highlight: highlight)
+        BookCacheManager.shared.enqueuePendingOp(pendingOp, serverUrl: normalizedServerUrl, username: username)
+
+        guard isNetworkAvailable,
+              let encodedSlug = encodedPathSegment(slug),
+              let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/highlights") else {
+            if !isNetworkAvailable {
+                isOfflineMode = true
+                isServerReachable = false
+            }
+            return
+        }
+        
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = 10.0
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(highlight)
         
-        let (_, response) = try await sendRequest(request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
+        do {
+            let (_, response) = try await sendRequest(request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            if (200..<300).contains(httpResponse.statusCode) {
+                self.isOfflineMode = false
+                self.isServerReachable = true
+                BookCacheManager.shared.removeExactPendingOp(
+                    pendingOp,
+                    serverUrl: normalizedServerUrl,
+                    username: username
+                )
+                _ = try? await fetchHighlights(slug: slug)
+            } else if (500...599).contains(httpResponse.statusCode) {
+                self.isOfflineMode = true
+                self.isServerReachable = false
+            } else {
+                BookCacheManager.shared.removeExactPendingOp(
+                    pendingOp,
+                    serverUrl: normalizedServerUrl,
+                    username: username
+                )
+                throw URLError(.badServerResponse)
+            }
+        } catch {
+            if isConnectivityFailure(error) {
+                self.isOfflineMode = true
+                self.isServerReachable = false
+                return
+            }
+            throw error
         }
-        
-        _ = try? await fetchHighlights(slug: slug)
     }
     
     func deleteHighlight(slug: String, highlightId: String) async throws {
-        guard let url = URL(string: "\(serverUrl)/api/books/\(slug)/highlights/\(highlightId)") else {
-            throw URLError(.badURL)
+        var localList = (currentHighlightsSlug == slug)
+            ? highlights
+            : BookCacheManager.shared.loadCachedHighlights(slug: slug, serverUrl: normalizedServerUrl, username: username)
+        localList.removeAll { $0.id == highlightId }
+        currentHighlightsSlug = slug
+        highlights = localList
+        BookCacheManager.shared.saveCachedHighlights(
+            localList,
+            slug: slug,
+            serverUrl: normalizedServerUrl,
+            username: username
+        )
+
+        let pendingOp = OfflinePendingOp.deleteHighlight(slug: slug, highlightId: highlightId)
+        BookCacheManager.shared.enqueuePendingOp(pendingOp, serverUrl: normalizedServerUrl, username: username)
+
+        guard isNetworkAvailable,
+              let encodedSlug = encodedPathSegment(slug),
+              let encodedId = encodedPathSegment(highlightId),
+              let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/highlights/\(encodedId)") else {
+            if !isNetworkAvailable {
+                isOfflineMode = true
+                isServerReachable = false
+            }
+            return
         }
         
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
+        request.timeoutInterval = 10.0
         
-        let (_, response) = try await sendRequest(request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
+        do {
+            let (_, response) = try await sendRequest(request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            if (200..<300).contains(httpResponse.statusCode) || httpResponse.statusCode == 404 {
+                self.isOfflineMode = false
+                self.isServerReachable = true
+                BookCacheManager.shared.removeExactPendingOp(
+                    pendingOp,
+                    serverUrl: normalizedServerUrl,
+                    username: username
+                )
+                _ = try? await fetchHighlights(slug: slug)
+            } else if (500...599).contains(httpResponse.statusCode) {
+                self.isOfflineMode = true
+                self.isServerReachable = false
+            } else {
+                BookCacheManager.shared.removeExactPendingOp(
+                    pendingOp,
+                    serverUrl: normalizedServerUrl,
+                    username: username
+                )
+                throw URLError(.badServerResponse)
+            }
+        } catch {
+            if isConnectivityFailure(error) {
+                self.isOfflineMode = true
+                self.isServerReachable = false
+                return
+            }
+            throw error
         }
-        
-        _ = try? await fetchHighlights(slug: slug)
+    }
+
+    private func buildSyncRequest(for op: OfflinePendingOp) -> URLRequest? {
+        switch op {
+        case .saveProgress(let slug, let page, let viewMode, let lastRead):
+            guard let encodedSlug = encodedPathSegment(slug),
+                  let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/progress") else {
+                return nil
+            }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.timeoutInterval = 10.0
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: [
+                "page": page,
+                "viewMode": viewMode,
+                "lastRead": lastRead
+            ])
+            return req
+
+        case .patchBookState(let slug, let isFinished, let isPriority, let readerFont, let readerTheme):
+            guard let encodedSlug = encodedPathSegment(slug),
+                  let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/state") else {
+                return nil
+            }
+            var patch: [String: Any] = [:]
+            if let isFinished { patch["isFinished"] = isFinished }
+            if let isPriority { patch["isPriority"] = isPriority }
+            if let readerFont { patch["readerFont"] = readerFont }
+            if let readerTheme { patch["readerTheme"] = readerTheme }
+            guard !patch.isEmpty else { return nil }
+            var req = URLRequest(url: url)
+            req.httpMethod = "PATCH"
+            req.timeoutInterval = 10.0
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: patch)
+            return req
+
+        case .upsertHighlight(let slug, let highlight):
+            guard let encodedSlug = encodedPathSegment(slug),
+                  let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/highlights") else {
+                return nil
+            }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.timeoutInterval = 10.0
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONEncoder().encode(highlight)
+            return req
+
+        case .deleteHighlight(let slug, let highlightId):
+            guard let encodedSlug = encodedPathSegment(slug),
+                  let encodedId = encodedPathSegment(highlightId),
+                  let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/highlights/\(encodedId)") else {
+                return nil
+            }
+            var req = URLRequest(url: url)
+            req.httpMethod = "DELETE"
+            req.timeoutInterval = 10.0
+            return req
+        }
+    }
+
+    /// Flushes queued offline reading progress, book state changes, and highlight mutations to
+    /// the server cleanly once connectivity returns.
+    func syncPendingOfflineOperations() async {
+        guard isAuthenticated, !token.isEmpty, isNetworkAvailable, !isSyncingOfflineOps else { return }
+        let ops = BookCacheManager.shared.loadPendingOps(serverUrl: normalizedServerUrl, username: username)
+        guard !ops.isEmpty else {
+            BookCacheManager.shared.refreshPendingCount(serverUrl: normalizedServerUrl, username: username)
+            return
+        }
+
+        isSyncingOfflineOps = true
+        defer { isSyncingOfflineOps = false }
+
+        var syncedAny = false
+        for op in ops {
+            guard let req = buildSyncRequest(for: op) else {
+                BookCacheManager.shared.removeExactPendingOp(
+                    op,
+                    serverUrl: normalizedServerUrl,
+                    username: username
+                )
+                continue
+            }
+
+            do {
+                let (_, resp) = try await sendRequest(req)
+                let status = (resp as? HTTPURLResponse)?.statusCode ?? 500
+                if (200..<300).contains(status) || status == 404 {
+                    if case .saveProgress(let slug, _, _, let lastRead) = op {
+                        BookCacheManager.shared.removePendingProgress(
+                            slug: slug,
+                            upToLastRead: lastRead,
+                            serverUrl: normalizedServerUrl,
+                            username: username
+                        )
+                    } else {
+                        BookCacheManager.shared.removeExactPendingOp(
+                            op,
+                            serverUrl: normalizedServerUrl,
+                            username: username
+                        )
+                    }
+                    syncedAny = true
+                } else if (500...599).contains(status) {
+                    return
+                }
+            } catch {
+                if isConnectivityFailure(error) {
+                    isOfflineMode = true
+                    isServerReachable = false
+                }
+                return
+            }
+        }
+
+        if syncedAny {
+            isOfflineMode = false
+            isServerReachable = true
+            NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
+        }
     }
     
     // --- AI Chat completions Proxy API ---
