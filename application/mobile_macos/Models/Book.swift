@@ -88,6 +88,11 @@ struct Book: Codable, Identifiable, Equatable, Hashable {
         case createdAt, lastRead, isFinished, onShelf, isPriority
         case defaultFont, defaultTheme, readerFont, readerTheme
     }
+
+    func pageURL(serverUrl: String, lang: String, page: Int) -> String {
+        let p = String(format: "%04d", page)
+        return "\(serverUrl)/books/\(slug)/output/\(lang)/page_\(p).html"
+    }
 }
 
 enum BookSort {

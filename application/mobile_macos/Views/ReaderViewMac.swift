@@ -43,11 +43,13 @@ struct ReaderViewMac: View {
     @State private var highlightNote: String = ""
 
     @State private var highlights: [Highlight] = []
+    @State private var previewingHighlight: Highlight?
     @State private var webViews: [String: WKWebView] = [:]
     @State private var vocaToast: String?
     @State private var vocaProgressWord: String?
     @State private var vocaPanelPage: Int?
     @State private var vocaPanelLang: String = ""
+    @State private var vocaPanelRect: CGRect = CGRect(x: 40, y: 40, width: 80, height: 24)
 
     // AI Chat (Companion Agent)
     @State private var chatMessages: [ChatMessage] = []
@@ -101,12 +103,7 @@ struct ReaderViewMac: View {
     }
 
     private var paperColorForStage: Color {
-        let desc = ReaderAppearance.parseThemeDescriptor(selectedThemeId)
-        if desc.themeId == "custom", ReaderAppearance.isValidHexColor(desc.customPaperColor) {
-            return Color(hex: String(desc.customPaperColor.dropFirst()))
-        }
-        let theme = ReaderAppearance.getTheme(selectedThemeId)
-        return Color(hex: String(theme.paper.dropFirst()))
+        Color.readerPaper(for: selectedThemeId)
     }
 
     private func useDoubleSided(for totalWidth: CGFloat) -> Bool {
@@ -262,16 +259,17 @@ struct ReaderViewMac: View {
         .preferredColorScheme(.dark)
         .focusable()
         .onKeyPress(.leftArrow) {
-            guard !isTypingInInput else { return .ignored }
+            guard previewingHighlight == nil, !isTypingInInput else { return .ignored }
             stepPage(forward: false, doubleSided: isDoublePageSpread && viewMode != "split")
             return .handled
         }
         .onKeyPress(.rightArrow) {
-            guard !isTypingInInput else { return .ignored }
+            guard previewingHighlight == nil, !isTypingInInput else { return .ignored }
             stepPage(forward: true, doubleSided: isDoublePageSpread && viewMode != "split")
             return .handled
         }
         .onKeyPress(.escape) {
+            guard previewingHighlight == nil else { return .ignored }
             if showNoteEditor || activeSelection != nil || selectedHighlightId != nil {
                 clearSelectionBar()
                 return .handled
@@ -283,9 +281,22 @@ struct ReaderViewMac: View {
             return .ignored
         }
         .onKeyPress("f") {
-            guard !isTypingInInput else { return .ignored }
+            guard previewingHighlight == nil, !isTypingInInput else { return .ignored }
             withAnimation(.easeInOut(duration: 0.2)) { isFullScreen.toggle() }
             return .handled
+        }
+        .sheet(item: $previewingHighlight) { hl in
+            HighlightReferenceSheetMac(
+                book: book,
+                totalPages: totalPages,
+                mainCurrentPage: currentPage,
+                initialHighlight: hl,
+                initialViewMode: viewMode,
+                effectiveFontId: selectedFontId,
+                effectiveThemeId: selectedThemeId,
+                layoutMode: layoutMode,
+                highlights: $highlights
+            )
         }
         .onAppear {
             loadInitialState()
@@ -815,7 +826,9 @@ struct ReaderViewMac: View {
     }
 
     private func clampedToolbarPosition(rect: CGRect, in size: CGSize) -> CGPoint {
-        let menuHalfWidth: CGFloat = showNoteEditor ? 136 : 128
+        let menuHalfWidth: CGFloat = (selectedHighlightId != nil && canLookupActiveTextInVoca)
+            ? 158
+            : (showNoteEditor ? 140 : 136)
         let menuHalfHeight: CGFloat = 24
         let minX = menuHalfWidth + 12
         let maxX = max(minX, size.width - menuHalfWidth - 12)
@@ -1032,7 +1045,7 @@ struct ReaderViewMac: View {
 
             Divider().background(Color.white.opacity(0.25)).frame(height: 18)
 
-            if activeLang == "en" && activeSelection != nil {
+            if canLookupActiveTextInVoca {
                 Button {
                     lookupActiveSelectionInVoca()
                 } label: {
@@ -1043,7 +1056,7 @@ struct ReaderViewMac: View {
                         .background(Color.white.opacity(0.05), in: Circle())
                 }
                 .buttonStyle(.macCircle())
-                .help("Tra từ điển Voca 2.0")
+                .help("Tra & thêm từ vào Voca 2.0")
             }
 
             Button {
@@ -1270,6 +1283,14 @@ struct ReaderViewMac: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .background(Color(hex: "fbbf24").opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
                                 }
+
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.up.right.square")
+                                    Text("Mở trang \(hl.page) ở cửa sổ xem riêng (giữ nguyên trang \(currentPage))")
+                                }
+                                .font(.caption2)
+                                .foregroundStyle(Color(hex: "5eead4").opacity(0.85))
+                                .padding(.top, 2)
                             }
                             .padding(10)
                             .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
@@ -1279,7 +1300,7 @@ struct ReaderViewMac: View {
                             )
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                jumpToHighlight(hl)
+                                previewingHighlight = hl
                             }
                         }
                     }
@@ -1513,8 +1534,7 @@ struct ReaderViewMac: View {
     // MARK: - Actions & Sync
 
     private func pageURL(lang: String, page: Int) -> String {
-        let p = String(format: "%04d", page)
-        return "\(api.normalizedServerUrl)/books/\(book.slug)/output/\(lang)/page_\(p).html"
+        book.pageURL(serverUrl: api.normalizedServerUrl, lang: lang, page: page)
     }
 
     private func loadInitialState() {
@@ -1585,31 +1605,6 @@ struct ReaderViewMac: View {
             pageTurnSkew = 0
             pageTurnShift = 0
             pageTurnShadowOpacity = 0
-        }
-    }
-
-    private func jumpToHighlight(_ hl: Highlight) {
-        if viewMode != "split" && viewMode != hl.lang {
-            setViewMode(hl.lang)
-        }
-        let needsTurn = hl.page != currentPage
-        if needsTurn {
-            goToPage(hl.page)
-        }
-        let encoded = String(
-            data: (try? JSONSerialization.data(withJSONObject: [hl.id])) ?? Data("[\"\"]".utf8),
-            encoding: .utf8
-        ) ?? "[\"\"]"
-        Task {
-            if needsTurn {
-                try? await Task.sleep(for: .milliseconds(260))
-            }
-            await MainActor.run {
-                webViews["\(hl.lang):\(hl.page)"]?.evaluateJavaScript(
-                    "window.scrollToAndPulseHighlight && window.scrollToAndPulseHighlight(\(encoded)[0]);",
-                    completionHandler: nil
-                )
-            }
         }
     }
 
@@ -1686,9 +1681,32 @@ struct ReaderViewMac: View {
         }
     }
 
+    private var activeLookupText: String? {
+        if let sel = activeSelection {
+            return sel.text
+        }
+        if let hlId = selectedHighlightId,
+           let existing = highlights.first(where: { $0.id == hlId }) {
+            return existing.text
+        }
+        return nil
+    }
+
+    private var canLookupActiveTextInVoca: Bool {
+        guard activeLang == "en", let raw = activeLookupText else { return false }
+        return !VocaService.cleanWord(raw).isEmpty
+    }
+
+    private func dismissOpenVocaPanels() {
+        for wv in webViews.values {
+            wv.evaluateJavaScript("window.removeIOSVocaPanel && window.removeIOSVocaPanel();", completionHandler: nil)
+        }
+    }
+
     private func handleHighlightMessage(_ msg: HighlightMessage, lang: String, page: Int) {
         switch msg {
         case .textSelected(let info):
+            dismissOpenVocaPanels()
             activeLang = lang
             activeSelection = info
             activeSelectionPage = page
@@ -1700,13 +1718,14 @@ struct ReaderViewMac: View {
             highlightNote = ""
             showNoteEditor = false
         case .highlightClicked(let id, let rect):
-            activeLang = lang
+            dismissOpenVocaPanels()
+            let existing = highlights.first(where: { $0.id == id })
+            activeLang = existing?.lang ?? lang
             activeSelection = nil
             activeSelectionPage = nil
             selectedHighlightId = id
-            selectedHighlightPage = page
+            selectedHighlightPage = existing?.page ?? page
             activeRect = rect
-            let existing = highlights.first(where: { $0.id == id })
             highlightNote = existing?.note ?? ""
             if let c = existing?.color { selectedColor = c }
             showNoteEditor = !(existing?.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1766,42 +1785,24 @@ struct ReaderViewMac: View {
     }
 
     private func lookupActiveSelectionInVoca() {
-        guard let sel = activeSelection else { return }
-        let targetPage = activeSelectionPage ?? currentPage
+        guard let rawText = activeLookupText else { return }
         let lang = activeLang
+        guard lang == "en" else { return }
+        let targetPage = activeSelectionPage ?? selectedHighlightPage ?? currentPage
         guard let webView = webViews["\(lang):\(targetPage)"] else { return }
-        let query = VocaService.cleanWord(sel.text)
+        let query = VocaService.cleanWord(rawText)
         guard !query.isEmpty else { return }
 
+        let anchorRect = activeRect ?? activeSelection?.rect ?? CGRect(x: 40, y: 40, width: 80, height: 24)
         vocaPanelPage = targetPage
         vocaPanelLang = lang
+        vocaPanelRect = anchorRect
         clearSelectionBar()
         Task {
             do {
-                let result = try await VocaService.lookupWord(query)
-                let rect = sel.rect ?? CGRect(x: 40, y: 40, width: 80, height: 24)
-                var payload: [String: Any] = ["rect": ["x": rect.origin.x, "y": rect.origin.y, "width": rect.width, "height": rect.height]]
-                if result.found {
-                    let cards = result.resolvedCards
-                    if cards.count == 1, let card = cards.first {
-                        payload["mode"] = "single"
-                        payload["card"] = card.toPayload()
-                    } else if cards.count > 1 {
-                        payload["mode"] = "multi"
-                        payload["query"] = query
-                        payload["cards"] = cards.map { $0.toPayload() }
-                    } else {
-                        payload["mode"] = "notFound"
-                        payload["query"] = query
-                    }
-                } else {
-                    payload["mode"] = "notFound"
-                    payload["query"] = query
-                }
-                if let data = try? JSONSerialization.data(withJSONObject: payload),
-                   let json = String(data: data, encoding: .utf8) {
+                if let json = try await VocaService.lookupPanelJSON(query: query, rect: anchorRect) {
                     await MainActor.run {
-                        webView.evaluateJavaScript("window.showIOSVocaPanel && window.showIOSVocaPanel(\(json));", completionHandler: nil)
+                        webView.evaluateShowVocaPanel(json: json)
                     }
                 }
             } catch {
@@ -1811,6 +1812,7 @@ struct ReaderViewMac: View {
     }
 
     private func handleVocaAction(_ action: VocaWebAction) {
+        let savedRect = vocaPanelRect
         switch action {
         case .addWord(let word):
             vocaProgressWord = word
@@ -1820,16 +1822,9 @@ struct ReaderViewMac: View {
                     await MainActor.run {
                         vocaProgressWord = nil
                         showToast("Đã thêm '\(card.word)' vào Voca!")
-                        if let webView = webViews["\(vocaPanelLang):\(vocaPanelPage ?? currentPage)"] {
-                            let payload: [String: Any] = [
-                                "mode": "single",
-                                "card": card.toPayload(),
-                                "rect": ["x": 40, "y": 40, "width": 80, "height": 24],
-                            ]
-                            if let data = try? JSONSerialization.data(withJSONObject: payload),
-                               let json = String(data: data, encoding: .utf8) {
-                                webView.evaluateJavaScript("window.showIOSVocaPanel && window.showIOSVocaPanel(\(json));", completionHandler: nil)
-                            }
+                        if let webView = webViews["\(vocaPanelLang):\(vocaPanelPage ?? currentPage)"],
+                           let json = VocaService.singleCardPanelJSON(card: card, rect: savedRect) {
+                            webView.evaluateShowVocaPanel(json: json)
                         }
                     }
                 } catch {
@@ -1844,16 +1839,9 @@ struct ReaderViewMac: View {
                 _ = try? await VocaService.playCardAudio(slug: slug)
             }
         case .selectCard(let card):
-            guard let webView = webViews["\(vocaPanelLang):\(vocaPanelPage ?? currentPage)"] else { return }
-            let payload: [String: Any] = [
-                "mode": "single",
-                "card": card.toPayload(),
-                "rect": ["x": 40, "y": 40, "width": 80, "height": 24],
-            ]
-            if let data = try? JSONSerialization.data(withJSONObject: payload),
-               let json = String(data: data, encoding: .utf8) {
-                webView.evaluateJavaScript("window.showIOSVocaPanel && window.showIOSVocaPanel(\(json));", completionHandler: nil)
-            }
+            guard let webView = webViews["\(vocaPanelLang):\(vocaPanelPage ?? currentPage)"],
+                  let json = VocaService.singleCardPanelJSON(card: card, rect: savedRect) else { return }
+            webView.evaluateShowVocaPanel(json: json)
         case .dismiss:
             break
         }
@@ -1923,48 +1911,5 @@ struct ReaderViewMac: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) {
             withAnimation { vocaToast = nil }
         }
-    }
-}
-
-extension VocaCard {
-    func toPayload() -> [String: Any] {
-        [
-            "id": id,
-            "slug": slug,
-            "word": word,
-            "ipa": displayIpa,
-            "meaning": displayMeaning,
-        ]
-    }
-
-    static func fromWebPayload(_ dict: [String: Any]) -> VocaCard? {
-        guard let word = dict["word"] as? String else { return nil }
-        let id = dict["id"] as? Int ?? 0
-        let slug = dict["slug"] as? String ?? ""
-        let ipa = dict["ipa"] as? String
-        let meaning = dict["meaning"] as? String
-        return VocaCard(
-            id: id,
-            slug: slug,
-            word: word,
-            ipa: ipa,
-            pronunciation: nil,
-            frequency: nil,
-            meaningEn: meaning,
-            meaningVi: meaning,
-            useCases: nil,
-            examples: nil,
-            memoryTip: nil,
-            toeicTrap: nil,
-            partOfSpeech: nil,
-            topic: nil,
-            tags: nil,
-            keyword: nil,
-            practicePrompt: nil,
-            answer: nil,
-            level: nil,
-            audioUrl: nil,
-            createdAt: nil
-        )
     }
 }

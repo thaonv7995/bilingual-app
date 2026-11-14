@@ -47,6 +47,7 @@ struct BilingualWebViewMac: NSViewRepresentable {
     var effectiveThemeId: String = "default"
     var activeSentenceId: String? = nil
     var scrollActiveSentenceIntoView: Bool = false
+    var scrollSyncScope: String = "main"
 
     @ObservedObject var api = APIService.shared
     let highlights: [Highlight]
@@ -56,6 +57,7 @@ struct BilingualWebViewMac: NSViewRepresentable {
     var onOpenExternalURL: ((URL) -> Void)? = nil
     var onWebViewReady: ((WKWebView, String, Int) -> Void)? = nil
     var onWebViewDismantled: ((WKWebView, String, Int) -> Void)? = nil
+    var onPageDidFinish: ((WKWebView, String, Int) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -666,7 +668,7 @@ struct BilingualWebViewMac: NSViewRepresentable {
         NotificationCenter.default.addObserver(
             context.coordinator,
             selector: #selector(Coordinator.handleScrollSync(_:)),
-            name: NSNotification.Name("MacScrollToOffset_\(lang)"),
+            name: NSNotification.Name("MacScrollToOffset_\(scrollSyncScope)_\(lang)"),
             object: nil
         )
 
@@ -788,6 +790,7 @@ struct BilingualWebViewMac: NSViewRepresentable {
             webView.evaluateJavaScript("window.ensureSentencesSegmented && window.ensureSentencesSegmented();", completionHandler: nil)
             syncHighlightsIfNeeded(in: webView, force: true)
             applySentenceHighlight(in: webView)
+            parent.onPageDidFinish?(webView, parent.lang, parent.page)
         }
 
         func webView(
@@ -891,7 +894,7 @@ struct BilingualWebViewMac: NSViewRepresentable {
                     if let progress = json["progress"] as? Double {
                         let otherLang = self.parent.lang == "en" ? "vi" : "en"
                         NotificationCenter.default.post(
-                            name: NSNotification.Name("MacScrollToOffset_\(otherLang)"),
+                            name: NSNotification.Name("MacScrollToOffset_\(self.parent.scrollSyncScope)_\(otherLang)"),
                             object: nil,
                             userInfo: [
                                 "progress": progress,
@@ -946,6 +949,27 @@ struct BilingualWebViewMac: NSViewRepresentable {
                 }
             }
         }
+    }
+}
+
+extension WKWebView {
+    func evaluateShowVocaPanel(json: String) {
+        evaluateJavaScript("window.showIOSVocaPanel && window.showIOSVocaPanel(\(json));", completionHandler: nil)
+    }
+
+    func evaluateDismissVocaPanel() {
+        evaluateJavaScript("window.removeIOSVocaPanel && window.removeIOSVocaPanel();", completionHandler: nil)
+    }
+
+    func evaluateScrollAndPulseHighlight(id: String) {
+        let encoded = String(
+            data: (try? JSONSerialization.data(withJSONObject: [id])) ?? Data("[\"\"]".utf8),
+            encoding: .utf8
+        ) ?? "[\"\"]"
+        evaluateJavaScript(
+            "window.scrollToAndPulseHighlight && window.scrollToAndPulseHighlight(\(encoded)[0]);",
+            completionHandler: nil
+        )
     }
 }
 

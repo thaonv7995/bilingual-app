@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreGraphics
 
 /// Client for the Voca 2.0 vocabulary API — reached **through our own backend**, never direct.
 ///
@@ -937,5 +938,102 @@ enum VocaService {
             throw VocaServiceError.invalidResponse("Voca trả về nội dung luyện tập không đọc được.")
         }
         return json
+    }
+}
+
+extension VocaService {
+    /// Builds the JSON payload string expected by `window.showIOSVocaPanel(...)` for a lookup query.
+    static func lookupPanelJSON(query: String, rect: CGRect) async throws -> String? {
+        let result = try await lookupWord(query)
+        var payload: [String: Any] = [
+            "rect": [
+                "x": rect.origin.x,
+                "y": rect.origin.y,
+                "width": rect.width,
+                "height": rect.height,
+            ],
+        ]
+        if result.found {
+            let cards = result.resolvedCards
+            if cards.count == 1, let card = cards.first {
+                payload["mode"] = "single"
+                payload["card"] = card.toPayload()
+            } else if cards.count > 1 {
+                payload["mode"] = "multi"
+                payload["query"] = query
+                payload["cards"] = cards.map { $0.toPayload() }
+            } else {
+                payload["mode"] = "notFound"
+                payload["query"] = query
+            }
+        } else {
+            payload["mode"] = "notFound"
+            payload["query"] = query
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8)
+        else { return nil }
+        return json
+    }
+
+    /// Builds the JSON payload string expected by `window.showIOSVocaPanel(...)` for a single card.
+    static func singleCardPanelJSON(card: VocaCard, rect: CGRect) -> String? {
+        let payload: [String: Any] = [
+            "mode": "single",
+            "card": card.toPayload(),
+            "rect": [
+                "x": rect.origin.x,
+                "y": rect.origin.y,
+                "width": rect.width,
+                "height": rect.height,
+            ],
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8)
+        else { return nil }
+        return json
+    }
+}
+
+extension VocaCard {
+    func toPayload() -> [String: Any] {
+        [
+            "id": id,
+            "slug": slug,
+            "word": word,
+            "ipa": displayIpa,
+            "meaning": displayMeaning,
+        ]
+    }
+
+    static func fromWebPayload(_ dict: [String: Any]) -> VocaCard? {
+        guard let word = dict["word"] as? String else { return nil }
+        let id = dict["id"] as? Int ?? 0
+        let slug = dict["slug"] as? String ?? ""
+        let ipa = dict["ipa"] as? String
+        let meaning = dict["meaning"] as? String
+        return VocaCard(
+            id: id,
+            slug: slug,
+            word: word,
+            ipa: ipa,
+            pronunciation: nil,
+            frequency: nil,
+            meaningEn: meaning,
+            meaningVi: meaning,
+            useCases: nil,
+            examples: nil,
+            memoryTip: nil,
+            toeicTrap: nil,
+            partOfSpeech: nil,
+            topic: nil,
+            tags: nil,
+            keyword: nil,
+            practicePrompt: nil,
+            answer: nil,
+            level: nil,
+            audioUrl: nil,
+            createdAt: nil
+        )
     }
 }
