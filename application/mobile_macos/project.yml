@@ -1,0 +1,66 @@
+name: BilingualReaderMac
+options:
+  bundleIdPrefix: com.bilingual.reader
+  deploymentTarget:
+    macOS: "14.0"
+targets:
+  BilingualReaderMac:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: .
+        excludes:
+          - "README.md"
+          - "project.yml"
+          - "BilingualReaderMac.xcodeproj"
+          - "Tests"
+          - "build"
+          - "DerivedData"
+          - "**/.DS_Store"
+    info:
+      path: Info.plist
+      properties:
+        ENABLE_AUDIOBOOK: false
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: false
+        PRODUCT_NAME: "BilingualReader"
+        PRODUCT_BUNDLE_IDENTIFIER: com.bilingual.reader.macos
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_APP_SANDBOX: false
+        COMBINE_HIDPI_IMAGES: true
+        SWIFT_VERSION: "5.0"
+        DEVELOPMENT_TEAM: MPB66BJ242
+
+  BilingualReaderMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests
+    dependencies:
+      - target: BilingualReaderMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bilingual.reader.macos.tests
+        ENABLE_APP_SANDBOX: false
+        GENERATE_INFOPLIST_FILE: true
+        SWIFT_VERSION: "5.0"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/BilingualReader.app/Contents/MacOS/BilingualReader"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+schemes:
+  BilingualReaderMac:
+    build:
+      targets:
+        BilingualReaderMac: all
+        BilingualReaderMacTests: [test]
+    run:
+      environmentVariables:
+        OS_ACTIVITY_MODE: "disable"
+    test:
+      targets:
+        - BilingualReaderMacTests

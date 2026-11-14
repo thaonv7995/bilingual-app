@@ -1,0 +1,521 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1E4674CE6F83A9AE62C54E30 /* ReaderAppearancePopoverMac.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5416D3C4EE5BB603A8F91B5 /* ReaderAppearancePopoverMac.swift */; };
+		3E1B233B904A1F0A7CC3CD76 /* BookArchiveExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC1C44E9B373D4477F55994 /* BookArchiveExtractor.swift */; };
+		4D0BEA265FF901C8572F6CB5 /* BilingualReaderMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3716A1828CEC71A6600289AF /* BilingualReaderMacApp.swift */; };
+		6EF448DA2E325FB79755FC0F /* BackupModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7660D18BC046615E8DF2B00D /* BackupModels.swift */; };
+		6FA7ABE8E72B37EFEFB2B902 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = B16BD962AFAE1C868B33194E /* KeychainHelper.swift */; };
+		76B8E7028218EE65025E8479 /* ReaderViewMac.swift in Sources */ = {isa = PBXBuildFile; fileRef = 068E069E127574F5451B237A /* ReaderViewMac.swift */; };
+		817778E64873177F178AC7CA /* BackupVaultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DEBB8E7D9E1FA8B6B7B65D4 /* BackupVaultTests.swift */; };
+		829AA487B4DA76E49D1ECA20 /* Book.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E4D1B93E8347E36B65894F9 /* Book.swift */; };
+		938D8FBAE92CCAEB7D6454E0 /* BackupVaultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBDFDA553B0A3051AD48CBAF /* BackupVaultView.swift */; };
+		A17B943BB914AB14232B6A96 /* VocaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F23F35649B5E0525F5129E6A /* VocaService.swift */; };
+		A727363FC7FE4C602B384E8B /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87A68C8289C11F0F13A79260 /* LoginView.swift */; };
+		AABC4B439A2887AB940C9F42 /* RestoreWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3EA1B93A85EB1B037468D5C /* RestoreWizardView.swift */; };
+		AB63D82469A130F907CEEC05 /* BilingualWebViewMac.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E645C241A8BE90AA6BA8637 /* BilingualWebViewMac.swift */; };
+		ADB8721FE0D92A9151034861 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94212F6B8A2135D6036D3B5E /* ContentView.swift */; };
+		B1C7525BB8BA315F03F9AFEA /* MacButtonStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BE6F1277F329310B6BE4ABD /* MacButtonStyles.swift */; };
+		B4D884B1FB8893AC07E24510 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 84BF03850A0813CD9FC93C6B /* Assets.xcassets */; };
+		BD6B79CEE58F6A715941F627 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF0F642B35054E8795F46D7 /* LibraryView.swift */; };
+		C2478424F45A9BB2EFD7BB56 /* DeviceSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44111DAFB38EB70751887A2C /* DeviceSpeech.swift */; };
+		CA568D2BBF828B9912BEC236 /* BackupManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F000F5285347A9BD2CA7D7 /* BackupManager.swift */; };
+		D3A23FED899AE03CA11E9FBC /* ReaderAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = E756E209B6314CEF69803D2A /* ReaderAppearance.swift */; };
+		EEA065CB4212E1869EFEB889 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5CBF449624E095C91C0546B /* APIService.swift */; };
+		F6BFF80EEC096FFF91FDA71D /* SettingsViewMac.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DFD40C49D2E1D3521E6616F /* SettingsViewMac.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		D9089BF30487000F32827DFF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 26BB20B79C1C7C02D430E343 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D6F9067673DD4A37E147FBE5;
+			remoteInfo = BilingualReaderMac;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		04F000F5285347A9BD2CA7D7 /* BackupManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupManager.swift; sourceTree = "<group>"; };
+		068E069E127574F5451B237A /* ReaderViewMac.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderViewMac.swift; sourceTree = "<group>"; };
+		0DEBB8E7D9E1FA8B6B7B65D4 /* BackupVaultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupVaultTests.swift; sourceTree = "<group>"; };
+		2BE6F1277F329310B6BE4ABD /* MacButtonStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacButtonStyles.swift; sourceTree = "<group>"; };
+		2E4D1B93E8347E36B65894F9 /* Book.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Book.swift; sourceTree = "<group>"; };
+		3716A1828CEC71A6600289AF /* BilingualReaderMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualReaderMacApp.swift; sourceTree = "<group>"; };
+		44111DAFB38EB70751887A2C /* DeviceSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSpeech.swift; sourceTree = "<group>"; };
+		55693A432A5D0AA05EA3E98D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		6E645C241A8BE90AA6BA8637 /* BilingualWebViewMac.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilingualWebViewMac.swift; sourceTree = "<group>"; };
+		7660D18BC046615E8DF2B00D /* BackupModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupModels.swift; sourceTree = "<group>"; };
+		7AC1C44E9B373D4477F55994 /* BookArchiveExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookArchiveExtractor.swift; sourceTree = "<group>"; };
+		7CF0F642B35054E8795F46D7 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		7DFD40C49D2E1D3521E6616F /* SettingsViewMac.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewMac.swift; sourceTree = "<group>"; };
+		84BF03850A0813CD9FC93C6B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		87A68C8289C11F0F13A79260 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		8FBF3C26156D52514E5C0826 /* BilingualReaderMacTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BilingualReaderMacTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		94212F6B8A2135D6036D3B5E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		AB3808BB37537C9006F801B3 /* BilingualReaderMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BilingualReaderMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B16BD962AFAE1C868B33194E /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		B5416D3C4EE5BB603A8F91B5 /* ReaderAppearancePopoverMac.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderAppearancePopoverMac.swift; sourceTree = "<group>"; };
+		B5CBF449624E095C91C0546B /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		D3EA1B93A85EB1B037468D5C /* RestoreWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreWizardView.swift; sourceTree = "<group>"; };
+		E756E209B6314CEF69803D2A /* ReaderAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderAppearance.swift; sourceTree = "<group>"; };
+		EBDFDA553B0A3051AD48CBAF /* BackupVaultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupVaultView.swift; sourceTree = "<group>"; };
+		F23F35649B5E0525F5129E6A /* VocaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaService.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		196B8B978002A4EEA4725D25 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				B5CBF449624E095C91C0546B /* APIService.swift */,
+				04F000F5285347A9BD2CA7D7 /* BackupManager.swift */,
+				7AC1C44E9B373D4477F55994 /* BookArchiveExtractor.swift */,
+				44111DAFB38EB70751887A2C /* DeviceSpeech.swift */,
+				B16BD962AFAE1C868B33194E /* KeychainHelper.swift */,
+				F23F35649B5E0525F5129E6A /* VocaService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		1FBB82A3779D48C634F6D06F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AB3808BB37537C9006F801B3 /* BilingualReaderMac.app */,
+				8FBF3C26156D52514E5C0826 /* BilingualReaderMacTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		86F88EDDADB418784FE1BBD3 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				7660D18BC046615E8DF2B00D /* BackupModels.swift */,
+				2E4D1B93E8347E36B65894F9 /* Book.swift */,
+				E756E209B6314CEF69803D2A /* ReaderAppearance.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		C058D1CC3B165C78A92B7429 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				0DEBB8E7D9E1FA8B6B7B65D4 /* BackupVaultTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		DB7751576371D4CC427C714B = {
+			isa = PBXGroup;
+			children = (
+				DD31DEBF204C6139BD29ED94 /* mobile_macos */,
+				86F88EDDADB418784FE1BBD3 /* Models */,
+				196B8B978002A4EEA4725D25 /* Services */,
+				C058D1CC3B165C78A92B7429 /* Tests */,
+				E2548A5A3EA6C81EED2AC8BB /* Views */,
+				1FBB82A3779D48C634F6D06F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		DD31DEBF204C6139BD29ED94 /* mobile_macos */ = {
+			isa = PBXGroup;
+			children = (
+				84BF03850A0813CD9FC93C6B /* Assets.xcassets */,
+				55693A432A5D0AA05EA3E98D /* Info.plist */,
+				86F88EDDADB418784FE1BBD3 /* Models */,
+				196B8B978002A4EEA4725D25 /* Services */,
+				E2548A5A3EA6C81EED2AC8BB /* Views */,
+			);
+			name = mobile_macos;
+			path = .;
+			sourceTree = "<group>";
+		};
+		E2548A5A3EA6C81EED2AC8BB /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				EBDFDA553B0A3051AD48CBAF /* BackupVaultView.swift */,
+				3716A1828CEC71A6600289AF /* BilingualReaderMacApp.swift */,
+				6E645C241A8BE90AA6BA8637 /* BilingualWebViewMac.swift */,
+				94212F6B8A2135D6036D3B5E /* ContentView.swift */,
+				7CF0F642B35054E8795F46D7 /* LibraryView.swift */,
+				87A68C8289C11F0F13A79260 /* LoginView.swift */,
+				2BE6F1277F329310B6BE4ABD /* MacButtonStyles.swift */,
+				B5416D3C4EE5BB603A8F91B5 /* ReaderAppearancePopoverMac.swift */,
+				068E069E127574F5451B237A /* ReaderViewMac.swift */,
+				D3EA1B93A85EB1B037468D5C /* RestoreWizardView.swift */,
+				7DFD40C49D2E1D3521E6616F /* SettingsViewMac.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		992CD5FCAEA8901971A1B7B2 /* BilingualReaderMacTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8DAED2F1ABC50C5414BAB54C /* Build configuration list for PBXNativeTarget "BilingualReaderMacTests" */;
+			buildPhases = (
+				C579B7F7973D1F4D3CCC84DC /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7B1053D205D238889581A985 /* PBXTargetDependency */,
+			);
+			name = BilingualReaderMacTests;
+			packageProductDependencies = (
+			);
+			productName = BilingualReaderMacTests;
+			productReference = 8FBF3C26156D52514E5C0826 /* BilingualReaderMacTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		D6F9067673DD4A37E147FBE5 /* BilingualReaderMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D7DE03D72617C648F8FC1529 /* Build configuration list for PBXNativeTarget "BilingualReaderMac" */;
+			buildPhases = (
+				20B861E8994EA21070E823DA /* Sources */,
+				5A1411228EF93A71316A9623 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BilingualReaderMac;
+			packageProductDependencies = (
+			);
+			productName = BilingualReaderMac;
+			productReference = AB3808BB37537C9006F801B3 /* BilingualReaderMac.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		26BB20B79C1C7C02D430E343 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					D6F9067673DD4A37E147FBE5 = {
+						DevelopmentTeam = MPB66BJ242;
+					};
+				};
+			};
+			buildConfigurationList = 6B10EC412EAB426BD645D8CD /* Build configuration list for PBXProject "BilingualReaderMac" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = DB7751576371D4CC427C714B;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 1FBB82A3779D48C634F6D06F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D6F9067673DD4A37E147FBE5 /* BilingualReaderMac */,
+				992CD5FCAEA8901971A1B7B2 /* BilingualReaderMacTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5A1411228EF93A71316A9623 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B4D884B1FB8893AC07E24510 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		20B861E8994EA21070E823DA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EEA065CB4212E1869EFEB889 /* APIService.swift in Sources */,
+				CA568D2BBF828B9912BEC236 /* BackupManager.swift in Sources */,
+				6EF448DA2E325FB79755FC0F /* BackupModels.swift in Sources */,
+				938D8FBAE92CCAEB7D6454E0 /* BackupVaultView.swift in Sources */,
+				4D0BEA265FF901C8572F6CB5 /* BilingualReaderMacApp.swift in Sources */,
+				AB63D82469A130F907CEEC05 /* BilingualWebViewMac.swift in Sources */,
+				829AA487B4DA76E49D1ECA20 /* Book.swift in Sources */,
+				3E1B233B904A1F0A7CC3CD76 /* BookArchiveExtractor.swift in Sources */,
+				ADB8721FE0D92A9151034861 /* ContentView.swift in Sources */,
+				C2478424F45A9BB2EFD7BB56 /* DeviceSpeech.swift in Sources */,
+				6FA7ABE8E72B37EFEFB2B902 /* KeychainHelper.swift in Sources */,
+				BD6B79CEE58F6A715941F627 /* LibraryView.swift in Sources */,
+				A727363FC7FE4C602B384E8B /* LoginView.swift in Sources */,
+				B1C7525BB8BA315F03F9AFEA /* MacButtonStyles.swift in Sources */,
+				D3A23FED899AE03CA11E9FBC /* ReaderAppearance.swift in Sources */,
+				1E4674CE6F83A9AE62C54E30 /* ReaderAppearancePopoverMac.swift in Sources */,
+				76B8E7028218EE65025E8479 /* ReaderViewMac.swift in Sources */,
+				AABC4B439A2887AB940C9F42 /* RestoreWizardView.swift in Sources */,
+				F6BFF80EEC096FFF91FDA71D /* SettingsViewMac.swift in Sources */,
+				A17B943BB914AB14232B6A96 /* VocaService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C579B7F7973D1F4D3CCC84DC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				817778E64873177F178AC7CA /* BackupVaultTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7B1053D205D238889581A985 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D6F9067673DD4A37E147FBE5 /* BilingualReaderMac */;
+			targetProxy = D9089BF30487000F32827DFF /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2B6679F9AAF42C6FE02B2DE5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bilingual.reader.macos.tests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BilingualReader.app/Contents/MacOS/BilingualReader";
+			};
+			name = Release;
+		};
+		4E01686195725CBBF182422E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = MPB66BJ242;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bilingual.reader.macos;
+				PRODUCT_NAME = BilingualReader;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		5C47A17AF55E78A2F0CC34BD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = MPB66BJ242;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bilingual.reader.macos;
+				PRODUCT_NAME = BilingualReader;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		67DC10618EC8EA03C0FA6F5C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		993C19DD2C4167BCFD25EF5F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		C33E3C1109FB3381443E7121 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bilingual.reader.macos.tests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BilingualReader.app/Contents/MacOS/BilingualReader";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6B10EC412EAB426BD645D8CD /* Build configuration list for PBXProject "BilingualReaderMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				67DC10618EC8EA03C0FA6F5C /* Debug */,
+				993C19DD2C4167BCFD25EF5F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		8DAED2F1ABC50C5414BAB54C /* Build configuration list for PBXNativeTarget "BilingualReaderMacTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C33E3C1109FB3381443E7121 /* Debug */,
+				2B6679F9AAF42C6FE02B2DE5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D7DE03D72617C648F8FC1529 /* Build configuration list for PBXNativeTarget "BilingualReaderMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5C47A17AF55E78A2F0CC34BD /* Debug */,
+				4E01686195725CBBF182422E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 26BB20B79C1C7C02D430E343 /* Project object */;
+}
