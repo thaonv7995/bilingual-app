@@ -138,10 +138,11 @@ export function injectReaderStyles(doc: Document, isEnglish: boolean): void {
       content: ''; position: absolute; top: -3px; right: -3px; width: 6px; height: 6px;
       border-radius: 50%; background: #2563eb; border: 1px solid #fff;
     }
-    mark.reader-highlight--pulse { animation: readerHighlightPulse 1.2s ease; }
+    mark.reader-highlight--pulse { animation: readerHighlightPulse 1.3s ease; }
     @keyframes readerHighlightPulse {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
-      50% { box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.35); }
+      0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+      35% { box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.48), 0 0 14px rgba(56, 189, 248, 0.45); }
+      70% { box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35); }
     }
     .reader-highlight-toolbar {
       position: fixed; z-index: 2147482999; transform: translate(-50%, -100%);

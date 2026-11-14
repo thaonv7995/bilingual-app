@@ -19,17 +19,11 @@ import {
   useUpdateBookAppearanceDefaults,
   useUpdateBookState,
 } from '@/features/library/useBooks';
-import type { Book, ViewMode } from '@/types/api';
-import {
-  cleanWord,
-  getVocaLookupPanelCss,
-  lookupWord,
-  showVocaError,
-  showVocaLookupResults,
-  showVocaNotFoundPanel,
-  syncVocaCards,
-} from '@/lib/voca';
+import type { Book, Highlight, ViewMode } from '@/types/api';
+import { getVocaLookupPanelCss, syncVocaCards } from '@/lib/voca';
 import { ReaderTopbar } from './ReaderTopbar';
+import { HighlightsSidebar } from './HighlightsSidebar';
+import { HighlightReferenceModal } from './HighlightReferenceModal';
 import { ReaderAppearancePopover } from './ReaderAppearancePopover';
 import {
   getLocalBookAppearance,
@@ -42,49 +36,33 @@ import {
 } from './readerAppearance';
 import { AudiobookBar } from '@/features/audiobook/AudiobookBar';
 import { useAudiobook, type AudiobookLanguageMode } from '@/features/audiobook/useAudiobook';
-import {
-  applyBookAppearance,
-  injectReaderStyles,
-  resolveBookBackground,
-  setVocaPanelCss,
-} from './iframe/readerStyles';
+import { applyBookAppearance, setVocaPanelCss } from './iframe/readerStyles';
 import {
   applyInterlinearToDoc,
   clearInterlinearFromDoc,
   fetchOppositeInterlinearIndex,
-  measureInterlinearPageHeight,
 } from './iframe/interlinearDom';
-import { segmentDocSentences } from './iframe/segmentation';
 
 // Make the voca lookup-panel CSS part of the styles injected into each iframe.
 setVocaPanelCss(getVocaLookupPanelCss());
 import {
-  applyStoredHighlights,
   clearAllHighlights,
   registerIframeHighlightListeners,
   removeAllReaderHighlightUI,
   setHighlightContext,
 } from './iframe/highlightDom';
+import {
+  IFRAME_AUTH_ERROR_MARKERS,
+  handleReaderVocaLookup,
+  prepareBookIframeDocument,
+  scaleIframeWrappers,
+} from './iframe/pageFrameUtils';
 import { useHighlights } from './useHighlights';
 import { getLocalProgress, saveLocalProgress } from './localProgress';
 import { resolveProgressOnOpen } from './progressSync';
 import { useSaveProgress, useServerProgress } from './useReaderProgress';
-import {
-  READER_PAGE_HEIGHT,
-  READER_PAGE_WIDTH,
-  READER_VIEWPORT_PADDING,
-  READER_ZOOM_STEP,
-  clampReaderZoom,
-  padPage,
-  type ZoomMode,
-} from './readerConstants';
+import { READER_ZOOM_STEP, clampReaderZoom, padPage, type ZoomMode } from './readerConstants';
 import './reader.css';
-
-const AUTH_ERROR_MARKERS = [
-  'Access Denied: Please log in first',
-  'Not authenticated',
-  'Invalid or expired JWT',
-];
 
 export function ReaderView() {
   const { slug = '', page: pageParam } = useParams();
@@ -155,14 +133,28 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     page,
   );
 
+  const [highlightsOpen, setHighlightsOpen] = useState(false);
+  const [previewHighlight, setPreviewHighlight] = useState<Highlight | null>(null);
+  const previewHighlightOpenRef = useRef(false);
+  previewHighlightOpenRef.current = previewHighlight != null;
+
   const [chatOpen, setChatOpen] = useState<boolean>(() => readJSON(STORAGE_KEYS.chatOpen, false));
   const [chatWidth, setChatWidth] = useState<number>(
     () => parseInt(readString(STORAGE_KEYS.chatWidth) || '', 10) || 400,
   );
   const toggleChat = useCallback(() => {
     setChatOpen((v) => {
-      writeJSON(STORAGE_KEYS.chatOpen, !v);
-      return !v;
+      const next = !v;
+      writeJSON(STORAGE_KEYS.chatOpen, next);
+      if (next) setHighlightsOpen(false);
+      return next;
+    });
+  }, []);
+  const toggleHighlights = useCallback(() => {
+    setHighlightsOpen((v) => {
+      const next = !v;
+      if (next) setChatOpen(false);
+      return next;
     });
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -232,41 +224,12 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
 
   // -- scaling (A4 page -> fit) — ported from app.js:1098-1135 ---------------
   const scaleIframes = useCallback(() => {
-    const wrappers = document.querySelectorAll<HTMLElement>('.iframe-wrapper');
-    let displayedScale: number | null = null;
-
-    wrappers.forEach((wrapper) => {
-      const iframe = wrapper.querySelector<HTMLIFrameElement>('.reader-iframe');
-      const stage = wrapper.querySelector<HTMLElement>('.iframe-stage');
-      if (!iframe || !stage) return;
-
-      const availableWidth = Math.max(wrapper.clientWidth - READER_VIEWPORT_PADDING, 100);
-      const availableHeight = Math.max(wrapper.clientHeight - READER_VIEWPORT_PADDING, 100);
-      const fitWidthScale = availableWidth / READER_PAGE_WIDTH;
-      const fitPageScale = Math.min(fitWidthScale, availableHeight / READER_PAGE_HEIGHT);
-
-      let scale = manualZoomRef.current;
-      if (zoomModeRef.current === 'fit-page') scale = fitPageScale;
-      if (zoomModeRef.current === 'fit-width') scale = fitWidthScale;
-      scale = clampReaderZoom(scale, 0.2);
-
-      const pageHeight = measureInterlinearPageHeight(iframe.contentDocument);
-      const scaledHeight = pageHeight * scale;
-
-      iframe.style.transform = `scale(${scale})`;
-      iframe.style.width = `${READER_PAGE_WIDTH}px`;
-      iframe.style.height = `${pageHeight}px`;
-      stage.style.width = `${READER_PAGE_WIDTH * scale}px`;
-      stage.style.height = `${scaledHeight}px`;
-      if (scaledHeight < availableHeight) {
-        stage.style.marginTop = `${Math.floor((availableHeight - scaledHeight) / 2)}px`;
-        stage.style.marginBottom = '0px';
-      } else {
-        stage.style.marginTop = '0px';
-        stage.style.marginBottom = '24px';
-      }
-      wrapper.dataset.zoomScale = String(scale);
-      if (displayedScale === null) displayedScale = scale;
+    const displayedScale = scaleIframeWrappers(document, {
+      zoomMode: zoomModeRef.current,
+      manualZoom: manualZoomRef.current,
+      wrapperSelector: '.iframe-wrapper',
+      iframeSelector: '.reader-iframe',
+      stageSelector: '.iframe-stage',
     });
 
     if (displayedScale !== null) {
@@ -517,17 +480,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
       updateHighlight,
       deleteHighlight,
       onKeyDown: (e) => onKeyRef.current(e),
-      onLookup: async (text, doc, anchorRect) => {
-        const word = cleanWord(text);
-        if (!word) return;
-        try {
-          const result = await lookupWord(word);
-          if (result.found) showVocaLookupResults(doc, anchorRect, word, result);
-          else showVocaNotFoundPanel(doc, anchorRect, word);
-        } catch (err) {
-          showVocaError(err instanceof Error ? err.message : 'Tra cứu thất bại.');
-        }
-      },
+      onLookup: handleReaderVocaLookup,
     });
     return () => setHighlightContext(null);
   }, [book.slug, page, createHighlight, updateHighlight, deleteHighlight]);
@@ -702,7 +655,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         const loadedPage = pageMatch ? parseInt(pageMatch[1]!, 10) : requestedPageRef.current;
         const retryKey = `${book.slug}:${loadedPage}:${lang}`;
         const bodyText = doc.body?.textContent || '';
-        const isAuthError = AUTH_ERROR_MARKERS.some((m) => bodyText.includes(m));
+        const isAuthError = IFRAME_AUTH_ERROR_MARKERS.some((m) => bodyText.includes(m));
 
         if (isAuthError) {
           if (!iframeAuthRetriesRef.current.has(retryKey)) {
@@ -719,21 +672,21 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         }
 
         iframeAuthRetriesRef.current.delete(retryKey);
-        doc.documentElement.style.overflow = 'hidden';
-        if (doc.body) doc.body.style.overflow = 'hidden';
-        const nav = doc.querySelector<HTMLElement>('.page-nav');
-        if (nav) nav.style.display = 'none';
-
-        iframeEl.style.backgroundColor = resolveBookBackground(doc);
-        injectReaderStyles(doc, isEnglish);
-
-        // Style only the iframe that just loaded instead of re-measuring both panes twice.
-        const measured = applyBookAppearance(doc, iframeEl, {
+        const prep = prepareBookIframeDocument(iframeEl, {
+          slug: book.slug,
+          lang,
+          page: loadedPage,
           fontId: appearanceRef.current.fontId,
           themeId: appearanceRef.current.themeId,
           measureMaxScale: appearanceOpenRef.current,
+          onScale: scaleIframes,
+          previousObserver: iframeResizeObserversRef.current[lang],
+          onBindHighlights: (win, boundDoc) => registerIframeHighlightListeners(win, boundDoc, lang),
         });
-        paneA4Ref.current[lang] = measured;
+        if (prep) {
+          paneA4Ref.current[lang] = prep.measured;
+          if (prep.resizeObserver) iframeResizeObserversRef.current[lang] = prep.resizeObserver;
+        }
         const activeResults = [
           enIframeRef.current?.contentDocument ? paneA4Ref.current.en : undefined,
           viIframeRef.current?.contentDocument ? paneA4Ref.current.vi : undefined,
@@ -745,33 +698,6 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
             atMaxA4Scale: activeResults.some((r) => r.atMaxA4Scale),
           });
         }
-
-        segmentDocSentences(doc);
-        applyStoredHighlights(doc, book.slug, loadedPage, lang);
-        const currentDesc = parseThemeDescriptor(appearanceRef.current.themeId);
-        void applyInterlinearToDoc(doc, {
-          slug: book.slug,
-          page: loadedPage,
-          sourceLang: lang,
-          enabled: currentDesc.interlinear,
-          onLayoutUpdated: () => scaleIframes(),
-        });
-
-        iframeResizeObserversRef.current[lang]?.disconnect();
-        if (typeof ResizeObserver !== 'undefined') {
-          const ro = new ResizeObserver(() => {
-            scaleIframes();
-          });
-          const bookPageEl = doc.querySelector<HTMLElement>('.book-page');
-          const flowEl = doc.querySelector<HTMLElement>('.prose-page, .toc-page, .sheet-flow');
-          if (bookPageEl) ro.observe(bookPageEl);
-          if (flowEl && flowEl !== bookPageEl) ro.observe(flowEl);
-          if (doc.body) ro.observe(doc.body);
-          iframeResizeObserversRef.current[lang] = ro;
-        }
-
-        const win = iframeEl.contentWindow;
-        if (win) registerIframeHighlightListeners(win, doc, lang);
       } catch (err) {
         console.warn('[Reader] could not style iframe content:', err);
       }
@@ -783,7 +709,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   useEffect(() => {
     const timer = setTimeout(scaleIframes, 50);
     return () => clearTimeout(timer);
-  }, [viewMode, page, layoutMode, zoomMode, manualZoom, chatOpen, chatWidth, scaleIframes]);
+  }, [viewMode, page, layoutMode, zoomMode, manualZoom, chatOpen, chatWidth, highlightsOpen, scaleIframes]);
 
   // Reset wrapper scroll to top on page change (app.js:1196-1203).
   useEffect(() => {
@@ -802,6 +728,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   // Keyboard navigation + shortcuts (J/K, ArrowLeft/Right, PageUp/Down, F, 1/2/3, A)
   // Shared between parent `window` and both book `<iframe>` documents via `onKeyRef`.
   onKeyRef.current = (e: KeyboardEvent) => {
+    if (previewHighlightOpenRef.current) return;
     const target =
       (e.target as HTMLElement | null) ?? (document.activeElement as HTMLElement | null);
     if (
@@ -882,7 +809,9 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
   // highlights and toolbars (app.js:1248-1260).
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
-      if (!(e.target as Element).closest('.reader-iframe')) {
+      const target = e.target as Element;
+      if (target.closest('.ref-reader-modal')) return;
+      if (!target.closest('.reader-iframe')) {
         clearAllHighlights();
         removeAllReaderHighlightUI();
       }
@@ -1011,6 +940,9 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
         appearanceOpen={appearanceOpen}
         hasCustomAppearance={hasCustomAppearance}
         onToggleAppearance={() => setAppearanceOpen((v) => !v)}
+        highlightsOpen={highlightsOpen}
+        highlightsCount={highlights.length}
+        onToggleHighlights={toggleHighlights}
         onLogout={logout}
       />
 
@@ -1044,6 +976,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
                   <iframe
                     ref={enIframeRef}
                     className="reader-iframe en-pane-iframe"
+                    data-reader-page={page}
                     src={enPageUrl}
                     onLoad={handleIframeLoad}
                     scrolling="no"
@@ -1062,6 +995,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
                   <iframe
                     ref={viIframeRef}
                     className="reader-iframe vi-pane-iframe"
+                    data-reader-page={page}
                     src={viPageUrl}
                     onLoad={handleIframeLoad}
                     scrolling="no"
@@ -1073,6 +1007,16 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
             </div>
           )}
         </div>
+
+        <HighlightsSidebar
+          open={highlightsOpen}
+          currentPage={page}
+          highlights={highlights}
+          activePreviewId={previewHighlight?.id}
+          onOpenReference={(hl) => setPreviewHighlight(hl)}
+          onDeleteHighlight={deleteHighlight}
+          onClose={() => setHighlightsOpen(false)}
+        />
 
         <ChatSidebar
           book={book}
@@ -1088,6 +1032,24 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
           onResizing={scaleIframes}
         />
       </div>
+
+      {previewHighlight && (
+        <HighlightReferenceModal
+          key={previewHighlight.id}
+          book={book}
+          mainPage={page}
+          mainViewMode={viewMode}
+          layoutMode={layoutMode}
+          effectiveFontId={effectiveFontId}
+          effectiveThemeId={effectiveThemeId}
+          initialHighlight={previewHighlight}
+          highlights={highlights}
+          createHighlight={createHighlight}
+          updateHighlight={updateHighlight}
+          deleteHighlight={deleteHighlight}
+          onClose={() => setPreviewHighlight(null)}
+        />
+      )}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
 

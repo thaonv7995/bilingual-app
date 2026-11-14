@@ -32,6 +32,7 @@
 		D72FE4561367AF197AA46312 /* FeatureConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5036547FE42C9B3F440B8555 /* FeatureConfig.swift */; };
 		DF56599B9222CA17FAE427D3 /* NowPlayingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AE4260EF99FA67825B4EB3A /* NowPlayingManager.swift */; };
 		E949095D116E25F7B4F22DBE /* AudioProviderFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1102CFF2239A16DFAE29B93A /* AudioProviderFactory.swift */; };
+		F722FA5E0DCA8B699A98D679 /* HighlightReferenceSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B086A75DD6D108AEE0906258 /* HighlightReferenceSheet.swift */; };
 		FB25A85629F6682A83BAAB8A /* AudiobookManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE2895CB7679054FC29368E /* AudiobookManager.swift */; };
 /* End PBXBuildFile section */
 
@@ -55,6 +56,7 @@
 		99AF811F0CC00281EC4C8B04 /* BookCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCacheManager.swift; sourceTree = "<group>"; };
 		AB39B254369C911E5008B8A0 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
 		ACE2895CB7679054FC29368E /* AudiobookManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookManager.swift; sourceTree = "<group>"; };
+		B086A75DD6D108AEE0906258 /* HighlightReferenceSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightReferenceSheet.swift; sourceTree = "<group>"; };
 		C40877450721082DC886E1E1 /* DeviceSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSpeech.swift; sourceTree = "<group>"; };
 		CD187585ACF36B2446D4B9C2 /* CompanionVoiceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionVoiceViewModel.swift; sourceTree = "<group>"; };
 		CD24421EAA5774ABB6536580 /* Book.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Book.swift; sourceTree = "<group>"; };
@@ -137,6 +139,7 @@
 				D57B156C7DBCD09A96394153 /* BilingualWebView.swift */,
 				9772529129EEBB41D9BCE1A9 /* BookPagerView.swift */,
 				159815F66B6C0D29720BE1A9 /* BookshelfView.swift */,
+				B086A75DD6D108AEE0906258 /* HighlightReferenceSheet.swift */,
 				F25A14856419E8E55800C330 /* LayoutOptionButton.swift */,
 				6AD4860B8B690109EFB9878A /* LoginView.swift */,
 				5E341E7B15F9E2813CF700F1 /* ReaderAppearancePopoverView.swift */,
@@ -231,6 +234,7 @@
 				12B21918FFBB93D8179A8CD0 /* CompanionVoiceViewModel.swift in Sources */,
 				71C38063963D067D63AF059B /* DeviceSpeech.swift in Sources */,
 				D72FE4561367AF197AA46312 /* FeatureConfig.swift in Sources */,
+				F722FA5E0DCA8B699A98D679 /* HighlightReferenceSheet.swift in Sources */,
 				097E87C8B3B90780DA137B8D /* KeychainHelper.swift in Sources */,
 				83039E648CE6CD6CFEEBAA03 /* LayoutOptionButton.swift in Sources */,
 				8CBD3ECD5460D98952AEEDCF /* LoginView.swift in Sources */,
@@ -257,7 +261,7 @@
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSAppTransportSecurity = "[\"NSAllowsArbitraryLoads\": true]";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AI Companion cần quyền truy cập microphone để hội thoại bằng giọng nói với bạn về cuốn sách đang đọc.";
-				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageName\": \"SplashIcon\", \"UIColorName\": \"SplashBackground\", \"UIImageRespectsSafeAreaInsets\": false]";
+				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageRespectsSafeAreaInsets\": false, \"UIImageName\": \"SplashIcon\", \"UIColorName\": \"SplashBackground\"]";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -400,7 +404,7 @@
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSAppTransportSecurity = "[\"NSAllowsArbitraryLoads\": true]";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AI Companion cần quyền truy cập microphone để hội thoại bằng giọng nói với bạn về cuốn sách đang đọc.";
-				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageName\": \"SplashIcon\", \"UIColorName\": \"SplashBackground\", \"UIImageRespectsSafeAreaInsets\": false]";
+				INFOPLIST_KEY_UILaunchScreen = "[\"UIImageRespectsSafeAreaInsets\": false, \"UIImageName\": \"SplashIcon\", \"UIColorName\": \"SplashBackground\"]";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

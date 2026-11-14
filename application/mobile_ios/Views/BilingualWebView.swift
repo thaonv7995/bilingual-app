@@ -98,6 +98,7 @@ struct BilingualWebView: UIViewRepresentable {
     var effectiveFontId: String = "default"
     var effectiveThemeId: String = "default"
     var containerMode: String = "single"
+    var scrollSyncScope: String = "main"
     @ObservedObject var api = APIService.shared
     let onHighlightMessage: (HighlightMessage) -> Void
     let onSentenceClicked: (String?) -> Void
@@ -105,6 +106,7 @@ struct BilingualWebView: UIViewRepresentable {
     var onOpenExternalURL: ((URL) -> Void)? = nil
     var onWebViewReady: ((WKWebView, String, Int) -> Void)? = nil
     var onWebViewDismantled: ((WKWebView, String, Int) -> Void)? = nil
+    var onPageDidFinish: ((WKWebView, String, Int) -> Void)? = nil
     var onAppearanceMeasured: ((ReaderA4Status) -> Void)? = nil
 
     func makeUIView(context: Context) -> WKWebView {
@@ -293,6 +295,16 @@ struct BilingualWebView: UIViewRepresentable {
                             border-radius: 50%;
                             background: #2563eb;
                             border: 1px solid #fff;
+                        }
+                        @keyframes readerHighlightPulse {
+                            0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); }
+                            60% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+                            100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+                        }
+                        mark.reader-highlight.reader-highlight--pulse {
+                            outline: 2px solid #2563eb;
+                            outline-offset: 2px;
+                            animation: readerHighlightPulse 1.6s ease-out 1;
                         }
                         .prose-page p, .prose-page li, .prose-page blockquote,
                         .prose-page .section-title, .prose-page .action-header, .prose-page .action-title,
@@ -516,6 +528,27 @@ struct BilingualWebView: UIViewRepresentable {
                     targetNode.classList.add('highlight-sync');
                 }
             }
+        };
+
+        window.scrollToAndPulseHighlight = function(highlightId) {
+            if (!highlightId) return false;
+            const selector = `mark.reader-highlight[data-highlight-id="${String(highlightId).replace(/["\\]/g, '')}"]`;
+            const marks = Array.from(document.querySelectorAll(selector));
+            if (!marks.length) return false;
+            try {
+                marks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch (_) {
+                marks[0].scrollIntoView(true);
+            }
+            marks.forEach(el => {
+                el.classList.remove('reader-highlight--pulse');
+                void el.offsetWidth;
+                el.classList.add('reader-highlight--pulse');
+            });
+            setTimeout(() => {
+                marks.forEach(el => el.classList.remove('reader-highlight--pulse'));
+            }, 1900);
+            return true;
         };
 
         document.addEventListener('mouseup', handleSelectionEnd);
@@ -1159,7 +1192,7 @@ struct BilingualWebView: UIViewRepresentable {
         NotificationCenter.default.addObserver(
             context.coordinator,
             selector: #selector(context.coordinator.handleScrollToOffset(_:)),
-            name: NSNotification.Name("ScrollToOffset_\(lang)"),
+            name: NSNotification.Name("ScrollToOffset_\(scrollSyncScope)_\(lang)"),
             object: nil
         )
 
@@ -1314,6 +1347,10 @@ struct BilingualWebView: UIViewRepresentable {
         init(_ parent: BilingualWebView) {
             self.parent = parent
         }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
         
         @objc func handleScrollToOffset(_ notification: Notification) {
             guard parent.containerMode == "split",
@@ -1371,7 +1408,7 @@ struct BilingualWebView: UIViewRepresentable {
             let otherLang = parent.lang == "en" ? "vi" : "en"
 
             NotificationCenter.default.post(
-                name: NSNotification.Name("ScrollToOffset_\(otherLang)"),
+                name: NSNotification.Name("ScrollToOffset_\(parent.scrollSyncScope)_\(otherLang)"),
                 object: nil,
                 userInfo: [
                     "progress": progress,
@@ -1503,6 +1540,8 @@ struct BilingualWebView: UIViewRepresentable {
             } else {
                 self.lastAppliedSentenceId = nil
             }
+
+            parent.onPageDidFinish?(webView, parent.lang, parent.page)
         }
 
         func applyBookAppearance(in webView: WKWebView) {
@@ -1837,5 +1876,36 @@ struct BilingualWebView: UIViewRepresentable {
                 .flatMap { $0.windows }
                 .first { $0.isKeyWindow }
         }
+    }
+}
+
+extension WKWebView {
+    /// Scrolls the WebView to a stored highlight by `id` and plays a visual pulse ring.
+    func evaluateScrollAndPulseHighlight(id: String) {
+        let escaped = id
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+        let js = "if (window.scrollToAndPulseHighlight) { window.scrollToAndPulseHighlight('\(escaped)'); }"
+        evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    /// Presents `window.showIOSVocaPanel(payload)` inside this WebView, reporting readiness.
+    func evaluateShowIOSVocaPanel(json: String, completion: @escaping (Bool) -> Void) {
+        evaluateJavaScript("typeof window.showIOSVocaPanel === 'function' ? 1 : 0") { [weak self] result, _ in
+            DispatchQueue.main.async {
+                let isReady = (result as? Int == 1) || (result as? Bool == true)
+                guard isReady, let self else {
+                    completion(false)
+                    return
+                }
+                self.evaluateJavaScript("window.showIOSVocaPanel(\(json));", completionHandler: nil)
+                completion(true)
+            }
+        }
+    }
+
+    /// Removes any active inline Voca popup panel inside this WebView.
+    func evaluateRemoveIOSVocaPanel() {
+        evaluateJavaScript("window.removeIOSVocaPanel && window.removeIOSVocaPanel();", completionHandler: nil)
     }
 }

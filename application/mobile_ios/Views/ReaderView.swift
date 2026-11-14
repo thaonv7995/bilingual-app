@@ -3,12 +3,12 @@ import UIKit
 import WebKit
 import SafariServices
 
-private struct ExternalBrowserDestination: Identifiable {
+struct ExternalBrowserDestination: Identifiable {
     let id = UUID()
     let url: URL
 }
 
-private struct ReaderSafariView: UIViewControllerRepresentable {
+struct ReaderSafariView: UIViewControllerRepresentable {
     let url: URL
 
     func makeUIViewController(context: Context) -> SFSafariViewController {
@@ -160,6 +160,10 @@ struct ReaderView: View {
     // AI Chat States
     @State private var isChatOpen = false
     @AppStorage("bilingualLayoutMode") private var bilingualLayoutMode: String = "en-vi"
+
+    // Highlights & Notes Panel + Independent Reference Preview
+    @State private var showHighlightsPanel = false
+    @State private var previewingHighlight: Highlight? = nil
     
     // AI Companion Voice Mode
     @StateObject private var companionVM = CompanionVoiceViewModel()
@@ -183,12 +187,7 @@ struct ReaderView: View {
     @State private var webViews: [String: WKWebView] = [:]
     @State private var externalBrowserDestination: ExternalBrowserDestination? = nil
     
-    let highlightColors = [
-        ("#fde68a", Color(hex: "fde68a")), // Yellow
-        ("#93c5fd", Color(hex: "93c5fd")), // Blue
-        ("#f9a8d4", Color(hex: "f9a8d4")), // Pink
-        ("#86efac", Color(hex: "86efac"))  // Green
-    ]
+    let highlightColors = ReaderHighlightPalette.colors
 
     @State private var isReadyToRender = false
     
@@ -201,7 +200,7 @@ struct ReaderView: View {
             let isLargeScreen = !isPhone && geometry.size.width > 700
             let isLandscape = geometry.size.width > geometry.size.height
             let isLargeAndLandscape = isLargeScreen && isLandscape
-            let useDoubleSided = isLargeAndLandscape && !isChatOpen && viewMode != "split"
+            let useDoubleSided = isLargeAndLandscape && !isChatOpen && !showHighlightsPanel && viewMode != "split"
             
             HStack(spacing: 0) {
                 // Main Reading Pane
@@ -227,7 +226,8 @@ struct ReaderView: View {
                                 
                                 
                                 
-                                let readingPaneWidth = isLargeScreen && isChatOpen ? geometry.size.width - 350 : geometry.size.width
+                                let rightSidebarWidth: CGFloat = isLargeScreen ? (isChatOpen ? 350 : (showHighlightsPanel ? 300 : 0)) : 0
+                                let readingPaneWidth = geometry.size.width - rightSidebarWidth
                                 let isReadingPaneLarge = readingPaneWidth > 700
                                 
                                 ZStack {
@@ -510,6 +510,8 @@ struct ReaderView: View {
                             page: $page,
                             viewMode: $viewMode,
                             isChatOpen: $isChatOpen,
+                            isHighlightsOpen: $showHighlightsPanel,
+                            highlightsCount: api.highlights.count,
                             isPencilModeActive: $isPencilModeActive,
                             showJumpToPageDialog: $showJumpToPageDialog,
                             inputPageString: $inputPageString,
@@ -565,6 +567,55 @@ struct ReaderView: View {
                             onAskAIShortcut: askAIShortcut
                         )
                         .transition(.move(edge: .trailing))
+                    } else if showHighlightsPanel && isLargeScreen {
+                        HighlightsListPanelView(
+                            highlights: api.highlights,
+                            currentPage: page,
+                            previewingHighlightId: previewingHighlight?.id,
+                            showsCloseButton: true,
+                            onSelectHighlight: { hl in
+                                openHighlightReference(hl, isLargeScreen: true)
+                            },
+                            onDeleteHighlight: { hl in
+                                deleteHighlightFromDrawer(hl)
+                            },
+                            onClose: {
+                                withAnimation { showHighlightsPanel = false }
+                            }
+                        )
+                        .frame(width: 300)
+                        .overlay(alignment: .leading) {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.08))
+                                .frame(width: 0.5)
+                        }
+                        .transition(.move(edge: .trailing))
+                    }
+                }
+                .sheet(isPresented: Binding(
+                    get: { showHighlightsPanel && !isLargeScreen },
+                    set: { showHighlightsPanel = $0 }
+                )) {
+                    let panel = HighlightsListPanelView(
+                        highlights: api.highlights,
+                        currentPage: page,
+                        previewingHighlightId: previewingHighlight?.id,
+                        showsCloseButton: true,
+                        onSelectHighlight: { hl in
+                            openHighlightReference(hl, isLargeScreen: false)
+                        },
+                        onDeleteHighlight: { hl in
+                            deleteHighlightFromDrawer(hl)
+                        },
+                        onClose: { showHighlightsPanel = false }
+                    )
+                    if isPhone {
+                        panel
+                            .presentationDetents([.medium, .large])
+                            .presentationDragIndicator(.visible)
+                    } else {
+                        panel
+                            .presentationDragIndicator(.visible)
                     }
                 }
                 // Sliding Overlay Sheet for smaller screens (iPhone)
@@ -623,6 +674,16 @@ struct ReaderView: View {
             }
             .onChange(of: viewMode) { _ in
                 saveProgress()
+            }
+            .onChange(of: isChatOpen) { open in
+                if open && isLargeScreen {
+                    showHighlightsPanel = false
+                }
+            }
+            .onChange(of: showHighlightsPanel) { open in
+                if open && isLargeScreen {
+                    isChatOpen = false
+                }
             }
             .onChange(of: isFullScreen) { _ in
                 // BookPagerView refreshes a hosted page's rootView only when
@@ -883,6 +944,17 @@ struct ReaderView: View {
             // including navigation gestures or parent-driven dismissal.
             AudiobookManager.shared.close()
         }
+        .sheet(item: $previewingHighlight) { hl in
+            HighlightReferenceSheet(
+                book: book,
+                initialHighlight: hl,
+                mainCurrentPage: page,
+                initialViewMode: viewMode,
+                effectiveFontId: effectiveFontId,
+                effectiveThemeId: effectiveThemeId,
+                bilingualLayoutMode: bilingualLayoutMode
+            )
+        }
         .sheet(item: $externalBrowserDestination) { destination in
             ReaderSafariView(url: destination.url)
                 .ignoresSafeArea()
@@ -892,8 +964,7 @@ struct ReaderView: View {
     // --- Highlights UI / logic ---
     @ViewBuilder
     private func renderWebView(lang: String, p: Int, isDoubleSided: Bool, containerMode: String) -> some View {
-        let padPage = String(format: "%04d", p)
-        let urlString = "\(api.serverUrl)/books/\(book.slug)/output/\(lang)/page_\(padPage).html?token=\(api.token)"
+        let urlString = book.pageURL(serverUrl: api.serverUrl, token: api.token, lang: lang, page: p)
         
         let activeSelectionLang = self.activeSelectionLang
         let activeSelection = self.activeSelection
@@ -1011,34 +1082,25 @@ struct ReaderView: View {
     }
 
     private func vocaPanelSafeInsets(lang: String, page: Int, isDoubleSided: Bool) -> (left: CGFloat, right: CGFloat) {
-        let base: CGFloat = 12
-        let spine: CGFloat = 56
-
-        if viewMode == "split" {
-            let isHorizontal = bilingualLayoutMode == "en-vi" || bilingualLayoutMode == "vi-en"
-            guard isHorizontal else { return (base, base) }
-            let isEnFirst = bilingualLayoutMode.hasPrefix("en")
-            if lang == "en" {
-                return isEnFirst ? (base, spine) : (spine, base)
-            }
-            return isEnFirst ? (spine, base) : (base, spine)
-        }
-
-        if isDoubleSided {
-            return page % 2 == 1 ? (base, spine) : (spine, base)
-        }
-        return (base, base)
+        ReaderHighlightPalette.vocaPanelSafeInsets(
+            lang: lang,
+            page: page,
+            viewMode: viewMode,
+            bilingualLayoutMode: bilingualLayoutMode,
+            isDoubleSided: isDoubleSided
+        )
     }
 
     private func clampedToolbarPosition(rect: CGRect, in size: CGSize, lang: String, page: Int, isDoubleSided: Bool) -> CGPoint {
-        let insets = vocaPanelSafeInsets(lang: lang, page: page, isDoubleSided: isDoubleSided)
-        let menuHalfWidth: CGFloat = 112
-        let menuHalfHeight: CGFloat = 28
-        let minX = menuHalfWidth + insets.left
-        let maxX = max(minX, size.width - menuHalfWidth - insets.right)
-        let x = min(max(rect.midX, minX), maxX)
-        let y = min(max(rect.minY - 30, menuHalfHeight + 8), size.height - menuHalfHeight - 8)
-        return CGPoint(x: x, y: y)
+        ReaderHighlightPalette.clampedToolbarPosition(
+            rect: rect,
+            in: size,
+            lang: lang,
+            page: page,
+            viewMode: viewMode,
+            bilingualLayoutMode: bilingualLayoutMode,
+            isDoubleSided: isDoubleSided
+        )
     }
     
     @ViewBuilder
@@ -1337,19 +1399,37 @@ struct ReaderView: View {
         "\(containerMode)-\(lang)-\(page)"
     }
 
-    private func vocaCardPayload(_ card: VocaCard) -> [String: Any] {
-        // `slug` is what the panel posts back for audio — the numeric `id` is display-only.
-        var dict: [String: Any] = [
-            "id": card.id,
-            "slug": card.slug,
-            "word": card.word,
-        ]
-        if let meaningVi = card.meaningVi { dict["meaningVi"] = meaningVi }
-        if let ipa = card.ipa { dict["ipa"] = ipa }
-        if let pronunciation = card.pronunciation { dict["pronunciation"] = pronunciation }
-        if let audioUrl = card.audioUrl { dict["audioUrl"] = audioUrl }
-        if let level = card.level { dict["level"] = level }
-        return dict
+    private func openHighlightReference(_ highlight: Highlight, isLargeScreen: Bool) {
+        dismissVocaPanel()
+        clearSelectionState()
+        if !isLargeScreen && showHighlightsPanel {
+            showHighlightsPanel = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                previewingHighlight = highlight
+            }
+        } else {
+            previewingHighlight = highlight
+        }
+    }
+
+    private func deleteHighlightFromDrawer(_ highlight: Highlight) {
+        Task {
+            do {
+                try await api.deleteHighlight(slug: book.slug, highlightId: highlight.id)
+                await MainActor.run {
+                    if selectedHighlightId == highlight.id {
+                        clearSelectionState()
+                    }
+                    if previewingHighlight?.id == highlight.id {
+                        previewingHighlight = nil
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    showVocaToast("Không xoá được ghi chú.")
+                }
+            }
+        }
     }
 
     private func presentVocaPanelInWebView(retryCount: Int = 0) {
@@ -1373,47 +1453,19 @@ struct ReaderView: View {
         }
 
         let insets = vocaPanelSafeInsets(lang: vocaPanelLang, page: panelPage, isDoubleSided: readerUsesDoubleSided)
-
-        var payload: [String: Any] = [
-            "rect": [
-                "x": rect.origin.x,
-                "y": rect.origin.y,
-                "width": rect.width,
-                "height": rect.height,
-                "insetLeft": insets.left,
-                "insetRight": insets.right,
-            ],
-        ]
-        switch mode {
-        case .single(let card):
-            payload["mode"] = "single"
-            payload["card"] = vocaCardPayload(card)
-        case .multi(let query, let cards):
-            payload["mode"] = "multi"
-            payload["query"] = query
-            payload["cards"] = cards.map(vocaCardPayload)
-        case .notFound(let query):
-            payload["mode"] = "notFound"
-            payload["query"] = query
+        guard let json = mode.toIOSPanelJSON(rect: rect, insetLeft: insets.left, insetRight: insets.right) else {
+            return
         }
 
-        guard let data = try? JSONSerialization.data(withJSONObject: payload),
-              let json = String(data: data, encoding: .utf8) else { return }
-
-        let panelJs = "window.showIOSVocaPanel(\(json));"
-        webView.evaluateJavaScript("typeof window.showIOSVocaPanel === 'function' ? 1 : 0") { result, _ in
-            DispatchQueue.main.async {
-                let isReady = (result as? Int == 1) || (result as? Bool == true)
-                if isReady {
-                    webView.evaluateJavaScript(panelJs, completionHandler: nil)
-                    self.vocaPanelWebView = webView
-                } else if retryCount < 5 {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                        self.presentVocaPanelInWebView(retryCount: retryCount + 1)
-                    }
-                } else {
-                    self.showVocaToast("Không thể hiển thị từ điển trên trang này.")
+        webView.evaluateShowIOSVocaPanel(json: json) { isReady in
+            if isReady {
+                self.vocaPanelWebView = webView
+            } else if retryCount < 5 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    self.presentVocaPanelInWebView(retryCount: retryCount + 1)
                 }
+            } else {
+                self.showVocaToast("Không thể hiển thị từ điển trên trang này.")
             }
         }
     }
@@ -1423,7 +1475,7 @@ struct ReaderView: View {
               !vocaPanelLang.isEmpty,
               !vocaPanelContainerMode.isEmpty,
               let webView = webViews[webViewKey(lang: vocaPanelLang, page: panelPage, containerMode: vocaPanelContainerMode)] else { return }
-        webView.evaluateJavaScript("window.removeIOSVocaPanel && window.removeIOSVocaPanel();", completionHandler: nil)
+        webView.evaluateRemoveIOSVocaPanel()
     }
 
     private func handleVocaWebAction(_ action: VocaWebAction) {
@@ -1505,18 +1557,7 @@ struct ReaderView: View {
             do {
                 let result = try await VocaService.lookupWord(query)
                 await MainActor.run {
-                    if result.found {
-                        let cards = result.resolvedCards
-                        if cards.count == 1 {
-                            vocaPanelMode = .single(cards[0])
-                        } else if cards.count > 1 {
-                            vocaPanelMode = .multi(query: query, cards: cards)
-                        } else {
-                            vocaPanelMode = .notFound(query: query)
-                        }
-                    } else {
-                        vocaPanelMode = .notFound(query: query)
-                    }
+                    vocaPanelMode = VocaLookupPanelMode.from(lookupResult: result, query: query)
                     presentVocaPanelInWebView()
                     clearSelectionState()
                     bumpSelectionOverlayRevision()
@@ -1620,15 +1661,7 @@ struct ReaderView: View {
 
     /// The word behind an audio tap, from whichever panel is open.
     private func vocaWord(forSlug slug: String) -> String {
-        guard let mode = vocaPanelMode else { return "" }
-        switch mode {
-        case .single(let card):
-            return card.slug == slug ? card.word : ""
-        case .multi(_, let cards):
-            return cards.first(where: { $0.slug == slug })?.word ?? ""
-        case .notFound:
-            return ""
-        }
+        vocaPanelMode?.word(forSlug: slug) ?? ""
     }
     
     private func fetchHighlights() {
@@ -4010,6 +4043,8 @@ struct ReaderHeaderView: View {
     @Binding var page: Int
     @Binding var viewMode: String
     @Binding var isChatOpen: Bool
+    @Binding var isHighlightsOpen: Bool
+    var highlightsCount: Int = 0
     @Binding var isPencilModeActive: Bool
     @Binding var showJumpToPageDialog: Bool
     @Binding var inputPageString: String
@@ -4173,6 +4208,25 @@ struct ReaderHeaderView: View {
                         .frame(width: 28, height: 28)
                 }
             }
+
+            Button(action: { isHighlightsOpen.toggle() }) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "highlighter")
+                        .foregroundColor(isHighlightsOpen ? Color(hex: "f59e0b") : .white)
+                        .font(.system(size: 14))
+                        .frame(width: 28, height: 28)
+                    if highlightsCount > 0 {
+                        Text(highlightsCount > 99 ? "99+" : "\(highlightsCount)")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 3)
+                            .background(Color(hex: "d97706"))
+                            .cornerRadius(6)
+                            .offset(x: 3, y: 1)
+                    }
+                }
+            }
+            .accessibilityLabel("Đánh dấu & Ghi chú")
 
             Button(action: { isChatOpen.toggle() }) {
                 Image(systemName: "bubble.left.and.bubble.right.fill")
@@ -4382,6 +4436,24 @@ struct ReaderHeaderView: View {
                         .font(.system(size: 15))
                 }
             }
+
+            Button(action: { isHighlightsOpen.toggle() }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "highlighter")
+                        .foregroundColor(isHighlightsOpen ? Color(hex: "f59e0b") : .white)
+                        .font(.system(size: 14))
+                    if highlightsCount > 0 {
+                        Text("\(highlightsCount)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color(hex: "d97706"))
+                            .cornerRadius(8)
+                    }
+                }
+            }
+            .accessibilityLabel("Đánh dấu & Ghi chú")
 
             Button(action: { isChatOpen.toggle() }) {
                 Image(systemName: "bubble.left.and.bubble.right.fill")

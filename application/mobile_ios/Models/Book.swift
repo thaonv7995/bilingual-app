@@ -95,3 +95,11 @@ struct ReadingProgress: Codable {
     let viewMode: String
     let lastRead: Int64?
 }
+
+extension Book {
+    /// Canonical server URL for a rendered book page HTML document.
+    func pageURL(serverUrl: String, token: String, lang: String, page: Int) -> String {
+        let padPage = String(format: "%04d", page)
+        return "\(serverUrl)/books/\(slug)/output/\(lang)/page_\(padPage).html?token=\(token)"
+    }
+}

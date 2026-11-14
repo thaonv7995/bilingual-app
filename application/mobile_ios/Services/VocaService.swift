@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 import AVFoundation
 
 /// Client for the Voca 2.0 vocabulary API — reached **through our own backend**, never direct.
@@ -124,6 +125,21 @@ extension VocaCard {
             audioUrl: webPayload["audioUrl"] as? String,
             createdAt: nil
         )
+    }
+
+    /// Dictionary payload expected by `window.showIOSVocaPanel` inside reader WebViews.
+    func toIOSPanelPayload() -> [String: Any] {
+        var dict: [String: Any] = [
+            "id": id,
+            "slug": slug,
+            "word": word,
+        ]
+        if let meaningVi { dict["meaningVi"] = meaningVi }
+        if let ipa { dict["ipa"] = ipa }
+        if let pronunciation { dict["pronunciation"] = pronunciation }
+        if let audioUrl { dict["audioUrl"] = audioUrl }
+        if let level { dict["level"] = level }
+        return dict
     }
 }
 
@@ -255,6 +271,58 @@ enum VocaLookupPanelMode: Equatable {
     case single(VocaCard)
     case multi(query: String, cards: [VocaCard])
     case notFound(query: String)
+
+    /// Converts a `VocaLookupResult` response into a display panel mode.
+    static func from(lookupResult result: VocaLookupResult, query: String) -> VocaLookupPanelMode {
+        guard result.found else { return .notFound(query: query) }
+        let cards = result.resolvedCards
+        if cards.count == 1 {
+            return .single(cards[0])
+        } else if cards.count > 1 {
+            return .multi(query: query, cards: cards)
+        }
+        return .notFound(query: query)
+    }
+
+    /// Returns the word behind an audio playback tap for this panel mode.
+    func word(forSlug slug: String) -> String {
+        switch self {
+        case .single(let card):
+            return card.slug == slug ? card.word : ""
+        case .multi(_, let cards):
+            return cards.first(where: { $0.slug == slug })?.word ?? ""
+        case .notFound:
+            return ""
+        }
+    }
+
+    /// Builds the JSON argument for `window.showIOSVocaPanel(...)`.
+    func toIOSPanelJSON(rect: CGRect, insetLeft: CGFloat, insetRight: CGFloat) -> String? {
+        var payload: [String: Any] = [
+            "rect": [
+                "x": rect.origin.x,
+                "y": rect.origin.y,
+                "width": rect.width,
+                "height": rect.height,
+                "insetLeft": insetLeft,
+                "insetRight": insetRight,
+            ],
+        ]
+        switch self {
+        case .single(let card):
+            payload["mode"] = "single"
+            payload["card"] = card.toIOSPanelPayload()
+        case .multi(let query, let cards):
+            payload["mode"] = "multi"
+            payload["query"] = query
+            payload["cards"] = cards.map { $0.toIOSPanelPayload() }
+        case .notFound(let query):
+            payload["mode"] = "notFound"
+            payload["query"] = query
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
 }
 
 enum VocaServiceError: LocalizedError {

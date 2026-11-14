@@ -35,6 +35,14 @@ export function setHighlightContext(ctx: HighlightContext | null): void {
   currentContext = ctx;
 }
 
+const DEFAULT_IFRAME_SELECTOR = '.en-pane-iframe, .vi-pane-iframe';
+const docContextResolvers = new WeakMap<Document, () => HighlightContext | null>();
+const docIframeSelectors = new WeakMap<Document, string>();
+
+function resolveContext(doc: Document): HighlightContext | null {
+  return docContextResolvers.get(doc)?.() ?? currentContext;
+}
+
 // -- selection + wrapping ----------------------------------------------------
 
 export function getSelectionInfo(doc: Document, selection: Selection | null): SelectionInfo | null {
@@ -132,29 +140,72 @@ export function applyStoredHighlights(
 }
 
 export function reapplyHighlightsInIframes(slug: string, pageNum: number, lang: HighlightLang): void {
-  const selector = lang === 'en' ? '.en-pane-iframe' : '.vi-pane-iframe';
-  const iframe = document.querySelector<HTMLIFrameElement>(selector);
-  const doc = iframe?.contentDocument;
-  if (!doc) return;
-  const wasInterlinear = doc.documentElement.classList.contains('bilingual-interlinear-doc');
-  removeReaderHighlightUI(doc);
-  clearInterlinearFromDoc(doc);
-  doc.querySelectorAll('mark.reader-highlight').forEach((el) => {
-    const parent = el.parentNode;
-    if (!parent) return;
-    while (el.firstChild) parent.insertBefore(el.firstChild, el);
-    parent.removeChild(el);
-  });
-  segmentDocSentences(doc);
-  applyStoredHighlights(doc, slug, pageNum, lang);
-  if (wasInterlinear) {
-    void applyInterlinearToDoc(doc, {
-      slug,
-      page: pageNum,
-      sourceLang: lang,
-      enabled: true,
+  const selector =
+    lang === 'en' ? '.en-pane-iframe, .ref-en-pane-iframe' : '.vi-pane-iframe, .ref-vi-pane-iframe';
+  document.querySelectorAll<HTMLIFrameElement>(selector).forEach((iframe) => {
+    const iframePageAttr = iframe.dataset.readerPage;
+    if (iframePageAttr && Number(iframePageAttr) !== pageNum) return;
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    const wasInterlinear = doc.documentElement.classList.contains('bilingual-interlinear-doc');
+    removeReaderHighlightUI(doc);
+    clearInterlinearFromDoc(doc);
+    doc.querySelectorAll('mark.reader-highlight').forEach((el) => {
+      const parent = el.parentNode;
+      if (!parent) return;
+      while (el.firstChild) parent.insertBefore(el.firstChild, el);
+      parent.removeChild(el);
     });
+    segmentDocSentences(doc);
+    applyStoredHighlights(doc, slug, pageNum, lang);
+    if (wasInterlinear) {
+      void applyInterlinearToDoc(doc, {
+        slug,
+        page: pageNum,
+        sourceLang: lang,
+        enabled: true,
+      });
+    }
+  });
+}
+
+export function scrollAndPulseHighlightInWrapper(
+  iframeEl: HTMLIFrameElement,
+  wrapperEl: HTMLElement | null,
+  highlightId: string,
+): boolean {
+  const doc = iframeEl.contentDocument;
+  if (!doc) return false;
+  const marks = Array.from(doc.querySelectorAll<HTMLElement>('mark.reader-highlight')).filter(
+    (m) => m.dataset.highlightId === highlightId,
+  );
+  if (marks.length === 0) return false;
+
+  const first = marks[0]!;
+  if (wrapperEl) {
+    const scale = parseFloat(wrapperEl.dataset.zoomScale || '1') || 1;
+    const markRect = first.getBoundingClientRect();
+    const wrapperRect = wrapperEl.getBoundingClientRect();
+    const iframeRect = iframeEl.getBoundingClientRect();
+    const markTopInWrapper =
+      iframeRect.top - wrapperRect.top + wrapperEl.scrollTop + markRect.top * scale;
+    const markHeightScaled = markRect.height * scale;
+    const desiredTop = Math.max(
+      0,
+      markTopInWrapper - Math.max(0, (wrapperEl.clientHeight - markHeightScaled) / 2),
+    );
+    wrapperEl.scrollTo({ top: desiredTop, behavior: 'smooth' });
+  } else {
+    first.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
+
+  marks.forEach((m) => {
+    m.classList.remove('reader-highlight--pulse');
+    void m.offsetWidth;
+    m.classList.add('reader-highlight--pulse');
+    window.setTimeout(() => m.classList.remove('reader-highlight--pulse'), 1400);
+  });
+  return true;
 }
 
 // -- transient UI cleanup ----------------------------------------------------
@@ -221,11 +272,12 @@ function showReaderStickyNote(
   saveBtn.textContent = '✓';
 
   const handleSave = () => {
+    const ctx = resolveContext(doc);
     const text = textarea.value;
     if (options.mode === 'create' && options.selectionInfo) {
-      currentContext?.createHighlight(options.selectionInfo, options.lang, options.color, text);
+      ctx?.createHighlight(options.selectionInfo, options.lang, options.color, text);
     } else if (options.highlightId) {
-      currentContext?.updateHighlight(options.highlightId, { note: text });
+      ctx?.updateHighlight(options.highlightId, { note: text });
     }
     noteEl.remove();
   };
@@ -253,9 +305,10 @@ function showReaderStickyNote(
 
 function showReaderHighlightToolbar(doc: Document, anchorRect: DOMRect, options: ToolbarOptions): void {
   removeReaderHighlightUI(doc);
+  const ctx = resolveContext(doc);
   const existing =
-    options.highlightId && currentContext?.slug
-      ? loadHighlights(currentContext.slug).find((h) => h.id === options.highlightId)
+    options.highlightId && ctx?.slug
+      ? loadHighlights(ctx.slug).find((h) => h.id === options.highlightId)
       : null;
 
   const toolbar = doc.createElement('div');
@@ -273,10 +326,11 @@ function showReaderHighlightToolbar(doc: Document, anchorRect: DOMRect, options:
     btn.title = c.label;
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
+      const activeCtx = resolveContext(doc);
       if (options.mode === 'create' && options.selectionInfo) {
-        currentContext?.createHighlight(options.selectionInfo, options.lang, c.value);
+        activeCtx?.createHighlight(options.selectionInfo, options.lang, c.value);
       } else if (options.highlightId) {
-        currentContext?.updateHighlight(options.highlightId, { color: c.value });
+        activeCtx?.updateHighlight(options.highlightId, { color: c.value });
       }
     });
     colors.appendChild(btn);
@@ -309,7 +363,7 @@ function showReaderHighlightToolbar(doc: Document, anchorRect: DOMRect, options:
     lookupBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       toolbar.remove();
-      currentContext?.onLookup?.(text, doc, anchorRect);
+      resolveContext(doc)?.onLookup?.(text, doc, anchorRect);
     });
     toolbar.appendChild(lookupBtn);
   }
@@ -323,7 +377,7 @@ function showReaderHighlightToolbar(doc: Document, anchorRect: DOMRect, options:
     setToolbarIcon(delBtn, 'trash');
     delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      currentContext?.deleteHighlight(options.highlightId!);
+      resolveContext(doc)?.deleteHighlight(options.highlightId!);
     });
     toolbar.appendChild(delBtn);
   }
@@ -335,8 +389,11 @@ function showReaderHighlightToolbar(doc: Document, anchorRect: DOMRect, options:
 
 // -- cross-pane sentence sync (transient, distinct from persistent marks) -----
 
-export function highlightSentenceAcrossIframes(sentenceId: string): void {
-  document.querySelectorAll<HTMLIFrameElement>('.en-pane-iframe, .vi-pane-iframe').forEach((iframe) => {
+export function highlightSentenceAcrossIframes(
+  sentenceId: string,
+  iframeSelector = DEFAULT_IFRAME_SELECTOR,
+): void {
+  document.querySelectorAll<HTMLIFrameElement>(iframeSelector).forEach((iframe) => {
     const doc = iframe.contentDocument;
     if (!doc) return;
     doc.querySelectorAll('.sentence-node.highlight-sync').forEach((el) => el.classList.remove('highlight-sync'));
@@ -344,8 +401,8 @@ export function highlightSentenceAcrossIframes(sentenceId: string): void {
   });
 }
 
-export function clearAllHighlights(): void {
-  document.querySelectorAll<HTMLIFrameElement>('.en-pane-iframe, .vi-pane-iframe').forEach((iframe) => {
+export function clearAllHighlights(iframeSelector = DEFAULT_IFRAME_SELECTOR): void {
+  document.querySelectorAll<HTMLIFrameElement>(iframeSelector).forEach((iframe) => {
     iframe.contentDocument
       ?.querySelectorAll('.sentence-node.highlight-sync')
       .forEach((el) => el.classList.remove('highlight-sync'));
@@ -360,7 +417,14 @@ export function registerIframeHighlightListeners(
   win: Window,
   doc: Document,
   lang: HighlightLang,
+  options?: {
+    iframeSelector?: string;
+    getContext?: () => HighlightContext | null;
+  },
 ): void {
+  if (options?.getContext) docContextResolvers.set(doc, options.getContext);
+  if (options?.iframeSelector) docIframeSelectors.set(doc, options.iframeSelector);
+
   if (boundDocuments.has(doc)) return;
   boundDocuments.add(doc);
 
@@ -375,7 +439,7 @@ export function registerIframeHighlightListeners(
     ) {
       return;
     }
-    currentContext?.onKeyDown?.(e);
+    resolveContext(doc)?.onKeyDown?.(e);
   });
 
   doc.addEventListener('mousedown', (e) => {
@@ -391,6 +455,8 @@ export function registerIframeHighlightListeners(
     setTimeout(() => {
       if (target.closest('.reader-highlight-toolbar, .reader-highlight-sticky, .voca-lookup-panel')) return;
 
+      const ctx = resolveContext(doc);
+      const scopeSelector = docIframeSelectors.get(doc) ?? DEFAULT_IFRAME_SELECTOR;
       const selection = win.getSelection();
       const selectedText = selection?.toString().trim() || '';
       const clickedMark = target.closest<HTMLElement>('mark.reader-highlight');
@@ -399,8 +465,8 @@ export function registerIframeHighlightListeners(
         const highlightId = clickedMark.dataset.highlightId!;
         const rect = clickedMark.getBoundingClientRect();
         showReaderHighlightToolbar(doc, rect, { mode: 'edit', lang, highlightId });
-        if (currentContext?.slug) {
-          const existing = loadHighlights(currentContext.slug).find((h) => h.id === highlightId);
+        if (ctx?.slug) {
+          const existing = loadHighlights(ctx.slug).find((h) => h.id === highlightId);
           if (existing?.note) {
             showReaderStickyNote(doc, rect, {
               mode: 'edit',
@@ -431,10 +497,10 @@ export function registerIframeHighlightListeners(
         sentenceNode = target.closest('.sentence-node');
       }
       if (sentenceNode) {
-        highlightSentenceAcrossIframes((sentenceNode as HTMLElement).dataset.sentenceId!);
+        highlightSentenceAcrossIframes((sentenceNode as HTMLElement).dataset.sentenceId!, scopeSelector);
       } else {
         removeReaderHighlightUI(doc);
-        clearAllHighlights();
+        clearAllHighlights(scopeSelector);
       }
     }, 10);
   });

@@ -35,6 +35,9 @@ export function ReaderTopbar({
   appearanceOpen,
   hasCustomAppearance,
   onToggleAppearance,
+  highlightsOpen,
+  highlightsCount,
+  onToggleHighlights,
   onOpenSettings,
   onLogout,
 }: {
@@ -63,6 +66,9 @@ export function ReaderTopbar({
   appearanceOpen?: boolean;
   hasCustomAppearance?: boolean;
   onToggleAppearance?: () => void;
+  highlightsOpen?: boolean;
+  highlightsCount?: number;
+  onToggleHighlights?: () => void;
   onOpenSettings: () => void;
   onLogout: () => void;
 }) {
@@ -252,6 +258,23 @@ export function ReaderTopbar({
           </button>
         )}
 
+        {onToggleHighlights && (
+          <button
+            className={`btn-icon reader-highlight-badge-btn ${highlightsOpen ? 'active' : ''}`}
+            onClick={onToggleHighlights}
+            title="Ghi chú & Đánh dấu"
+            aria-label="Ghi chú và đánh dấu"
+            aria-pressed={Boolean(highlightsOpen)}
+          >
+            <HighlighterIcon />
+            {highlightsCount != null && highlightsCount > 0 && (
+              <span className="reader-highlight-badge">
+                {highlightsCount > 99 ? '99+' : highlightsCount}
+              </span>
+            )}
+          </button>
+        )}
+
         <button
           className={`btn-icon ${chatOpen ? 'active' : ''}`}
           onClick={onToggleChat}
@@ -431,6 +454,25 @@ function InterlinearIcon() {
       <line x1="6" y1="9.5" x2="18" y2="9.5" strokeWidth="1.6" strokeDasharray="2.5 2.5" opacity="0.78" />
       <line x1="3" y1="15" x2="21" y2="15" strokeWidth="2.2" />
       <line x1="6" y1="19.5" x2="16" y2="19.5" strokeWidth="1.6" strokeDasharray="2.5 2.5" opacity="0.78" />
+    </svg>
+  );
+}
+
+function HighlighterIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m9 11-6 6v3h9l3-3" />
+      <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
     </svg>
   );
 }
