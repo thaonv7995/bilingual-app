@@ -73,12 +73,6 @@ struct ReaderView: View {
     @State private var isFullScreen = false
     @State private var isBookFinished: Bool
     @State private var isUpdatingFinished = false
-    /// Phone reader text scale, persisted. 1.0 == 13pt base; 0 in defaults
-    /// means "never set".
-    @State private var phoneFontScale: Double = {
-        let saved = UserDefaults.standard.double(forKey: "phoneFontScale")
-        return saved == 0 ? 1.0 : min(1.6, max(0.8, saved))
-    }()
     
     // Jump to page dialog
     @State private var showJumpToPageDialog = false
@@ -589,9 +583,9 @@ struct ReaderView: View {
                 saveProgress()
             }
             .onChange(of: isFullScreen) { _ in
-                // Same pager refresh-guard issue as the font scale: without a
-                // revision bump the notch-clearing inset CSS never reaches the
-                // page currently on screen.
+                // BookPagerView refreshes a hosted page's rootView only when
+                // page / selectionOverlayRevision / pencil state change, so a
+                // revision bump lets `--bkb-top-inset` update on the current page.
                 if isPhone { bumpSelectionOverlayRevision() }
             }
             .overlay(
@@ -875,7 +869,6 @@ struct ReaderView: View {
             viewMode: viewMode,
             activeSentenceId: targetSentenceId,
             isPencilModeActive: isPencilModeActive,
-            phoneFontScale: phoneFontScale,
             topOverlayInset: (isPhone && isFullScreen) ? keyWindowSafeAreaInsets.top : 0,
             effectiveFontId: effectiveFontId,
             effectiveThemeId: effectiveThemeId,
@@ -1090,28 +1083,14 @@ struct ReaderView: View {
         selectionOverlayRevision += 1
     }
 
-    /// Step the phone text scale; the new value flows into every mounted
-    /// BilingualWebView as a prop, which applies it live (no reload).
-    /// The overlay-revision bump matters: BookPagerView refreshes a hosted
-    /// page's rootView only when page/overlayRevision/pencil change, so
-    /// without it the CURRENTLY displayed page would keep the old size until
-    /// the next page turn.
-    private func adjustPhoneFontScale(by delta: Double) {
-        let target = ((phoneFontScale + delta) * 10).rounded() / 10
-        let clamped = min(1.6, max(0.8, target))
-        guard clamped != phoneFontScale else { return }
-        phoneFontScale = clamped
-        UserDefaults.standard.set(clamped, forKey: "phoneFontScale")
-        bumpSelectionOverlayRevision()
-    }
-
     private func applyAppearanceToMountedWebViews(fontId: String, themeId: String) {
         let desc = ReaderAppearance.parseThemeDescriptor(themeId)
         let js = ReaderAppearance.buildApplyAppearanceJS(
             fontId: fontId,
             themeId: themeId,
             isPhone: isPhone,
-            viewMode: viewMode
+            viewMode: viewMode,
+            topOverlayInset: (isPhone && isFullScreen) ? keyWindowSafeAreaInsets.top : 0
         )
         for (key, wv) in webViews {
             let parts = key.split(separator: "-")

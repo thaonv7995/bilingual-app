@@ -663,7 +663,8 @@ enum ReaderAppearance {
         fontId: String,
         themeId: String,
         isPhone: Bool,
-        viewMode: String
+        viewMode: String,
+        topOverlayInset: CGFloat = 0
     ) -> String {
         let font = getFont(fontId)
         let desc = parseThemeDescriptor(themeId)
@@ -709,17 +710,27 @@ enum ReaderAppearance {
             const interlinearOpacity = \(desc.interlinearOpacity);
             const isPhone = \(isPhone ? "true" : "false");
             const viewMode = "\(viewMode)";
+            const topOverlayInset = \(Int(topOverlayInset));
 
-            // 1. Google Font link
+            document.documentElement.setAttribute('data-bkb-reader', '1');
+            document.documentElement.style.setProperty('--bkb-top-inset', topOverlayInset + 'px');
+            const legacyDyn = document.getElementById('phone-dyn-style');
+            if (legacyDyn) legacyDyn.remove();
+
+            // 1. Google Font link (non-render-blocking so WebKit never stalls applying CSS)
             let fontLink = document.getElementById(FONT_LINK_ID);
             if (fontId !== 'default' && googleFontUrl) {
                 if (!fontLink) {
                     fontLink = document.createElement('link');
                     fontLink.id = FONT_LINK_ID;
                     fontLink.rel = 'stylesheet';
+                    fontLink.media = 'print';
+                    fontLink.onload = function() { fontLink.media = 'all'; };
                     head.appendChild(fontLink);
                 }
                 if (fontLink.href !== googleFontUrl) {
+                    fontLink.media = 'print';
+                    fontLink.onload = function() { fontLink.media = 'all'; };
                     fontLink.href = googleFontUrl;
                 }
             } else if (fontLink) {
@@ -808,81 +819,169 @@ enum ReaderAppearance {
 
             function buildCss(scalePct, lhVal, marginVal) {
                 const blocks = [];
+                const R = 'html[data-bkb-reader="1"][data-bkb-reader="1"][data-bkb-reader="1"][data-bkb-reader="1"]';
+                const R_EXCL = `${R}[data-bkb-reader="1"]`;
+                const isCoverOrTitlePage = Boolean(
+                    document.querySelector(
+                        'article.cover, article.title-page, article.half-title, .prose-page.cover, .prose-page.title-page, .prose-page.half-title, .sheet-flow.cover, .sheet-flow.title-page, .title-page-container, .cover-wrap, .cover-content'
+                    )
+                );
+
                 if (fontId !== 'default' && fontFamily) {
                     blocks.push(`
                         :root {
                             --font-display: ${fontFamily} !important;
                             --font-ui: ${fontFamily} !important;
+                            --font-serif: ${fontFamily} !important;
+                            --font-sans: ${fontFamily} !important;
                         }
-                        body, .book-page, .prose-page, .toc-page,
-                        .prose-page p, .prose-page li, .prose-page blockquote,
-                        .prose-page td, .prose-page th, .prose-page figcaption,
-                        .prose-page h1, .prose-page h2, .prose-page h3, .prose-page h4, .prose-page h5, .prose-page h6,
-                        .prose-page .running-head, .prose-page .section-title, .prose-page .section-number,
-                        .prose-page .chapter-opener, .prose-page .chapter-title, .prose-page .preface-title,
-                        .prose-page .exercise-instruction, .prose-page .exercises-title,
-                        .title-book, .subtitle-book, .author-book, .toc-title, .toc-row {
+                        ${R} body,
+                        ${R} .book-page,
+                        ${R} .prose-page,
+                        ${R} .sheet-flow,
+                        ${R} .toc-page,
+                        ${R} .title-book,
+                        ${R} .subtitle-book,
+                        ${R} .author-book,
+                        ${R} .toc-title,
+                        ${R} .toc-row,
+                        ${R} .book-page :is(p, li, div, blockquote, dd, dt, td, th, figcaption, caption, span, a, em, strong, b, i, u, s, small, sub, sup, mark, label, h1, h2, h3, h4, h5, h6, .running-head, .chapter-running-head, .section-title, .section-number, .chapter-opener, .chapter-title, .preface-title, .exercise-instruction, .exercises-title, .unit-title, .title-book, .subtitle-book, .author-book, .toc-title, .toc-row, .toc-item, .dialogue-line, .idiom-def, .entry-text, .callout-text, .callout-note),
+                        ${R} body :is(p, li, blockquote, dd, dt, td, th, figcaption, caption, h1, h2, h3, h4, h5, h6, .running-head, .chapter-running-head, .section-title, .section-number, .chapter-opener, .chapter-title, .preface-title, .exercise-instruction, .exercises-title, .unit-title, .dialogue-line, .idiom-def, .entry-text, .callout-text, .callout-note) {
                             font-family: ${fontFamily} !important;
                         }
-                        .prose-page pre, .prose-page code, .prose-page pre *, .prose-page code *,
-                        .prose-page .code-block, .prose-page .ascii-figure {
-                            font-family: var(--font-mono, "Courier New", Courier, monospace) !important;
+                        ${R_EXCL} .book-page :is(pre, code, kbd, samp, pre *, code *, .code-block, .code-block *, .ascii-figure, .ascii-figure *),
+                        ${R_EXCL} :is(pre, code, kbd, samp, pre *, code *, .code-block, .code-block *, .ascii-figure, .ascii-figure *) {
+                            font-family: var(--font-mono, ui-monospace, "SF Mono", "Courier New", Courier, monospace) !important;
+                        }
+                        ${R_EXCL} .book-page :is(.math, .math *, .formula, .formula *, .formula-display, .formula-display *),
+                        ${R_EXCL} :is(.math, .math *, .formula, .formula *, .formula-display, .formula-display *) {
+                            font-family: Georgia, "Times New Roman", serif !important;
+                        }
+                        ${R_EXCL} .bilingual-subline,
+                        ${R_EXCL} .book-page .bilingual-subline {
+                            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif !important;
+                        }
+                        ${R_EXCL} .voca-lookup-panel,
+                        ${R_EXCL} .voca-lookup-panel * {
+                            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif !important;
+                        }
+                    `);
+                } else if (!isCoverOrTitlePage) {
+                    blocks.push(`
+                        ${R} body,
+                        ${R} .book-page:not(.toc):not(.toc-page):not(.copy):not(.copy-page),
+                        ${R} .prose-page:not(.toc):not(.toc-page):not(.copy):not(.copy-page),
+                        ${R} .sheet-flow,
+                        ${R} .prose-page:not(.toc):not(.toc-page):not(.copy):not(.copy-page) :is(p, li, blockquote, dd, dt, td, th, .dialogue-line, .dialogue-row, .idiom-def, .idiom-meaning, .idiom-example, .entry-text, .exercise-instruction, .exercise-item, .matching-item, .definition-item, .term-description, .callout-text, .callout-note),
+                        ${R} body :is(p, li, blockquote, dd, dt) {
+                            font-family: var(--font-display, Georgia, "Times New Roman", serif) !important;
+                        }
+                        ${R_EXCL} .book-page :is(pre, code, kbd, samp, pre *, code *, .code-block, .code-block *, .ascii-figure, .ascii-figure *),
+                        ${R_EXCL} :is(pre, code, kbd, samp, pre *, code *, .code-block, .code-block *, .ascii-figure, .ascii-figure *) {
+                            font-family: var(--font-mono, ui-monospace, "SF Mono", "Courier New", Courier, monospace) !important;
+                        }
+                        ${R_EXCL} .bilingual-subline,
+                        ${R_EXCL} .book-page .bilingual-subline {
+                            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif !important;
+                        }
+                        ${R_EXCL} .voca-lookup-panel,
+                        ${R_EXCL} .voca-lookup-panel * {
+                            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif !important;
                         }
                     `);
                 }
 
-                if (isPhone) {
+                if (!isCoverOrTitlePage) {
                     const fScale = scalePct / 100.0;
-                    const hpad = viewMode === 'split' ? 28 : 32;
-                    const minPt = (13.0 * fScale).toFixed(1);
-                    const maxPt = (18.5 * fScale).toFixed(1);
-                    const divisor = (18.5 / fScale).toFixed(2);
-                    const lhRule = (lhVal && lhVal !== 'default') ? lhVal : '1.7';
+                    const bodySizeExpr = isPhone
+                        ? (() => {
+                              const hpad = viewMode === 'split' ? 28 : 32;
+                              const minPt = (13.0 * fScale).toFixed(2);
+                              const maxPt = (18.5 * fScale).toFixed(2);
+                              const divisor = (18.5 / fScale).toFixed(2);
+                              return `clamp(${minPt}pt, calc((100vw - ${hpad}px) / ${divisor}), ${maxPt}pt)`;
+                          })()
+                        : `calc(11pt * ${fScale.toFixed(3)})`;
+                    const defaultLh = isPhone ? '1.7' : '1.45';
+                    const lhRule = (lhVal && lhVal !== 'default') ? lhVal : defaultLh;
+
                     blocks.push(`
-                        body, p, li, blockquote, .prose-page, .sheet-flow {
-                            font-size: clamp(${minPt}pt, calc((100vw - ${hpad}px) / ${divisor}), ${maxPt}pt) !important;
-                            line-height: ${lhRule} !important;
+                        ${R} {
+                            --bkb-body-size: ${bodySizeExpr};
+                            --bkb-lh: ${lhRule};
+                            font-size: var(--bkb-body-size) !important;
+                        }
+                        ${R} body,
+                        ${R} .book-page,
+                        ${R} .prose-page,
+                        ${R} .sheet-flow,
+                        ${R} .toc-page,
+                        ${R} .prose-content,
+                        ${R} .unit-page,
+                        ${R} .main-content,
+                        ${R} main,
+                        ${R} article,
+                        ${R} :is(p, li, blockquote, dd, dt, td, th),
+                        ${R} .book-page :is(p, li, blockquote, dd, dt, td, th),
+                        ${R} .prose-page :is(p, li, blockquote, dd, dt, td, th),
+                        ${R} .sheet-flow :is(p, li, blockquote, dd, dt, td, th),
+                        ${R} .prose-page :is(.exercise-list > li, .comp-box p, .comp-box li, .sidebar-note p, .sidebar-note li, .exercise-4-3-container p.story-paragraph, .listing-callout, .exercise-instruction, .exercise-item, .dialogue-row, .dialogue-line, .idiom-def, .idiom-meaning, .idiom-example, .entry-text, .matching-item, .definition-item, .term-description, .callout-text, .callout-note, .toc-row, .toc-item, .toc-unit-item),
+                        ${R} :is(.exercise-list > li, .exercise-instruction, .exercise-item, .dialogue-row, .dialogue-line, .idiom-def, .idiom-meaning, .idiom-example, .entry-text, .matching-item, .definition-item, .term-description, .callout-text, .callout-note, .listing-callout, .toc-row, .toc-item, .toc-unit-item) {
+                            font-size: var(--bkb-body-size) !important;
+                            line-height: var(--bkb-lh) !important;
+                        }
+                        ${R_EXCL} :is(h1, .chapter-title, .part-title) {
+                            font-size: calc(var(--bkb-body-size) * 1.45) !important;
+                            line-height: 1.25 !important;
+                        }
+                        ${R_EXCL} :is(h2, .section-title, .preface-title, .chapter-opener h2) {
+                            font-size: calc(var(--bkb-body-size) * 1.25) !important;
+                            line-height: 1.3 !important;
+                        }
+                        ${R_EXCL} :is(h3, .subsection-title, .exercises-title, .unit-title, .section-title--sub, .section-title--minor, .sidebar-note h3) {
+                            font-size: calc(var(--bkb-body-size) * 1.12) !important;
+                            line-height: 1.35 !important;
+                        }
+                        ${R_EXCL} :is(h4, h5, h6) {
+                            font-size: calc(var(--bkb-body-size) * 1.04) !important;
+                            line-height: 1.38 !important;
+                        }
+                        ${R_EXCL} :is(.running-head, .chapter-running-head, .page-folio, .preface-folio, .toc-folio, .chapter-folio, .chapter-folio-left, .book-footer, .book-footer .rh-folio, .footnotes, .footnote, figcaption, .caption),
+                        ${R_EXCL} :is(.footnotes, .footnote, figcaption, .caption) :is(p, li) {
+                            font-size: calc(var(--bkb-body-size) * 0.85) !important;
+                            line-height: 1.4 !important;
+                        }
+                        ${R_EXCL} .prose-page :is(pre, .code-block, .ascii-figure),
+                        ${R_EXCL} :is(pre, .code-block, .ascii-figure) {
+                            font-size: calc(var(--bkb-body-size) * 0.86) !important;
+                            line-height: 1.45 !important;
+                        }
+                        ${R_EXCL} :is(pre *, .code-block *, .ascii-figure *) {
+                            font-size: inherit !important;
+                            line-height: inherit !important;
+                        }
+                        ${R_EXCL} :is(:not(pre) > code, kbd, samp) {
+                            font-size: 0.9em !important;
+                        }
+                        ${R_EXCL} .bilingual-subline {
+                            font-size: 0.74em !important;
+                            line-height: 1.36 !important;
                         }
                     `);
-                } else {
-                    if (scalePct !== 100) {
-                        const ratio = (scalePct / 100.0).toFixed(3);
-                        blocks.push(`
-                            .prose-page,
-                            .prose-page p,
-                            .prose-page li,
-                            .prose-page blockquote,
-                            .prose-page .exercise-instruction,
-                            .toc-page .toc-row {
-                                font-size: calc(11pt * ${ratio}) !important;
-                            }
-                        `);
-                    }
-                    if (lhVal && lhVal !== 'default') {
-                        blocks.push(`
-                            .prose-page,
-                            .prose-page p,
-                            .prose-page li,
-                            .prose-page blockquote,
-                            .prose-page .exercise-instruction {
-                                line-height: ${lhVal} !important;
-                            }
-                        `);
-                    }
                 }
 
                 if (marginVal && marginVal !== 'default') {
                     if (isPhone) {
                         const padMap = {
-                            compact: '10px 8px 28px',
-                            normal: '16px 16px 32px',
-                            wide: '20px 26px 36px'
+                            compact: ['10px', '8px', '28px'],
+                            normal: ['16px', '16px', '32px'],
+                            wide: ['20px', '26px', '36px']
                         };
-                        const pad = padMap[marginVal];
-                        if (pad) {
+                        const p = padMap[marginVal];
+                        if (p) {
                             blocks.push(`
-                                body, body.book-standalone {
-                                    padding: ${pad} !important;
+                                ${R} body, ${R} body.book-standalone {
+                                    padding: calc(${p[0]} + var(--bkb-top-inset, 0px)) ${p[1]} ${p[2]} !important;
                                 }
                             `);
                         }
@@ -895,12 +994,21 @@ enum ReaderAppearance {
                         const pad = padMap[marginVal];
                         if (pad) {
                             blocks.push(`
-                                body, body.book-standalone {
+                                ${R} body, ${R} body.book-standalone {
                                     padding: ${pad} !important;
                                 }
                             `);
                         }
                     }
+                } else if (isPhone) {
+                    const baseTop = viewMode === 'split' ? '12px' : '18px';
+                    const hPad = viewMode === 'split' ? '14px' : '16px';
+                    const bottom = viewMode === 'split' ? '28px' : '36px';
+                    blocks.push(`
+                        ${R} body, ${R} body.book-standalone {
+                            padding: calc(${baseTop} + var(--bkb-top-inset, 0px)) ${hPad} ${bottom} !important;
+                        }
+                    `);
                 }
 
                 if (hasCustomPaper || hasCustomInk) {
@@ -1041,6 +1149,8 @@ enum ReaderAppearance {
                 if (!styleEl) {
                     styleEl = document.createElement('style');
                     styleEl.id = STYLE_ID;
+                    head.appendChild(styleEl);
+                } else if (styleEl.parentNode !== head || styleEl.nextElementSibling) {
                     head.appendChild(styleEl);
                 }
                 styleEl.textContent = cssText;
