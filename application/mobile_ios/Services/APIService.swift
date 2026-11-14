@@ -9,6 +9,7 @@ class APIService: ObservableObject {
     @Published var isAdmin: Bool = false
     @Published var isAuthenticated: Bool = false
     @Published var isVerifyingSession: Bool = false
+    @Published var isAudiobookEnabled: Bool = AppFeatureFlags.clientDefault.audiobookEnabled
     
     // Shared highlights state
     @Published var highlights: [Highlight] = []
@@ -41,7 +42,12 @@ class APIService: ObservableObject {
             
             // Verify session with server on launch
             self.isVerifyingSession = true
-            Task { await self.verifySession() }
+            Task {
+                await self.fetchAppConfig()
+                await self.verifySession()
+            }
+        } else {
+            Task { await self.fetchAppConfig() }
         }
     }
     
@@ -138,6 +144,8 @@ class APIService: ObservableObject {
         UserDefaults.standard.set(cleanUrl, forKey: "serverUrl")
         UserDefaults.standard.set(self.username, forKey: "username")
         UserDefaults.standard.set(self.isAdmin, forKey: "isAdmin")
+
+        await fetchAppConfig()
         
         return true
     }
@@ -437,6 +445,31 @@ class APIService: ObservableObject {
 
     /// Canonical settings shared by Web and Mobile.
     ///
+    /// Refreshes runtime feature flags from the backend (`/api/config`).
+    /// Falls back to client config (`Info.plist`, default `false`) on network error.
+    func fetchAppConfig() async {
+        let cleanUrl = serverUrl
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: "\(cleanUrl)/api/config") else { return }
+
+        var request = URLRequest(url: url)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 8.0
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            let decoded = try JSONDecoder().decode(AppConfigResponse.self, from: data)
+            self.isAudiobookEnabled = decoded.features.audiobookEnabled
+            if !self.isAudiobookEnabled {
+                AudiobookManager.shared.close()
+            }
+        } catch {
+            // Keep existing value (defaults to client config `false`) while offline.
+        }
+    }
+
     /// Public preferences are returned in full. Secret values remain on the
     /// backend; clients receive only availability flags.
     struct ServerSettings: Codable {

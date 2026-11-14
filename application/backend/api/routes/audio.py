@@ -13,9 +13,18 @@ from sqlalchemy.orm import Session
 
 from api.auth import get_current_user_or_apikey
 from api.database import User, UserSettings, get_db
+from api import config as api_config
 from api.config import APPLICATION_DIR
 
 router = APIRouter(prefix="/api/audio", tags=["audio"])
+
+
+def _require_audiobook_enabled() -> None:
+    if not api_config.is_audiobook_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Audiobook feature is temporarily disabled by server configuration.",
+        )
 
 ENV_OPENAI = os.environ.get("OPENAI_API_KEY", "")
 ENV_AZURE_KEY = os.environ.get("AZURE_SPEECH_KEY", "")
@@ -73,6 +82,7 @@ def _get_cache_path(provider: str, voice: str, speed: str, text: str, lang: str 
 @router.get("/voices")
 def get_supported_voices(provider: Optional[str] = Query(None)):
     """Returns curated voice presets for each supported provider."""
+    _require_audiobook_enabled()
     voices = {
         "openai": [
             {"id": "alloy", "name": "Alloy (Neutral, balanced)", "lang": "en"},
@@ -114,6 +124,7 @@ async def synthesize_speech(
     db: Session = Depends(get_db),
 ):
     """Synthesizes text to speech using configured provider, caching results."""
+    _require_audiobook_enabled()
     text = (req.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text cannot be empty")

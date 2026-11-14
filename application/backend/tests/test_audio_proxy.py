@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 import httpx
 
+from api import config as api_config
 from api.database import SessionLocal, User, UserSettings, init_db
 from api.routes import audio
 from api.routes.settings import put_user_settings
@@ -25,7 +26,29 @@ def _make_user(username: str) -> int:
         db.close()
 
 
-def test_get_supported_voices():
+@pytest.mark.anyio
+async def test_audio_endpoints_blocked_when_disabled():
+    with pytest.raises(HTTPException) as exc:
+        audio.get_supported_voices()
+    assert exc.value.status_code == 403
+
+    uid = _make_user("audio_disabled")
+    user = SimpleNamespace(id=uid)
+    db = SessionLocal()
+    try:
+        with pytest.raises(HTTPException) as exc:
+            await audio.synthesize_speech(
+                audio.SynthesizeRequest(text="Hello", provider="openai"),
+                current_user=user,
+                db=db,
+            )
+        assert exc.value.status_code == 403
+    finally:
+        db.close()
+
+
+def test_get_supported_voices(monkeypatch):
+    monkeypatch.setattr(api_config, "ENABLE_AUDIOBOOK", True)
     voices = audio.get_supported_voices()
     assert "openai" in voices
     assert "azure" in voices
@@ -34,7 +57,8 @@ def test_get_supported_voices():
 
 
 @pytest.mark.anyio
-async def test_synthesize_speech_validation():
+async def test_synthesize_speech_validation(monkeypatch):
+    monkeypatch.setattr(api_config, "ENABLE_AUDIOBOOK", True)
     uid = _make_user("audio_valid")
     user = SimpleNamespace(id=uid)
     db = SessionLocal()
@@ -63,6 +87,7 @@ async def test_synthesize_speech_validation():
 
 @pytest.mark.anyio
 async def test_synthesize_openai_mocked_and_cached(monkeypatch, tmp_path):
+    monkeypatch.setattr(api_config, "ENABLE_AUDIOBOOK", True)
     monkeypatch.setattr(audio, "CACHE_DIR", tmp_path)
     uid = _make_user("audio_openai")
     user = SimpleNamespace(id=uid)

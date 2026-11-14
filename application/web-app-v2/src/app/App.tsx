@@ -9,6 +9,7 @@ import { BOOKS_QUERY_KEY } from '@/features/library/useBooks';
 import { ReaderView } from '@/features/reader/ReaderView';
 import { useAuthStore } from '@/features/auth/authStore';
 import { apiJson } from '@/lib/api-client';
+import { APP_CONFIG_QUERY_KEY, getAppConfig } from '@/lib/features';
 import type { Book } from '@/types/api';
 import {
   getServerSettings,
@@ -53,6 +54,10 @@ function AuthGate() {
 
   useEffect(() => {
     void bootstrap();
+    void queryClient.prefetchQuery({
+      queryKey: APP_CONFIG_QUERY_KEY,
+      queryFn: getAppConfig,
+    });
   }, [bootstrap]);
 
   // The server is the single source of truth. After authentication:

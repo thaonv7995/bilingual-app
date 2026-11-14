@@ -346,25 +346,32 @@ struct ReaderView: View {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                 isReadyToRender = true
                             }
-                            AudiobookManager.shared.updateContext(
-                                bookSlug: self.book.slug,
-                                currentPage: self.page,
-                                totalPage: self.book.pageCount,
-                                bookTitle: self.book.title,
-                                bookAuthor: self.book.author ?? ""
-                            )
-                            AudiobookManager.shared.preloadCurrentPageSentences()
                             readerUsesDoubleSided = useDoubleSided
-                            AudiobookManager.shared.onPageTurnNeeded = {
-                                if self.page < self.book.pageCount {
-                                    self.page += 1
-                                    self.saveProgress()
-                                } else {
-                                    AudiobookManager.shared.shouldContinuePlayingOnPageLoad = false
-                                    AudiobookManager.shared.pause()
-                                }
-                            }
                             Task {
+                                await api.fetchAppConfig()
+                                guard api.isAudiobookEnabled else {
+                                    if AudiobookManager.shared.isBarVisible || AudiobookManager.shared.isPlaying {
+                                        AudiobookManager.shared.close()
+                                    }
+                                    return
+                                }
+                                AudiobookManager.shared.updateContext(
+                                    bookSlug: self.book.slug,
+                                    currentPage: self.page,
+                                    totalPage: self.book.pageCount,
+                                    bookTitle: self.book.title,
+                                    bookAuthor: self.book.author ?? ""
+                                )
+                                AudiobookManager.shared.preloadCurrentPageSentences()
+                                AudiobookManager.shared.onPageTurnNeeded = {
+                                    if self.page < self.book.pageCount {
+                                        self.page += 1
+                                        self.saveProgress()
+                                    } else {
+                                        AudiobookManager.shared.shouldContinuePlayingOnPageLoad = false
+                                        AudiobookManager.shared.pause()
+                                    }
+                                }
                                 if let secrets = try? await api.fetchServerSecrets() {
                                     AudiobookManager.shared.configure(
                                         provider: secrets.audioProvider ?? "device",
@@ -376,7 +383,32 @@ struct ReaderView: View {
                                 }
                             }
                         }
+                        .onChange(of: api.isAudiobookEnabled) { enabled in
+                            if !enabled {
+                                if AudiobookManager.shared.isBarVisible || AudiobookManager.shared.isPlaying {
+                                    AudiobookManager.shared.close()
+                                }
+                            } else {
+                                AudiobookManager.shared.updateContext(
+                                    bookSlug: self.book.slug,
+                                    currentPage: self.page,
+                                    totalPage: self.book.pageCount,
+                                    bookTitle: self.book.title,
+                                    bookAuthor: self.book.author ?? ""
+                                )
+                                AudiobookManager.shared.onPageTurnNeeded = {
+                                    if self.page < self.book.pageCount {
+                                        self.page += 1
+                                        self.saveProgress()
+                                    } else {
+                                        AudiobookManager.shared.shouldContinuePlayingOnPageLoad = false
+                                        AudiobookManager.shared.pause()
+                                    }
+                                }
+                            }
+                        }
                         .onChange(of: page) { newPage in
+                            guard api.isAudiobookEnabled else { return }
                             AudiobookManager.shared.updateContext(
                                 bookSlug: self.book.slug,
                                 currentPage: newPage,
@@ -393,6 +425,12 @@ struct ReaderView: View {
                             }
                         }
                         .onChange(of: AudiobookManager.shared.isBarVisible) { isVisible in
+                            guard api.isAudiobookEnabled else {
+                                if isVisible {
+                                    AudiobookManager.shared.close()
+                                }
+                                return
+                            }
                             if isVisible {
                                 AudiobookManager.shared.syncWithCurrentPage(
                                     page: self.page,
@@ -426,22 +464,25 @@ struct ReaderView: View {
                             // Keep the audiobook language aligned with the
                             // language page currently shown in the reader.
                             // Split mode preserves the user's last selection.
-                            if newViewMode == "en" && AudiobookManager.shared.mode != .en {
-                                AudiobookManager.shared.changeMode(.en)
-                            } else if newViewMode == "vi" && AudiobookManager.shared.mode != .vi {
-                                AudiobookManager.shared.changeMode(.vi)
-                            }
-                            if AudiobookManager.shared.isBarVisible {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    AudiobookManager.shared.updateWebViews(
-                                        en: findCurrentWebView(lang: "en", page: page),
-                                        vi: findCurrentWebView(lang: "vi", page: page),
-                                        viewMode: newViewMode
-                                    )
+                            if api.isAudiobookEnabled {
+                                if newViewMode == "en" && AudiobookManager.shared.mode != .en {
+                                    AudiobookManager.shared.changeMode(.en)
+                                } else if newViewMode == "vi" && AudiobookManager.shared.mode != .vi {
+                                    AudiobookManager.shared.changeMode(.vi)
+                                }
+                                if AudiobookManager.shared.isBarVisible {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        AudiobookManager.shared.updateWebViews(
+                                            en: findCurrentWebView(lang: "en", page: page),
+                                            vi: findCurrentWebView(lang: "vi", page: page),
+                                            viewMode: newViewMode
+                                        )
+                                    }
                                 }
                             }
                         }
                         .onChange(of: AudiobookManager.shared.mode) { newMode in
+                            guard api.isAudiobookEnabled else { return }
                             if newMode == .vi && viewMode == "en" {
                                 viewMode = "vi"
                             } else if newMode == .en && viewMode == "vi" {
@@ -496,7 +537,8 @@ struct ReaderView: View {
                             onSelectFont: selectAppearanceFont,
                             onSelectTheme: selectAppearanceTheme,
                             onResetToBookDefault: resetAppearanceToBookDefault,
-                            onSaveAsBookDefault: saveAppearanceAsBookDefault
+                            onSaveAsBookDefault: saveAppearanceAsBookDefault,
+                            isAudiobookEnabled: api.isAudiobookEnabled
                         )
                         .padding(.top, isPhone ? max(5, phoneTopInset) : 5)
                         .padding(.horizontal, isPhone && isLandscape ? phoneHorizontalInset : 0)
@@ -595,7 +637,7 @@ struct ReaderView: View {
                     }
                     ReaderVocaOverlayView(progressWord: vocaProgressWord, toast: vocaToast)
                     
-                    if audiobookManager.isBarVisible {
+                    if api.isAudiobookEnabled && audiobookManager.isBarVisible {
                         GeometryReader { proxy in
                             let compactSize: CGFloat = 64
                             let horizontalMargin = max(
@@ -1269,7 +1311,7 @@ struct ReaderView: View {
             if vocaPanelLang == lang, vocaPanelPage == page, vocaPanelContainerMode == containerMode, vocaPanelWebView == nil {
                 vocaPanelWebView = webView
             }
-            if AudiobookManager.shared.isBarVisible, page == self.page {
+            if api.isAudiobookEnabled && AudiobookManager.shared.isBarVisible, page == self.page {
                 AudiobookManager.shared.updateWebViews(
                     en: self.findCurrentWebView(lang: "en", page: self.page),
                     vi: self.findCurrentWebView(lang: "vi", page: self.page),
@@ -3995,6 +4037,7 @@ struct ReaderHeaderView: View {
     var onSelectTheme: (String) -> Void = { _ in }
     var onResetToBookDefault: () -> Void = {}
     var onSaveAsBookDefault: () -> Void = {}
+    var isAudiobookEnabled: Bool = false
 
     private let isPhone = UIDevice.current.userInterfaceIdiom == .phone
 
@@ -4118,15 +4161,17 @@ struct ReaderHeaderView: View {
                 }
             }
 
-            Button(action: {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    AudiobookManager.shared.isBarVisible.toggle()
+            if isAudiobookEnabled {
+                Button(action: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        AudiobookManager.shared.isBarVisible.toggle()
+                    }
+                }) {
+                    Image(systemName: "headphones")
+                        .foregroundColor(AudiobookManager.shared.isBarVisible ? Color(hex: "38bdf8") : .white)
+                        .font(.system(size: 14))
+                        .frame(width: 28, height: 28)
                 }
-            }) {
-                Image(systemName: "headphones")
-                    .foregroundColor(AudiobookManager.shared.isBarVisible ? Color(hex: "38bdf8") : .white)
-                    .font(.system(size: 14))
-                    .frame(width: 28, height: 28)
             }
 
             Button(action: { isChatOpen.toggle() }) {
@@ -4326,14 +4371,16 @@ struct ReaderHeaderView: View {
                     .font(.system(size: 15))
             }
             
-            Button(action: {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    AudiobookManager.shared.isBarVisible.toggle()
+            if isAudiobookEnabled {
+                Button(action: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        AudiobookManager.shared.isBarVisible.toggle()
+                    }
+                }) {
+                    Image(systemName: "headphones")
+                        .foregroundColor(AudiobookManager.shared.isBarVisible ? Color(hex: "38bdf8") : .white)
+                        .font(.system(size: 15))
                 }
-            }) {
-                Image(systemName: "headphones")
-                    .foregroundColor(AudiobookManager.shared.isBarVisible ? Color(hex: "38bdf8") : .white)
-                    .font(.system(size: 15))
             }
 
             Button(action: { isChatOpen.toggle() }) {

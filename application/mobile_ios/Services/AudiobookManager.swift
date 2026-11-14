@@ -56,11 +56,16 @@ final class AudiobookManager: ObservableObject {
     private var cumulativeOffsets: [Int] = []
     private var totalChars: Int = 0
     private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
+    private var hasSetupRemoteCommands: Bool = false
 
     // In-memory cache for parsed page sentences
     private var pageSentencesCache: [Int: [AudioSentenceItem]] = [:]
 
-    private init() {
+    private init() {}
+
+    private func ensureRemoteCommandsConfigured() {
+        guard !hasSetupRemoteCommands else { return }
+        hasSetupRemoteCommands = true
         setupRemoteCommands()
     }
 
@@ -137,6 +142,7 @@ final class AudiobookManager: ObservableObject {
     }
 
     func updateContext(bookSlug: String, currentPage: Int, totalPage: Int, bookTitle: String = "", bookAuthor: String = "") {
+        guard APIService.shared.isAudiobookEnabled else { return }
         let isNewBook = self.bookSlug != bookSlug
         let isNewPage = self.currentPage != currentPage
 
@@ -183,7 +189,7 @@ final class AudiobookManager: ObservableObject {
 
     /// Fast preload of current page sentences from memory cache or local HTML storage (< 1ms)
     func preloadCurrentPageSentences() {
-        guard !bookSlug.isEmpty else { return }
+        guard APIService.shared.isAudiobookEnabled, !bookSlug.isEmpty else { return }
 
         if let cached = pageSentencesCache[currentPage], !cached.isEmpty {
             self.sentences = cached
@@ -207,6 +213,11 @@ final class AudiobookManager: ObservableObject {
 
     /// Prepares state immediately when user opens the player bar on a page
     func syncWithCurrentPage(page: Int, viewMode: String, en: WKWebView?, vi: WKWebView?) {
+        guard APIService.shared.isAudiobookEnabled else {
+            isBarVisible = false
+            return
+        }
+        ensureRemoteCommandsConfigured()
         self.enWebView = en
         self.viWebView = vi
         self.currentViewMode = viewMode
@@ -722,6 +733,11 @@ final class AudiobookManager: ObservableObject {
     }
 
     func play() {
+        guard APIService.shared.isAudiobookEnabled else {
+            close()
+            return
+        }
+        ensureRemoteCommandsConfigured()
         if sentences.isEmpty {
             preloadCurrentPageSentences()
             if sentences.isEmpty {
@@ -1052,6 +1068,8 @@ final class AudiobookManager: ObservableObject {
         AudioProviderFactory.shared.stop()
         highlightSentence(id: nil)
         isBarVisible = false
-        NowPlayingManager.shared.clearNowPlaying()
+        if hasSetupRemoteCommands {
+            NowPlayingManager.shared.clearNowPlaying()
+        }
     }
 }

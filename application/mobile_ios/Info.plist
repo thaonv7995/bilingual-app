@@ -22,5 +22,7 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>ENABLE_AUDIOBOOK</key>
+	<false/>
 </dict>
 </plist>

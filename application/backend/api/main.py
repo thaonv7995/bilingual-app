@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from api.database import init_db, User, Book
 from api.auth import get_password_hash
 from api.config import WORKSPACE_ROOT, BOOKS_DIR, WEB_APP_DIR, APPLICATION_DIR
-from api.routes import auth, books, admin, chat, voca, settings, notebook, audio
+from api.routes import auth, books, admin, chat, voca, settings, notebook, audio, config
 from books_core.paths import BookPaths
 
 app = FastAPI(title="Bilingual Digital Library API")
@@ -41,6 +41,7 @@ app.include_router(voca.router)
 app.include_router(settings.router)
 app.include_router(notebook.router)
 app.include_router(audio.router)
+app.include_router(config.router)
 
 # Initialize DB on Startup
 @app.on_event("startup")

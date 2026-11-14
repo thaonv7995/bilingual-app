@@ -40,6 +40,7 @@ sudo systemctl restart bilingual-reader
 | `VOCA_API_ORIGIN` | Voca base host. **New name, preferred.** Default `https://voca.thaonv.online`; forced to `https` (the host also answers plain `http` with no redirect, which would leak the key) |
 | `VOCA_BRIDGE_ORIGIN` | Legacy alias, still read when `VOCA_API_ORIGIN` is unset |
 | `VOCA_BRIDGE_TOKEN` | Server-default Voca API key, used when a user hasn't set their own. Must include the `voca_` prefix. Name unchanged for backwards compatibility |
+| `ENABLE_AUDIOBOOK` | Feature flag (`true`/`false`, default `false`). Controls Audiobook (read-aloud) availability across Backend, Web, and iOS |
 
 > The old `voca-bridge.thaonv.online` host is **dead** (Cloudflare 502). If an existing
 > `/opt/bilingual-app/.env` still points there, fix it — Voca calls fail until you do.

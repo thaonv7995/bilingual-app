@@ -35,5 +35,5 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB}"
 
 # Cleared so the import-time constants are computed from a known-empty env
 # regardless of which module triggers the import first.
-for _var in ("OPENAI_API_KEY", "VOCA_API_ORIGIN", "VOCA_BRIDGE_ORIGIN", "VOCA_BRIDGE_TOKEN"):
+for _var in ("OPENAI_API_KEY", "VOCA_API_ORIGIN", "VOCA_BRIDGE_ORIGIN", "VOCA_BRIDGE_TOKEN", "ENABLE_AUDIOBOOK"):
     os.environ.pop(_var, None)

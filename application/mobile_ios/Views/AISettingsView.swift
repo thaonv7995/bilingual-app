@@ -614,7 +614,8 @@ struct AISettingsView: View {
                         )
 
                         // Section: Audiobook & Voice Provider
-                        VStack(alignment: .leading, spacing: 8) {
+                        if api.isAudiobookEnabled {
+                            VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 8) {
                                 Image(systemName: "waveform")
                                     .font(.system(size: 13))
@@ -880,6 +881,7 @@ struct AISettingsView: View {
                             RoundedRectangle(cornerRadius: 14)
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
+                        }
 
                         /*
                         // Companion Voice (Realtime) đã được loại bỏ.
@@ -1256,6 +1258,7 @@ struct AISettingsView: View {
         }
         isLoadingVocaSettings = true
         defer { isLoadingVocaSettings = false }
+        await api.fetchAppConfig()
         do {
             let settings = try await api.fetchServerSettings()
 
@@ -1337,15 +1340,19 @@ struct AISettingsView: View {
                 baseURL: aiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
                 model: aiModel.trimmingCharacters(in: .whitespacesAndNewlines),
                 llmApiKey: llm.isEmpty ? nil : llm,
-                audioProvider: audioProvider,
+                audioProvider: api.isAudiobookEnabled ? audioProvider : nil,
                 audioSource: (VocaAudioSource(rawValue: audioSource) ?? .auto).rawValue,
-                audioVoice: vFallback,
-                audioVoiceEn: vEn,
-                audioVoiceVi: vVi,
-                ttsModel: vEn,
-                speechSpeed: speechSpeed,
-                azureApiKey: azureApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : azureApiKey.trimmingCharacters(in: .whitespacesAndNewlines),
-                elevenLabsApiKey: elevenLabsApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : elevenLabsApiKey.trimmingCharacters(in: .whitespacesAndNewlines),
+                audioVoice: api.isAudiobookEnabled ? vFallback : nil,
+                audioVoiceEn: api.isAudiobookEnabled ? vEn : nil,
+                audioVoiceVi: api.isAudiobookEnabled ? vVi : nil,
+                ttsModel: api.isAudiobookEnabled ? vEn : nil,
+                speechSpeed: api.isAudiobookEnabled ? speechSpeed : nil,
+                azureApiKey: api.isAudiobookEnabled && !azureApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? azureApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                    : nil,
+                elevenLabsApiKey: api.isAudiobookEnabled && !elevenLabsApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? elevenLabsApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                    : nil,
                 layoutMode: bilingualLayoutMode,
                 hideFinishedBooks: hideFinishedBooks,
                 vocaOrigin: originToSend,
@@ -1367,13 +1374,15 @@ struct AISettingsView: View {
             hasElevenLabsKey = saved.hasElevenLabsKey
             vocaConfiguredOnServer = saved.hasVocaToken
 
-            AudiobookManager.shared.configure(
-                provider: saved.audioProvider,
-                voice: saved.audioVoice,
-                speed: saved.speechSpeed,
-                voiceEn: saved.audioVoiceEn,
-                voiceVi: saved.audioVoiceVi
-            )
+            if api.isAudiobookEnabled {
+                AudiobookManager.shared.configure(
+                    provider: saved.audioProvider,
+                    voice: saved.audioVoice,
+                    speed: saved.speechSpeed,
+                    voiceEn: saved.audioVoiceEn,
+                    voiceVi: saved.audioVoiceVi
+                )
+            }
         } catch {
             return "Không lưu được cài đặt lên server. Kiểm tra kết nối rồi thử lại."
         }

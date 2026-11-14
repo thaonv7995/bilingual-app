@@ -561,6 +561,7 @@ export function useAudiobook({
 
   // Play / Resume
   const play = useCallback(() => {
+    if (!enabled) return;
     let list = sentences;
     if (list.length === 0) {
       list = extractSentencesForMode(mode);
@@ -587,7 +588,7 @@ export function useAudiobook({
     }
 
     startFullPagePlayback(currentSentenceIndexRef.current, list);
-  }, [sentences, extractSentencesForMode, mode, updateSentenceOffsets, startFullPagePlayback, updateMediaInfo]);
+  }, [enabled, sentences, extractSentencesForMode, mode, updateSentenceOffsets, startFullPagePlayback, updateMediaInfo]);
 
   // Pause
   const pause = useCallback(() => {
@@ -769,6 +770,19 @@ export function useAudiobook({
       highlightSentence(null);
     };
   }, [highlightSentence]);
+
+  useEffect(() => {
+    if (!enabled) {
+      shouldAutoPlayNextPageRef.current = false;
+      if (playingRef.current) {
+        playingRef.current = false;
+        setIsPlaying(false);
+        stopCurrentAudio();
+        setMediaSessionPlaybackState('none');
+        highlightSentence(null);
+      }
+    }
+  }, [enabled, highlightSentence]);
 
   return {
     isPlaying,

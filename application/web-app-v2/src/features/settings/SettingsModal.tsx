@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/Toast';
 import type { LayoutMode } from '@/features/reader/readerConstants';
 import { apiJson } from '@/lib/api-client';
+import { useFeatureFlags } from '@/lib/features';
 import { deviceSpeechAvailable } from '@/lib/speech';
 import { playSentenceAudio } from '@/features/audiobook/audiobookService';
 import { syncVocaCards } from '@/lib/vocaCards';
@@ -57,6 +58,7 @@ function normalizeVocaOrigin(value: string): string {
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const { audiobookEnabled } = useFeatureFlags();
   const settings = useSettingsStore((s) => s.settings);
   const replaceSettings = useSettingsStore((s) => s.replaceSettings);
   const [form, setForm] = useState<Settings>(settings);
@@ -196,13 +198,17 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         ...(secretsLoaded || vocaOriginDirty ? { vocaOrigin: normalizeVocaOrigin(vocaOrigin) } : {}),
         ...(llmDirty ? { llmApiKey: llmKey.trim() } : {}),
         ...(vocaTokenDirty ? { vocaToken: vocaToken.trim() } : {}),
-        audioProvider,
-        audioVoice: audioVoiceEn.trim() || audioVoice.trim(),
-        audioVoiceEn: audioVoiceEn.trim(),
-        audioVoiceVi: audioVoiceVi.trim(),
-        speechSpeed: speechSpeed.trim() || '1.0',
-        ...(azureDirty ? { azureApiKey: azureApiKey.trim() } : {}),
-        ...(elevenLabsDirty ? { elevenLabsApiKey: elevenLabsApiKey.trim() } : {}),
+        ...(audiobookEnabled && secretsLoaded
+          ? {
+              audioProvider,
+              audioVoice: audioVoiceEn.trim() || audioVoice.trim(),
+              audioVoiceEn: audioVoiceEn.trim(),
+              audioVoiceVi: audioVoiceVi.trim(),
+              speechSpeed: speechSpeed.trim() || '1.0',
+              ...(azureDirty ? { azureApiKey: azureApiKey.trim() } : {}),
+              ...(elevenLabsDirty ? { elevenLabsApiKey: elevenLabsApiKey.trim() } : {}),
+            }
+          : {}),
       });
 
       replaceSettings(saved);
@@ -267,10 +273,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             </Field>
           </Section>
 
-          <Section
-            title="Audiobook &amp; Voice"
-            hint="Cấu hình giọng đọc, đồng bộ giữa Web và iOS."
-          >
+          {audiobookEnabled && (
+            <Section
+              title="Audiobook &amp; Voice"
+              hint="Cấu hình giọng đọc, đồng bộ giữa Web và iOS."
+            >
             <Field label="Nguồn phát Audio">
               <select
                 className={styles.input}
@@ -383,6 +390,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </button>
             </div>
           </Section>
+          )}
 
           <Section title="Voca API" hint="API key được lưu an toàn trên server và chỉ dùng cho Voca.">
             <Field label="Voca API URL">

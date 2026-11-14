@@ -9,6 +9,7 @@ import {
 } from '@/lib/api-client';
 import { readJSON, readString, writeJSON, writeString } from '@/lib/storage';
 import { STORAGE_KEYS } from '@/lib/storageKeys';
+import { useFeatureFlags } from '@/lib/features';
 import { ChatSidebar } from '@/features/chat/ChatSidebar';
 import { SettingsModal } from '@/features/settings/SettingsModal';
 import { useSettingsStore } from '@/features/settings/settingsStore';
@@ -165,6 +166,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     });
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { audiobookEnabled } = useFeatureFlags();
   const [audiobookOpen, setAudiobookOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [localAppearance, setLocalAppearance] = useState<LocalBookAppearance>(() =>
@@ -482,9 +484,16 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
     viewMode,
     enIframeRef,
     viIframeRef,
-    enabled: audiobookOpen,
+    enabled: audiobookEnabled && audiobookOpen,
     onNextPage: () => void requestPageChange((p) => p + 1),
   });
+
+  useEffect(() => {
+    if (!audiobookEnabled && audiobookOpen) {
+      audiobook.pause();
+      setAudiobookOpen(false);
+    }
+  }, [audiobookEnabled, audiobookOpen, audiobook]);
 
   // Ref holds the latest keyboard handler so both parent window and iframe
   // documents always invoke fresh state/callbacks without re-binding listeners.
@@ -995,8 +1004,8 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
           })
         }
         onOpenSettings={() => setSettingsOpen(true)}
-        audiobookOpen={audiobookOpen}
-        onToggleAudiobook={() => setAudiobookOpen((v) => !v)}
+        audiobookOpen={audiobookEnabled ? audiobookOpen : undefined}
+        onToggleAudiobook={audiobookEnabled ? () => setAudiobookOpen((v) => !v) : undefined}
         interlinear={resolvedAppearance.effectiveDescriptor.interlinear}
         onToggleInterlinear={handleToggleInterlinear}
         appearanceOpen={appearanceOpen}
@@ -1082,7 +1091,7 @@ function Reader({ book, initialPageParam }: { book: Book; initialPageParam?: str
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
 
-      {audiobookOpen && (
+      {audiobookEnabled && audiobookOpen && (
         <AudiobookBar
           isPlaying={audiobook.isPlaying}
           currentSentenceIndex={audiobook.currentSentenceIndex}

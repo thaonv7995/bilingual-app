@@ -41,3 +41,30 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_SECONDS = 15 * 60  # 15 minutes
 REFRESH_TOKEN_EXPIRE_SECONDS = 30 * 24 * 60 * 60  # 30 days
 
+
+def _parse_bool_env(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return default
+
+
+# Feature flags (configured via backend .env; Audiobook disabled by default)
+ENABLE_AUDIOBOOK: bool = _parse_bool_env("ENABLE_AUDIOBOOK", False)
+
+
+def is_audiobook_enabled() -> bool:
+    """Return whether the Audiobook (read-aloud) feature is enabled."""
+    return bool(ENABLE_AUDIOBOOK)
+
+
+def get_feature_flags() -> dict[str, bool]:
+    """Public runtime feature flags synchronized to Web and iOS clients."""
+    return {
+        "audiobookEnabled": is_audiobook_enabled(),
+    }
+
