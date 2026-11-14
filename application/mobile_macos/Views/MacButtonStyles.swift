@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Adds full-bounds hit testing via `.contentShape(...)` and subtle desktop hover feedback
@@ -32,6 +33,91 @@ extension View {
         isEnabled: Bool = true
     ) -> some View {
         modifier(MacHoverHighlightModifier(shape: shape, hoverColor: hoverColor, isEnabled: isEnabled))
+    }
+
+    func macReaderKeyboardShortcuts(
+        allowsInSheet: Bool = false,
+        isBlocked: @escaping () -> Bool = { false },
+        onLeftArrow: @escaping () -> Bool,
+        onRightArrow: @escaping () -> Bool,
+        onEscape: @escaping () -> Bool = { false },
+        onToggleFullscreen: (() -> Bool)? = nil
+    ) -> some View {
+        modifier(
+            MacReaderKeyMonitorModifier(
+                allowsInSheet: allowsInSheet,
+                isBlocked: isBlocked,
+                onLeftArrow: onLeftArrow,
+                onRightArrow: onRightArrow,
+                onEscape: onEscape,
+                onToggleFullscreen: onToggleFullscreen
+            )
+        )
+    }
+}
+
+/// Installs a scoped AppKit local `keyDown` monitor so reader keyboard shortcuts
+/// continue working even when `WKWebView` holds AppKit `firstResponder`.
+struct MacReaderKeyMonitorModifier: ViewModifier {
+    let allowsInSheet: Bool
+    let isBlocked: () -> Bool
+    let onLeftArrow: () -> Bool
+    let onRightArrow: () -> Bool
+    let onEscape: () -> Bool
+    let onToggleFullscreen: (() -> Bool)?
+
+    @State private var monitor: Any?
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                installMonitor()
+            }
+            .onDisappear {
+                removeMonitor()
+            }
+    }
+
+    private func installMonitor() {
+        removeMonitor()
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard let keyWindow = NSApp.keyWindow, event.window === keyWindow else {
+                return event
+            }
+            if !allowsInSheet && (keyWindow.sheetParent != nil || keyWindow.attachedSheet != nil) {
+                return event
+            }
+            guard event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else {
+                return event
+            }
+            guard !isBlocked() else { return event }
+
+            let isEditingText = NSApp.keyWindow?.firstResponder is NSText
+            switch event.keyCode {
+            case 123: // Left Arrow
+                guard !isEditingText else { return event }
+                return onLeftArrow() ? nil : event
+            case 124: // Right Arrow
+                guard !isEditingText else { return event }
+                return onRightArrow() ? nil : event
+            case 53: // Escape
+                return onEscape() ? nil : event
+            default:
+                if !isEditingText,
+                   event.charactersIgnoringModifiers?.lowercased() == "f",
+                   let onToggleFullscreen {
+                    return onToggleFullscreen() ? nil : event
+                }
+                return event
+            }
+        }
+    }
+
+    private func removeMonitor() {
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
     }
 }
 

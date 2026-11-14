@@ -139,25 +139,34 @@ struct HighlightReferenceSheetMac: View {
         .frame(minWidth: 860, idealWidth: 1020, minHeight: 620, idealHeight: 760)
         .background(Color(hex: "0b1120"))
         .preferredColorScheme(.dark)
-        .focusable()
-        .onKeyPress(.leftArrow) {
-            guard !isNoteFieldFocused else { return .ignored }
-            goToPreviewPage(previewPage - 1)
-            return .handled
-        }
-        .onKeyPress(.rightArrow) {
-            guard !isNoteFieldFocused else { return .ignored }
-            goToPreviewPage(previewPage + 1)
-            return .handled
-        }
-        .onKeyPress(.escape) {
-            if showNoteEditor || activeSelection != nil || selectedHighlightId != nil {
-                clearSelectionBar()
-                return .handled
+        .macReaderKeyboardShortcuts(
+            allowsInSheet: true,
+            onLeftArrow: {
+                guard !isNoteFieldFocused, !showNoteEditor, vocaPanelPage == nil else { return false }
+                goToPreviewPage(previewPage - 1)
+                return true
+            },
+            onRightArrow: {
+                guard !isNoteFieldFocused, !showNoteEditor, vocaPanelPage == nil else { return false }
+                goToPreviewPage(previewPage + 1)
+                return true
+            },
+            onEscape: {
+                if vocaPanelPage != nil {
+                    vocaPanelPage = nil
+                    return true
+                }
+                if showNoteEditor || activeSelection != nil || selectedHighlightId != nil {
+                    clearSelectionBar()
+                    return true
+                }
+                if !isNoteFieldFocused {
+                    dismiss()
+                    return true
+                }
+                return false
             }
-            dismiss()
-            return .handled
-        }
+        )
     }
 
     // MARK: - Header & Banner

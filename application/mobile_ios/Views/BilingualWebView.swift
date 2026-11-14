@@ -196,12 +196,9 @@ struct BilingualWebView: UIViewRepresentable {
         (function() {
             \(viewportJs)
 
-            const injectStyle = () => {
-                const STYLE_ID = 'reader-highlight-style';
-                if (!document.getElementById(STYLE_ID)) {
-                    const style = document.createElement('style');
-                    style.id = STYLE_ID;
-                    style.innerHTML = `
+            const STYLE_ID = 'reader-highlight-style';
+            const APPEARANCE_ID = 'bkb-appearance-style';
+            const STYLE_CSS = `
                         .sentence-node {
                             transition: background-color 0.2s ease;
                             border-radius: 3px;
@@ -230,11 +227,12 @@ struct BilingualWebView: UIViewRepresentable {
                             -webkit-text-size-adjust: none !important;
                             touch-action: manipulation;
                         }
-                        body, body.book-standalone {
+                        html body, html body.book-standalone {
                             margin: 0 !important;
                             \(paddingCss)
                             width: 100% !important;
                             max-width: 100% !important;
+                            min-width: 0 !important;
                             height: auto !important;
                             min-height: 100vh !important;
                             box-sizing: border-box !important;
@@ -243,36 +241,38 @@ struct BilingualWebView: UIViewRepresentable {
                             overflow-y: auto !important;
                             touch-action: manipulation;
                         }
-                        main, article, .prose-page {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            width: 100% !important;
-                            max-width: 100% !important;
-                            box-sizing: border-box !important;
-                            background: transparent !important;
-                            background-color: transparent !important;
-                        }
-                        .book-page, .book-page--sheet, .sheet-flow {
+                        html body :is(main, article, .prose-page, .prose-content, .toc-page, .toc-columns-container, .copy-content, .unit-page, .exercises-page, .book-page, .book-page.book-page--sheet, .book-page--sheet, .sheet-flow) {
                             margin: 0 auto !important;
                             padding: 0 !important;
                             width: 100% !important;
                             max-width: 100% !important;
+                            min-width: 0 !important;
+                            flex-shrink: 1 !important;
                             height: auto !important;
                             min-height: 0 !important;
                             max-height: none !important;
                             box-sizing: border-box !important;
                             overflow: visible !important;
+                            overflow-x: visible !important;
+                            overflow-y: visible !important;
                             background: transparent !important;
                             background-color: transparent !important;
                             box-shadow: none !important;
                         }
-                        .book-page--sheet::after {
+                        html body .book-page--sheet::after,
+                        html body .book-page::after {
                             display: none !important;
                             content: none !important;
                         }
-                        * {
+                        html body :is(.page-folio, .preface-folio, .toc-folio) {
+                            position: static !important;
+                            margin-top: 14px !important;
+                            text-align: center !important;
+                        }
+                        html body *:not(.voca-lookup-panel):not(.voca-lookup-panel *) {
                             box-sizing: border-box !important;
                             max-width: 100% !important;
+                            overflow-wrap: break-word !important;
                             word-wrap: break-word !important;
                         }
         \(phoneCss)
@@ -385,28 +385,45 @@ struct BilingualWebView: UIViewRepresentable {
                             background-color: transparent !important;
                         }
                     `;
-                    if (document.head) {
-                        document.head.appendChild(style);
-                    } else {
-                        document.documentElement.appendChild(style);
+            let isSyncing = false;
+            const injectStyle = () => {
+                if (isSyncing) return;
+                const parent = document.head || document.documentElement;
+                if (!parent) return;
+                isSyncing = true;
+                try {
+                    let style = document.getElementById(STYLE_ID);
+                    if (!style) {
+                        style = document.createElement('style');
+                        style.id = STYLE_ID;
+                        style.innerHTML = STYLE_CSS;
                     }
+                    const appearanceEl = document.getElementById(APPEARANCE_ID);
+                    if (appearanceEl && appearanceEl.parentNode === parent) {
+                        if (style.parentNode !== parent || style.nextElementSibling !== appearanceEl) {
+                            parent.insertBefore(style, appearanceEl);
+                        }
+                    } else if (style.parentNode !== parent || style.nextElementSibling !== null) {
+                        parent.appendChild(style);
+                    }
+                } finally {
+                    isSyncing = false;
                 }
             };
             
             injectStyle();
             
-            const observer = new MutationObserver((mutations, obs) => {
-                if (document.head) {
-                    forceViewport();
-                    injectStyle();
-                }
-                if (document.body) {
-                    forceViewport();
-                    injectStyle();
-                    obs.disconnect();
-                }
+            const observer = new MutationObserver(() => {
+                forceViewport();
+                injectStyle();
             });
             observer.observe(document.documentElement, { childList: true, subtree: true });
+            document.addEventListener('DOMContentLoaded', () => { forceViewport(); injectStyle(); });
+            window.addEventListener('load', () => {
+                forceViewport();
+                injectStyle();
+                observer.disconnect();
+            });
         })();
         """
         let cssUserScript = WKUserScript(source: cssStyleSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)
@@ -519,21 +536,30 @@ struct BilingualWebView: UIViewRepresentable {
         };
 
         window.highlightSentence = function(sentenceId) {
+            if (window.ensureSentencesSegmented) {
+                window.ensureSentencesSegmented();
+            }
             document.querySelectorAll('.sentence-node.highlight-sync').forEach(el => {
                 el.classList.remove('highlight-sync');
             });
             if (sentenceId) {
-                const targetNode = document.querySelector(`.sentence-node[data-sentence-id="${sentenceId}"]`);
-                if (targetNode) {
-                    targetNode.classList.add('highlight-sync');
+                const safeId = String(sentenceId);
+                const nodes = document.querySelectorAll('.sentence-node');
+                for (let i = 0; i < nodes.length; i++) {
+                    if (nodes[i].dataset.sentenceId === safeId) {
+                        nodes[i].classList.add('highlight-sync');
+                        break;
+                    }
                 }
             }
         };
 
         window.scrollToAndPulseHighlight = function(highlightId) {
             if (!highlightId) return false;
-            const selector = `mark.reader-highlight[data-highlight-id="${String(highlightId).replace(/["\\]/g, '')}"]`;
-            const marks = Array.from(document.querySelectorAll(selector));
+            const targetId = String(highlightId);
+            const marks = Array.from(document.querySelectorAll('mark.reader-highlight')).filter(
+                (el) => el.dataset.highlightId === targetId
+            );
             if (!marks.length) return false;
             try {
                 marks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -551,58 +577,125 @@ struct BilingualWebView: UIViewRepresentable {
             return true;
         };
 
-        document.addEventListener('mouseup', handleSelectionEnd);
-        document.addEventListener('touchend', handleSelectionEnd);
+        function resolveEventElement(node) {
+            if (!node) return null;
+            if (node.nodeType === 3) return node.parentElement;
+            return typeof node.closest === 'function' ? node : null;
+        }
 
+        let selectionEndTimer = null;
         let lastTapTime = 0;
+        let lastTapX = 0;
+        let lastTapY = 0;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchMoved = false;
+        let lastTouchEndTime = 0;
         let lastToggleTime = 0;
+
+        function clearPendingSelectionEnd() {
+            if (selectionEndTimer) {
+                clearTimeout(selectionEndTimer);
+                selectionEndTimer = null;
+            }
+        }
+
         function triggerFullScreenToggle() {
             const now = Date.now();
             if (now - lastToggleTime < 450) return;
             lastToggleTime = now;
+            clearPendingSelectionEnd();
+            try {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount > 0) sel.removeAllRanges();
+            } catch (_) {}
             window.webkit.messageHandlers.iosListener.postMessage(JSON.stringify({
                 type: 'toggleFullScreen'
             }));
         }
+
         function handleDoubleTap(e) {
-            if (e.target && typeof e.target.closest === 'function' && e.target.closest('.voca-lookup-panel, a, button')) {
+            const targetEl = resolveEventElement(e.target);
+            if (targetEl && targetEl.closest('.voca-lookup-panel, a, button')) {
                 return;
             }
+            const touch = e.touches && e.touches[0];
+            const x = touch ? touch.clientX : 0;
+            const y = touch ? touch.clientY : 0;
             const currentTime = Date.now();
             const tapLength = currentTime - lastTapTime;
-            if (tapLength < 400 && tapLength > 0) {
-                // Double tap detected
+            const dist = Math.hypot(x - lastTapX, y - lastTapY);
+            if (tapLength < 400 && tapLength > 0 && dist < 54) {
+                lastTapTime = 0;
                 triggerFullScreenToggle();
-                // Prevent default to stop zooming
                 if (e.cancelable) e.preventDefault();
+                return;
             }
             lastTapTime = currentTime;
+            lastTapX = x;
+            lastTapY = y;
         }
 
         document.addEventListener('touchstart', function(e) {
             if (e.touches.length === 1) {
+                touchMoved = false;
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
                 handleDoubleTap(e);
+            } else {
+                touchMoved = true;
+                lastTapTime = 0;
             }
         }, {passive: false});
 
+        document.addEventListener('touchmove', function(e) {
+            if (e.touches.length === 1 && !touchMoved) {
+                const dx = e.touches[0].clientX - touchStartX;
+                const dy = e.touches[0].clientY - touchStartY;
+                if (Math.hypot(dx, dy) > 12) {
+                    touchMoved = true;
+                    lastTapTime = 0;
+                }
+            }
+        }, {passive: true});
+
         document.addEventListener('dblclick', function(e) {
-            if (e.target && typeof e.target.closest === 'function' && e.target.closest('.voca-lookup-panel, a, button')) {
+            const targetEl = resolveEventElement(e.target);
+            if (targetEl && targetEl.closest('.voca-lookup-panel, a, button')) {
                 return;
             }
             if (e.cancelable) e.preventDefault();
             triggerFullScreenToggle();
         }, {passive: false});
 
-        function handleSelectionEnd(e) {
-            setTimeout(() => {
-                if (e.target && typeof e.target.closest === 'function' && e.target.closest('.voca-lookup-panel')) {
+        document.addEventListener('mouseup', function(e) {
+            if (Date.now() - lastTouchEndTime < 500) return;
+            handleSelectionEnd(e, false);
+        });
+        document.addEventListener('touchend', function(e) {
+            lastTouchEndTime = Date.now();
+            handleSelectionEnd(e, touchMoved);
+        });
+
+        function handleSelectionEnd(e, didMove) {
+            const targetEl = resolveEventElement(e.target);
+            if (targetEl && targetEl.closest('.voca-lookup-panel')) {
+                return;
+            }
+            if (Date.now() - lastToggleTime < 450) {
+                return;
+            }
+            clearPendingSelectionEnd();
+            selectionEndTimer = setTimeout(() => {
+                selectionEndTimer = null;
+                if (Date.now() - lastToggleTime < 450) {
                     return;
                 }
                 const selection = window.getSelection();
-                const selectedText = selection.toString().trim();
-                const clickedMark = e.target.closest('mark.reader-highlight');
+                const selectedText = selection ? selection.toString().trim() : '';
+                const clickedMark = targetEl ? targetEl.closest('mark.reader-highlight') : null;
 
-                if (clickedMark) {
+                if (clickedMark && selectedText.length <= 2 && !didMove) {
                     const highlightId = clickedMark.dataset.highlightId;
                     const rect = clickedMark.getBoundingClientRect();
                     window.webkit.messageHandlers.iosListener.postMessage(JSON.stringify({
@@ -610,7 +703,7 @@ struct BilingualWebView: UIViewRepresentable {
                         id: highlightId,
                         rect: {x: rect.x, y: rect.y, width: rect.width, height: rect.height}
                     }));
-                    selection.removeAllRanges();
+                    if (selection) selection.removeAllRanges();
                     return;
                 }
 
@@ -625,15 +718,23 @@ struct BilingualWebView: UIViewRepresentable {
                     return;
                 }
 
+                if (didMove) {
+                    return;
+                }
+
+                if (window.ensureSentencesSegmented) {
+                    window.ensureSentencesSegmented();
+                }
+
                 // Sentence node tap detection
                 let sentenceNode = null;
-                if (selectedText.length > 0) {
-                    const node = selection.anchorNode;
-                    if (node) {
-                        sentenceNode = node.parentElement.closest('.sentence-node');
+                if (selectedText.length > 0 && selection && selection.anchorNode) {
+                    const anchorEl = resolveEventElement(selection.anchorNode);
+                    if (anchorEl) {
+                        sentenceNode = anchorEl.closest('.sentence-node');
                     }
-                } else {
-                    sentenceNode = e.target.closest('.sentence-node');
+                } else if (targetEl) {
+                    sentenceNode = targetEl.closest('.sentence-node');
                 }
 
                 if (sentenceNode) {
@@ -754,6 +855,10 @@ struct BilingualWebView: UIViewRepresentable {
                 }
             });
         }
+
+        window.ensureSentencesSegmented = function() {
+            segmentDocSentences(document);
+        };
 
         let iosVocaDismissHandler = null;
 

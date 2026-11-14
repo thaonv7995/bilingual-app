@@ -75,127 +75,199 @@ struct BilingualWebViewMac: NSViewRepresentable {
         let baseStyleSource = """
         (function() {
             const STYLE_ID = 'mac-reader-base-style';
-            const inject = () => {
-                if (document.getElementById(STYLE_ID)) return;
-                const style = document.createElement('style');
-                style.id = STYLE_ID;
-                style.textContent = `
-                    .page-nav { display: none !important; }
-                    @keyframes macPaperReveal {
-                        from { opacity: 0.72; }
-                        to { opacity: 1; }
+            const APPEARANCE_ID = 'bkb-appearance-style';
+            const CSS_TEXT = `
+                .page-nav { display: none !important; }
+                @keyframes macPaperReveal {
+                    from { opacity: 0.72; }
+                    to { opacity: 1; }
+                }
+                @keyframes readerHighlightPulse {
+                    0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+                    50% { box-shadow: 0 0 0 5px rgba(56, 189, 248, 0.42); }
+                }
+                @keyframes vocaPopIn {
+                    from { opacity: 0; transform: translateY(4px) scale(0.96); }
+                    to { opacity: 1; transform: translateY(0) scale(1); }
+                }
+                body {
+                    animation: macPaperReveal 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+                }
+                .sentence-node {
+                    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    display: inline;
+                    -webkit-user-select: text;
+                    user-select: text;
+                }
+                .sentence-node:hover {
+                    background-color: \(hoverColor);
+                }
+                .sentence-node.highlight-sync {
+                    background-color: \(highlightColor) !important;
+                    box-decoration-break: clone;
+                    -webkit-box-decoration-break: clone;
+                }
+                html {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    height: auto !important;
+                    min-height: 100vh !important;
+                    box-sizing: border-box !important;
+                    overflow-x: hidden !important;
+                    overflow-y: auto !important;
+                }
+                html body, html body.book-standalone {
+                    display: block !important;
+                    margin: 0 !important;
+                    padding: \(viewMode == "split" ? "20px 26px 40px" : "28px 40px 48px") !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    min-width: 0 !important;
+                    height: auto !important;
+                    min-height: 100vh !important;
+                    box-sizing: border-box !important;
+                    overflow-x: hidden !important;
+                    overflow-y: visible !important;
+                }
+                html body :is(main, article, .prose-page, .prose-content, .toc-page, .toc-columns-container, .copy-content, .unit-page, .exercises-page, .book-page, .book-page.book-page--sheet, .book-page--sheet, .sheet-flow) {
+                    margin: 0 auto !important;
+                    padding: 0 !important;
+                    width: 100% !important;
+                    max-width: min(780px, 100%) !important;
+                    min-width: 0 !important;
+                    flex-shrink: 1 !important;
+                    height: auto !important;
+                    min-height: 0 !important;
+                    max-height: none !important;
+                    overflow: visible !important;
+                    overflow-x: visible !important;
+                    overflow-y: visible !important;
+                    box-sizing: border-box !important;
+                    background: transparent !important;
+                    background-color: transparent !important;
+                    box-shadow: none !important;
+                }
+                html body .book-page--sheet::after,
+                html body .book-page::after {
+                    display: none !important;
+                    content: none !important;
+                }
+                html body :is(.page-folio, .preface-folio, .toc-folio) {
+                    position: static !important;
+                    margin-top: 16px !important;
+                    text-align: center !important;
+                }
+                html body *:not(.voca-lookup-panel):not(.voca-lookup-panel *) {
+                    max-width: 100% !important;
+                    box-sizing: border-box !important;
+                }
+                html body :is(p, li, blockquote, dd, dt, td, th, span, div, h1, h2, h3, h4, h5, h6) {
+                    overflow-wrap: break-word !important;
+                }
+                html body :is(pre, .code-block, .ascii-figure) {
+                    white-space: pre-wrap !important;
+                    overflow-wrap: anywhere !important;
+                }
+                html body :is(img, svg, object, canvas, video, figure) {
+                    max-width: 100% !important;
+                    height: auto !important;
+                }
+                mark.reader-highlight {
+                    border-radius: 3px;
+                    padding: 0 1px;
+                    cursor: pointer;
+                    position: relative;
+                    color: inherit;
+                    box-decoration-break: clone;
+                    -webkit-box-decoration-break: clone;
+                    transition: filter 0.15s ease;
+                }
+                mark.reader-highlight:hover {
+                    filter: brightness(0.96);
+                }
+                mark.reader-highlight--pulse {
+                    animation: readerHighlightPulse 1.2s ease;
+                }
+                mark.reader-highlight[data-has-note="true"]::after {
+                    content: '';
+                    position: absolute;
+                    top: -3px;
+                    right: -3px;
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 50%;
+                    background: #2563eb;
+                    border: 1px solid #fff;
+                }
+                .voca-lookup-panel {
+                    position: fixed;
+                    z-index: 10000;
+                    min-width: 220px;
+                    max-width: min(320px, calc(100vw - 24px)) !important;
+                    padding: 12px 14px;
+                    border-radius: 10px;
+                    background-color: #ffffff !important;
+                    border: 1px solid rgba(15, 23, 42, 0.14);
+                    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.20);
+                    color: #0f172a !important;
+                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                    font-size: 13px;
+                    animation: vocaPopIn 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+                }
+                .voca-lookup-panel__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+                .voca-lookup-panel__word { font-weight: 700; font-size: 14px; color: #0f172a !important; }
+                .voca-lookup-panel__voice { border: 0; background-color: #e0f2fe !important; border-radius: 7px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; transition: background-color 0.12s ease, transform 0.1s ease; }
+                .voca-lookup-panel__voice:hover { background-color: #bae6fd !important; }
+                .voca-lookup-panel__voice:active { transform: scale(0.94); }
+                .voca-lookup-panel__ipa { margin-top: 4px; color: #475569 !important; font-size: 12px; }
+                .voca-lookup-panel__meaning { margin-top: 6px; color: #1e293b !important; line-height: 1.45; }
+                .voca-lookup-panel__hint { margin-top: 4px; color: #64748b !important; font-size: 12px; }
+                .voca-lookup-panel__create { margin-top: 10px; width: 100%; border: 0; border-radius: 8px; padding: 9px 12px; background-color: #2563eb !important; color: #fff !important; font-size: 12px; font-weight: 700; cursor: pointer; transition: filter 0.12s ease, transform 0.1s ease; }
+                .voca-lookup-panel__create:hover { filter: brightness(1.08); }
+                .voca-lookup-panel__create:active { transform: scale(0.98); }
+                .voca-lookup-panel__list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
+                .voca-lookup-panel__item { width: 100%; text-align: left; border: 1px solid rgba(15, 23, 42, 0.1); border-radius: 8px; padding: 9px 10px; background-color: #f8fafc !important; cursor: pointer; display: flex; flex-direction: column; gap: 2px; transition: background-color 0.12s ease; }
+                .voca-lookup-panel__item:hover { background-color: #eff6ff !important; border-color: rgba(37, 99, 235, 0.3); }
+                .voca-lookup-panel__item-word { font-weight: 700; font-size: 12px; color: #0f172a !important; }
+                .voca-lookup-panel__item-meaning { font-size: 11px; color: #475569 !important; }
+            `;
+            let isSyncing = false;
+            const ensureAfterAuthorStyles = () => {
+                if (isSyncing) return;
+                const parent = document.head || document.documentElement;
+                if (!parent) return;
+                isSyncing = true;
+                try {
+                    let style = document.getElementById(STYLE_ID);
+                    if (!style) {
+                        style = document.createElement('style');
+                        style.id = STYLE_ID;
+                        style.textContent = CSS_TEXT;
                     }
-                    @keyframes readerHighlightPulse {
-                        0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
-                        50% { box-shadow: 0 0 0 5px rgba(56, 189, 248, 0.42); }
+                    const appearanceEl = document.getElementById(APPEARANCE_ID);
+                    if (appearanceEl && appearanceEl.parentNode === parent) {
+                        if (style.parentNode !== parent || style.nextElementSibling !== appearanceEl) {
+                            parent.insertBefore(style, appearanceEl);
+                        }
+                    } else if (style.parentNode !== parent || style.nextElementSibling !== null) {
+                        parent.appendChild(style);
                     }
-                    @keyframes vocaPopIn {
-                        from { opacity: 0; transform: translateY(4px) scale(0.96); }
-                        to { opacity: 1; transform: translateY(0) scale(1); }
-                    }
-                    body {
-                        animation: macPaperReveal 0.18s cubic-bezier(0.22, 1, 0.36, 1);
-                    }
-                    .sentence-node {
-                        transition: background-color 0.2s ease, box-shadow 0.2s ease;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        display: inline;
-                        -webkit-user-select: text;
-                        user-select: text;
-                    }
-                    .sentence-node:hover {
-                        background-color: \(hoverColor);
-                    }
-                    .sentence-node.highlight-sync {
-                        background-color: \(highlightColor) !important;
-                        box-decoration-break: clone;
-                        -webkit-box-decoration-break: clone;
-                    }
-                    html, body, body.book-standalone {
-                        margin: 0 !important;
-                        padding: \(viewMode == "split" ? "20px 26px" : "28px 40px") !important;
-                        width: 100% !important;
-                        max-width: 100% !important;
-                        min-height: 100vh !important;
-                        box-sizing: border-box !important;
-                        overflow-x: hidden !important;
-                    }
-                    main, article, .prose-page, .book-page, .book-page--sheet, .sheet-flow {
-                        margin: 0 auto !important;
-                        padding: 0 !important;
-                        max-width: 780px !important;
-                        height: auto !important;
-                        min-height: 0 !important;
-                        max-height: none !important;
-                        background: transparent !important;
-                        box-shadow: none !important;
-                    }
-                    .book-page--sheet::after { display: none !important; content: none !important; }
-                    mark.reader-highlight {
-                        border-radius: 3px;
-                        padding: 0 1px;
-                        cursor: pointer;
-                        position: relative;
-                        color: inherit;
-                        box-decoration-break: clone;
-                        -webkit-box-decoration-break: clone;
-                        transition: filter 0.15s ease;
-                    }
-                    mark.reader-highlight:hover {
-                        filter: brightness(0.96);
-                    }
-                    mark.reader-highlight--pulse {
-                        animation: readerHighlightPulse 1.2s ease;
-                    }
-                    mark.reader-highlight[data-has-note="true"]::after {
-                        content: '';
-                        position: absolute;
-                        top: -3px;
-                        right: -3px;
-                        width: 6px;
-                        height: 6px;
-                        border-radius: 50%;
-                        background: #2563eb;
-                        border: 1px solid #fff;
-                    }
-                    .voca-lookup-panel {
-                        position: fixed;
-                        z-index: 10000;
-                        min-width: 220px;
-                        max-width: min(320px, calc(100vw - 24px)) !important;
-                        padding: 12px 14px;
-                        border-radius: 10px;
-                        background-color: #ffffff !important;
-                        border: 1px solid rgba(15, 23, 42, 0.14);
-                        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.20);
-                        color: #0f172a !important;
-                        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                        font-size: 13px;
-                        animation: vocaPopIn 0.16s cubic-bezier(0.22, 1, 0.36, 1);
-                    }
-                    .voca-lookup-panel__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-                    .voca-lookup-panel__word { font-weight: 700; font-size: 14px; color: #0f172a !important; }
-                    .voca-lookup-panel__voice { border: 0; background-color: #e0f2fe !important; border-radius: 7px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; transition: background-color 0.12s ease, transform 0.1s ease; }
-                    .voca-lookup-panel__voice:hover { background-color: #bae6fd !important; }
-                    .voca-lookup-panel__voice:active { transform: scale(0.94); }
-                    .voca-lookup-panel__ipa { margin-top: 4px; color: #475569 !important; font-size: 12px; }
-                    .voca-lookup-panel__meaning { margin-top: 6px; color: #1e293b !important; line-height: 1.45; }
-                    .voca-lookup-panel__hint { margin-top: 4px; color: #64748b !important; font-size: 12px; }
-                    .voca-lookup-panel__create { margin-top: 10px; width: 100%; border: 0; border-radius: 8px; padding: 9px 12px; background-color: #2563eb !important; color: #fff !important; font-size: 12px; font-weight: 700; cursor: pointer; transition: filter 0.12s ease, transform 0.1s ease; }
-                    .voca-lookup-panel__create:hover { filter: brightness(1.08); }
-                    .voca-lookup-panel__create:active { transform: scale(0.98); }
-                    .voca-lookup-panel__list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
-                    .voca-lookup-panel__item { width: 100%; text-align: left; border: 1px solid rgba(15, 23, 42, 0.1); border-radius: 8px; padding: 9px 10px; background-color: #f8fafc !important; cursor: pointer; display: flex; flex-direction: column; gap: 2px; transition: background-color 0.12s ease; }
-                    .voca-lookup-panel__item:hover { background-color: #eff6ff !important; border-color: rgba(37, 99, 235, 0.3); }
-                    .voca-lookup-panel__item-word { font-weight: 700; font-size: 12px; color: #0f172a !important; }
-                    .voca-lookup-panel__item-meaning { font-size: 11px; color: #475569 !important; }
-                `;
-                (document.head || document.documentElement).appendChild(style);
+                } finally {
+                    isSyncing = false;
+                }
             };
-            inject();
-            const obs = new MutationObserver(() => { inject(); });
+            ensureAfterAuthorStyles();
+            const obs = new MutationObserver(() => { ensureAfterAuthorStyles(); });
             obs.observe(document.documentElement, { childList: true, subtree: true });
+            document.addEventListener('DOMContentLoaded', () => { ensureAfterAuthorStyles(); });
+            window.addEventListener('load', () => {
+                ensureAfterAuthorStyles();
+                obs.disconnect();
+            });
         })();
         """
 

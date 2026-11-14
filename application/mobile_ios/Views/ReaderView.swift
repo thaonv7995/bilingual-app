@@ -1033,7 +1033,7 @@ struct ReaderView: View {
                     }
                 }
             }
-            .allowsHitTesting(true)
+            .allowsHitTesting(activeSelectionLang == lang && activeSelectionPage == p && (activeSelection != nil || selectedHighlightId != nil))
         )
     }
 
@@ -2486,6 +2486,7 @@ struct PaperSheetModifier: ViewModifier {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
+                    .allowsHitTesting(false)
                 )
                 .clipShape(UnevenRoundedCorners(
                     tl: isLeft ? 6 : 0,

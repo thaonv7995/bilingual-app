@@ -923,12 +923,18 @@ enum ReaderAppearance {
                             --bkb-lh: ${lhRule};
                             font-size: var(--bkb-body-size) !important;
                         }
-                        ${R} :is(.book-page, .book-page--sheet, .sheet-flow, .prose-page, .toc-page, .unit-page, .exercises-page, main, article) {
+                        ${R} :is(.book-page, .book-page--sheet, .sheet-flow, .prose-page, .prose-content, .toc-page, .toc-columns-container, .copy-content, .unit-page, .exercises-page, main, article) {
                             padding: 0 !important;
                             margin: 0 auto !important;
+                            width: 100% !important;
+                            max-width: 100% !important;
+                            min-width: 0 !important;
+                            flex-shrink: 1 !important;
                             height: auto !important;
                             min-height: 0 !important;
                             max-height: none !important;
+                            overflow: visible !important;
+                            box-sizing: border-box !important;
                         }
                         ${R} body,
                         ${R} .book-page,

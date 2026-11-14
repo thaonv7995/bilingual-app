@@ -62,8 +62,6 @@ struct ReaderViewMac: View {
 
     @State private var layoutMode: String = UserDefaults.standard.string(forKey: "bilingualLayoutMode") ?? "en-vi"
     @State private var isHoveringTopZone: Bool = false
-    @State private var isHoveringLeftEdge: Bool = false
-    @State private var isHoveringRightEdge: Bool = false
 
     // Tactile 3D Page-Turn Animation State
     @State private var pageTurnSkew: Double = 0
@@ -164,9 +162,6 @@ struct ReaderViewMac: View {
                                 .padding(.top, isFullScreen ? 0 : 10)
                                 .padding(.bottom, isFullScreen ? 0 : 14)
 
-                            // Left / Right Edge Page-Turn Hover Zones
-                            edgePageTurnOverlays(doubleSided: doubleSided)
-
                             // Voca Loading Pill
                             if let word = vocaProgressWord {
                                 HStack(spacing: 10) {
@@ -257,34 +252,42 @@ struct ReaderViewMac: View {
             }
         }
         .preferredColorScheme(.dark)
-        .focusable()
-        .onKeyPress(.leftArrow) {
-            guard previewingHighlight == nil, !isTypingInInput else { return .ignored }
-            stepPage(forward: false, doubleSided: isDoublePageSpread && viewMode != "split")
-            return .handled
-        }
-        .onKeyPress(.rightArrow) {
-            guard previewingHighlight == nil, !isTypingInInput else { return .ignored }
-            stepPage(forward: true, doubleSided: isDoublePageSpread && viewMode != "split")
-            return .handled
-        }
-        .onKeyPress(.escape) {
-            guard previewingHighlight == nil else { return .ignored }
-            if showNoteEditor || activeSelection != nil || selectedHighlightId != nil {
-                clearSelectionBar()
-                return .handled
+        .macReaderKeyboardShortcuts(
+            isBlocked: {
+                previewingHighlight != nil
+                    || isTypingInInput
+                    || showJumpToPagePopover
+                    || showAppearancePopover
+            },
+            onLeftArrow: {
+                guard !showNoteEditor else { return false }
+                let ds = useDoubleSided(for: NSApp.keyWindow?.contentView?.bounds.width ?? 1200)
+                stepPage(forward: false, doubleSided: ds)
+                return true
+            },
+            onRightArrow: {
+                guard !showNoteEditor else { return false }
+                let ds = useDoubleSided(for: NSApp.keyWindow?.contentView?.bounds.width ?? 1200)
+                stepPage(forward: true, doubleSided: ds)
+                return true
+            },
+            onEscape: {
+                if showNoteEditor || activeSelection != nil || selectedHighlightId != nil {
+                    clearSelectionBar()
+                    return true
+                }
+                if !(NSApp.keyWindow?.firstResponder is NSText), isFullScreen {
+                    withAnimation(.easeInOut(duration: 0.2)) { isFullScreen = false }
+                    return true
+                }
+                return false
+            },
+            onToggleFullscreen: {
+                guard !showNoteEditor else { return false }
+                withAnimation(.easeInOut(duration: 0.2)) { isFullScreen.toggle() }
+                return true
             }
-            if isFullScreen {
-                withAnimation(.easeInOut(duration: 0.2)) { isFullScreen = false }
-                return .handled
-            }
-            return .ignored
-        }
-        .onKeyPress("f") {
-            guard previewingHighlight == nil, !isTypingInInput else { return .ignored }
-            withAnimation(.easeInOut(duration: 0.2)) { isFullScreen.toggle() }
-            return .handled
-        }
+        )
         .sheet(item: $previewingHighlight) { hl in
             HighlightReferenceSheetMac(
                 book: book,
@@ -841,86 +844,6 @@ struct ReaderViewMac: View {
         let maxY = max(minY, size.height - menuHalfHeight - 8)
         let y = min(max(rawY, minY), maxY)
         return CGPoint(x: x, y: y)
-    }
-
-    @ViewBuilder
-    private func edgePageTurnOverlays(doubleSided: Bool) -> some View {
-        let left = currentPage % 2 == 1 ? currentPage : max(1, currentPage - 1)
-        let canPrev = doubleSided ? (left > 1) : (currentPage > 1)
-        let canNext = doubleSided ? (left + 1 < totalPages) : (currentPage < totalPages)
-
-        HStack {
-            // Left margin edge flip
-            ZStack(alignment: .leading) {
-                Color.clear
-                    .frame(width: 56)
-
-                if canPrev {
-                    Button {
-                        stepPage(forward: false, doubleSided: doubleSided)
-                    } label: {
-                        ZStack {
-                            Color.clear
-                                .frame(width: 56, height: 120)
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 38, height: 64)
-                                .background(Color(hex: "1e293b").opacity(isHoveringLeftEdge ? 0.96 : 0.86), in: RoundedRectangle(cornerRadius: 11))
-                                .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.white.opacity(isHoveringLeftEdge ? 0.3 : 0.16), lineWidth: 1))
-                                .shadow(color: .black.opacity(isHoveringLeftEdge ? 0.34 : 0.16), radius: 8, y: 3)
-                        }
-                    }
-                    .buttonStyle(.macInteractive(cornerRadius: 14, hoverColor: Color.white.opacity(0.06)))
-                    .padding(.leading, 4)
-                    .scaleEffect(isHoveringLeftEdge ? 1.05 : 1.0)
-                    .opacity(isHoveringLeftEdge ? 1.0 : 0.32)
-                }
-            }
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
-                    isHoveringLeftEdge = hovering
-                }
-            }
-
-            Spacer()
-
-            // Right margin edge flip
-            ZStack(alignment: .trailing) {
-                Color.clear
-                    .frame(width: 56)
-
-                if canNext {
-                    Button {
-                        stepPage(forward: true, doubleSided: doubleSided)
-                    } label: {
-                        ZStack {
-                            Color.clear
-                                .frame(width: 56, height: 120)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 38, height: 64)
-                                .background(Color(hex: "1e293b").opacity(isHoveringRightEdge ? 0.96 : 0.86), in: RoundedRectangle(cornerRadius: 11))
-                                .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.white.opacity(isHoveringRightEdge ? 0.3 : 0.16), lineWidth: 1))
-                                .shadow(color: .black.opacity(isHoveringRightEdge ? 0.34 : 0.16), radius: 8, y: 3)
-                        }
-                    }
-                    .buttonStyle(.macInteractive(cornerRadius: 14, hoverColor: Color.white.opacity(0.06)))
-                    .padding(.trailing, 4)
-                    .scaleEffect(isHoveringRightEdge ? 1.05 : 1.0)
-                    .opacity(isHoveringRightEdge ? 1.0 : 0.32)
-                }
-            }
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
-                    isHoveringRightEdge = hovering
-                }
-            }
-        }
-        .frame(maxHeight: .infinity)
     }
 
     private func bottomProgressStrip(doubleSided: Bool) -> some View {

@@ -735,7 +735,7 @@ struct HighlightReferenceSheet: View {
                     }
                 }
             }
-            .allowsHitTesting(true)
+            .allowsHitTesting(activeSelectionLang == lang && activeSelectionPage == page && (activeSelection != nil || selectedHighlightId != nil))
         )
     }
 

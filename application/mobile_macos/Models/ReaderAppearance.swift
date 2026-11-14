@@ -700,13 +700,31 @@ enum ReaderAppearance {
                             --bkb-lh: ${lhRule};
                             font-size: var(--bkb-body-size) !important;
                         }
-                        ${R} :is(.book-page, .book-page--sheet, .sheet-flow, .prose-page, .toc-page, .unit-page, .exercises-page, main, article) {
+                        ${R} body, ${R} body.book-standalone {
+                            display: block !important;
+                            width: 100% !important;
+                            max-width: 100% !important;
+                            min-width: 0 !important;
+                            height: auto !important;
+                            min-height: 100vh !important;
+                            overflow-x: hidden !important;
+                            overflow-y: visible !important;
+                            box-sizing: border-box !important;
+                        }
+                        ${R} :is(.book-page, .book-page--sheet, .sheet-flow, .prose-page, .prose-content, .toc-page, .toc-columns-container, .copy-content, .unit-page, .exercises-page, main, article) {
                             padding: 0 !important;
                             margin: 0 auto !important;
-                            max-width: 780px !important;
+                            width: 100% !important;
+                            max-width: min(780px, 100%) !important;
+                            min-width: 0 !important;
+                            flex-shrink: 1 !important;
                             height: auto !important;
                             min-height: 0 !important;
                             max-height: none !important;
+                            overflow: visible !important;
+                            overflow-x: visible !important;
+                            overflow-y: visible !important;
+                            box-sizing: border-box !important;
                         }
                         ${R} :is(p, li, blockquote, dd, dt, td, th, .dialogue-line, .idiom-def, .entry-text, .callout-text, .callout-note) {
                             font-size: var(--bkb-body-size) !important;
@@ -737,9 +755,9 @@ enum ReaderAppearance {
 
                 if (marginVal && marginVal !== 'default') {
                     const padMap = {
-                        compact: '16px 20px',
-                        normal: '28px 40px',
-                        wide: '34px 64px'
+                        compact: '16px 20px 36px',
+                        normal: '28px 40px 48px',
+                        wide: '34px 64px 52px'
                     };
                     const pad = padMap[marginVal];
                     if (pad) {
