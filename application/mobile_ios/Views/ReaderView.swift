@@ -872,16 +872,7 @@ struct ReaderView: View {
             topOverlayInset: (isPhone && isFullScreen) ? keyWindowSafeAreaInsets.top : 0,
             effectiveFontId: effectiveFontId,
             effectiveThemeId: effectiveThemeId,
-            onScroll: { scrollTop in
-                if viewMode == "split" {
-                    let otherLang = lang == "en" ? "vi" : "en"
-                    NotificationCenter.default.post(
-                        name: NSNotification.Name("ScrollTo_\(otherLang)"),
-                        object: nil,
-                        userInfo: ["scrollTop": scrollTop]
-                    )
-                }
-            },
+            containerMode: containerMode,
             onHighlightMessage: { msg in
                 handleHighlightMessage(msg, lang: lang, page: p)
             },
@@ -1053,11 +1044,24 @@ struct ReaderView: View {
             }
             bumpSelectionOverlayRevision()
         case .clearSelection:
-            clearSelectionState()
-            bumpSelectionOverlayRevision()
+            let hadSelectionState = activeSelection != nil
+                || selectedHighlightId != nil
+                || activeSelectionPage != nil
+                || !highlightNote.isEmpty
+                || activeSentenceId != nil
+                || activeSentencePage != nil
+                || activeSentenceLang != nil
+                || activeRect != nil
+                || showNoteInput
+            if hadSelectionState {
+                clearSelectionState()
+                bumpSelectionOverlayRevision()
+            }
             guard !vocaLookupInProgress else { return }
             guard vocaPanelMode == nil else { return }
-            dismissVocaPanel()
+            if vocaPanelWebView != nil || vocaProgressWord != nil || !vocaPanelContainerMode.isEmpty {
+                dismissVocaPanel()
+            }
         case .toggleFullScreen:
             if vocaPanelMode == nil && !vocaLookupInProgress {
                 withAnimation { isFullScreen.toggle() }

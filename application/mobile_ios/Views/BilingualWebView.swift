@@ -97,8 +97,8 @@ struct BilingualWebView: UIViewRepresentable {
     var topOverlayInset: CGFloat = 0
     var effectiveFontId: String = "default"
     var effectiveThemeId: String = "default"
+    var containerMode: String = "single"
     @ObservedObject var api = APIService.shared
-    let onScroll: (CGFloat) -> Void
     let onHighlightMessage: (HighlightMessage) -> Void
     let onSentenceClicked: (String?) -> Void
     let onVocaAction: (VocaWebAction) -> Void
@@ -1155,15 +1155,7 @@ struct BilingualWebView: UIViewRepresentable {
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         
-        // Register observer for programmatical scrolling
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(context.coordinator.handleScrollTo(_:)),
-            name: NSNotification.Name("ScrollTo_\(lang)"),
-            object: nil
-        )
-
-        // Register observer for native programmatical scrolling
+        // Register observer for native proportional split-pane scroll sync
         NotificationCenter.default.addObserver(
             context.coordinator,
             selector: #selector(context.coordinator.handleScrollToOffset(_:)),
@@ -1304,8 +1296,8 @@ struct BilingualWebView: UIViewRepresentable {
     class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UIScrollViewDelegate, PKCanvasViewDelegate {
         var parent: BilingualWebView
         weak var webView: WKWebView?
-        var lastReceivedScrollTop: CGFloat = 0
         var isUpdatingScroll = false
+        var didClearSelectionForDrag = false
         var loadedUrlString: String?
         var lastAppliedHighlights: [Highlight] = []
         var lastAppliedSentenceId: String? = nil
@@ -1323,63 +1315,71 @@ struct BilingualWebView: UIViewRepresentable {
             self.parent = parent
         }
         
-        @objc func handleScrollTo(_ notification: Notification) {
-            guard parent.viewMode == "split" else { return }
-            
-            guard let userInfo = notification.userInfo,
-                  let scrollTop = userInfo["scrollTop"] as? CGFloat,
-                  let webView = self.webView else { return }
-            
-            if abs(lastReceivedScrollTop - scrollTop) > 1 {
-                lastReceivedScrollTop = scrollTop
-                isUpdatingScroll = true
-                
-                let js = "window.scrollTo(0, \(scrollTop));"
-                webView.evaluateJavaScript(js) { _, _ in
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        self.isUpdatingScroll = false
-                    }
-                }
-            }
-        }
-
         @objc func handleScrollToOffset(_ notification: Notification) {
-            guard parent.viewMode == "split" else { return }
-            
-            guard let userInfo = notification.userInfo,
-                  let offset = userInfo["contentOffset"] as? CGPoint,
+            guard parent.containerMode == "split",
+                  parent.viewMode == "split",
+                  let userInfo = notification.userInfo,
+                  let page = userInfo["page"] as? Int, page == parent.page,
+                  let bookSlug = userInfo["bookSlug"] as? String, bookSlug == parent.bookSlug,
+                  let containerMode = userInfo["containerMode"] as? String, containerMode == "split",
+                  let progress = userInfo["progress"] as? CGFloat,
                   let webView = self.webView else { return }
-            
-            let otherScrollView = webView.scrollView
-            if abs(otherScrollView.contentOffset.y - offset.y) > 0.5 {
+
+            let targetScrollView = webView.scrollView
+            // Yield to active user touch on this pane instead of fighting it.
+            guard !targetScrollView.isTracking && !targetScrollView.isDragging else { return }
+
+            let maxTargetY = max(0, targetScrollView.contentSize.height - targetScrollView.bounds.height)
+            guard maxTargetY > 1 else { return }
+
+            let rawTargetY = min(max(0, progress), 1.0) * maxTargetY
+            let targetY = (rawTargetY * 2.0).rounded() / 2.0
+
+            if abs(targetScrollView.contentOffset.y - targetY) > 0.5 {
                 isUpdatingScroll = true
-                otherScrollView.setContentOffset(offset, animated: false)
+                targetScrollView.setContentOffset(
+                    CGPoint(x: targetScrollView.contentOffset.x, y: targetY),
+                    animated: false
+                )
                 isUpdatingScroll = false
             }
         }
-        
+
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            didClearSelectionForDrag = false
+        }
+
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            if !isUpdatingScroll {
-                // Clear selection when scrolling
-                parent.onHighlightMessage(.clearSelection)
-                
-                if parent.viewMode == "split" {
-                    // Only synchronize scroll if the scroll is actively driven by a user gesture
-                    // (either dragging, tracking, or decelerating after a drag).
-                    guard scrollView.isDragging || scrollView.isDecelerating || scrollView.isTracking else {
-                        return
-                    }
-                    
-                    let otherLang = parent.lang == "en" ? "vi" : "en"
-                    let contentOffset = scrollView.contentOffset
-                    
-                    NotificationCenter.default.post(
-                        name: NSNotification.Name("ScrollToOffset_\(otherLang)"),
-                        object: nil,
-                        userInfo: ["contentOffset": contentOffset]
-                    )
-                }
+            guard !isUpdatingScroll else { return }
+            // Only process genuine user-driven scrolling (tracking, dragging,
+            // or deceleration inertia) so programmatic updates never echo back.
+            guard scrollView.isDragging || scrollView.isDecelerating || scrollView.isTracking else {
+                return
             }
+
+            if !didClearSelectionForDrag && (scrollView.isTracking || scrollView.isDragging) {
+                didClearSelectionForDrag = true
+                parent.onHighlightMessage(.clearSelection)
+            }
+
+            guard parent.containerMode == "split", parent.viewMode == "split" else { return }
+            let maxScroll = max(0, scrollView.contentSize.height - scrollView.bounds.height)
+            guard maxScroll > 1 else { return }
+
+            let clampedY = min(max(0, scrollView.contentOffset.y), maxScroll)
+            let progress = clampedY / maxScroll
+            let otherLang = parent.lang == "en" ? "vi" : "en"
+
+            NotificationCenter.default.post(
+                name: NSNotification.Name("ScrollToOffset_\(otherLang)"),
+                object: nil,
+                userInfo: [
+                    "progress": progress,
+                    "page": parent.page,
+                    "bookSlug": parent.bookSlug,
+                    "containerMode": parent.containerMode
+                ]
+            )
         }
 
         func webView(
@@ -1486,20 +1486,6 @@ struct BilingualWebView: UIViewRepresentable {
             self.lastAppearanceKey = "\(parent.effectiveFontId)|\(parent.effectiveThemeId)|\(parent.viewMode)"
             applyBookAppearance(in: webView)
 
-            let scrollScript = """
-                (function() {
-                    var isScrolling = false;
-                    window.addEventListener('scroll', function() {
-                        var scrollPos = window.pageYOffset || document.documentElement.scrollTop;
-                        window.webkit.messageHandlers.iosListener.postMessage(JSON.stringify({
-                            type: 'scroll',
-                            scrollTop: scrollPos
-                        }));
-                    });
-                })();
-            """
-            webView.evaluateJavaScript(scrollScript, completionHandler: nil)
-            
             // Reapply highlights immediately after finish loading
             let filtered = parent.api.highlights.filter { $0.page == parent.page && $0.lang == parent.lang }
             self.lastAppliedHighlights = filtered
@@ -1702,12 +1688,7 @@ struct BilingualWebView: UIViewRepresentable {
             if let data = bodyString.data(using: .utf8) {
                 if let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
                     if let type = json["type"] as? String {
-                        if type == "scroll" && !isUpdatingScroll {
-                            parent.onHighlightMessage(.clearSelection)
-                            if let scrollTop = json["scrollTop"] as? CGFloat {
-                                parent.onScroll(scrollTop)
-                            }
-                        } else if type == "textSelected" {
+                        if type == "textSelected" {
                             if let selectionData = json["selectionInfo"] as? [String: Any],
                                let pIndex = selectionData["paragraphIndex"] as? Int,
                                let start = selectionData["startOffset"] as? Int,

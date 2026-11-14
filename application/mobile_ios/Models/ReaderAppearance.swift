@@ -826,6 +826,11 @@ enum ReaderAppearance {
                         'article.cover, article.title-page, article.half-title, .prose-page.cover, .prose-page.title-page, .prose-page.half-title, .sheet-flow.cover, .sheet-flow.title-page, .title-page-container, .cover-wrap, .cover-content'
                     )
                 );
+                const isExerciseOrUnitLayout = !isCoverOrTitlePage && Boolean(
+                    document.querySelector(
+                        '.unit-header, .unit-header-bar, .exercise-block, .exercises-page, .unit-page, .section-block, .idioms-table, .data-table'
+                    )
+                );
 
                 if (fontId !== 'default' && fontFamily) {
                     blocks.push(`
@@ -840,13 +845,15 @@ enum ReaderAppearance {
                         ${R} .prose-page,
                         ${R} .sheet-flow,
                         ${R} .toc-page,
+                        ${R} .unit-page,
+                        ${R} .exercises-page,
                         ${R} .title-book,
                         ${R} .subtitle-book,
                         ${R} .author-book,
                         ${R} .toc-title,
                         ${R} .toc-row,
-                        ${R} .book-page :is(p, li, div, blockquote, dd, dt, td, th, figcaption, caption, span, a, em, strong, b, i, u, s, small, sub, sup, mark, label, h1, h2, h3, h4, h5, h6, .running-head, .chapter-running-head, .section-title, .section-number, .chapter-opener, .chapter-title, .preface-title, .exercise-instruction, .exercises-title, .unit-title, .title-book, .subtitle-book, .author-book, .toc-title, .toc-row, .toc-item, .dialogue-line, .idiom-def, .entry-text, .callout-text, .callout-note),
-                        ${R} body :is(p, li, blockquote, dd, dt, td, th, figcaption, caption, h1, h2, h3, h4, h5, h6, .running-head, .chapter-running-head, .section-title, .section-number, .chapter-opener, .chapter-title, .preface-title, .exercise-instruction, .exercises-title, .unit-title, .dialogue-line, .idiom-def, .entry-text, .callout-text, .callout-note) {
+                        ${R} .book-page :is(p, li, div, blockquote, dd, dt, td, th, figcaption, caption, span, a, em, strong, b, i, u, s, small, sub, sup, mark, label, h1, h2, h3, h4, h5, h6, .running-head, .chapter-running-head, .section-title, .section-number, .chapter-opener, .chapter-title, .preface-title, .exercise-instruction, .exercises-title, .page-title, .unit-title, .unit-number, .unit-num-box, .section-heading-text, .section-intro, .exercise-header, .exercise-num, .section-letter, .section-letter-box, .title-book, .subtitle-book, .author-book, .toc-title, .toc-row, .toc-item, .dialogue-line, .idiom-def, .entry-text, .callout-text, .callout-note),
+                        ${R} body :is(p, li, blockquote, dd, dt, td, th, figcaption, caption, h1, h2, h3, h4, h5, h6, .running-head, .chapter-running-head, .section-title, .section-number, .chapter-opener, .chapter-title, .preface-title, .exercise-instruction, .exercises-title, .page-title, .unit-title, .dialogue-line, .idiom-def, .entry-text, .callout-text, .callout-note) {
                             font-family: ${fontFamily} !important;
                         }
                         ${R_EXCL} .book-page :is(pre, code, kbd, samp, pre *, code *, .code-block, .code-block *, .ascii-figure, .ascii-figure *),
@@ -872,9 +879,14 @@ enum ReaderAppearance {
                         ${R} .book-page:not(.toc):not(.toc-page):not(.copy):not(.copy-page),
                         ${R} .prose-page:not(.toc):not(.toc-page):not(.copy):not(.copy-page),
                         ${R} .sheet-flow,
-                        ${R} .prose-page:not(.toc):not(.toc-page):not(.copy):not(.copy-page) :is(p, li, blockquote, dd, dt, td, th, .dialogue-line, .dialogue-row, .idiom-def, .idiom-meaning, .idiom-example, .entry-text, .exercise-instruction, .exercise-item, .matching-item, .definition-item, .term-description, .callout-text, .callout-note),
+                        ${R} .unit-page,
+                        ${R} .exercises-page,
+                        ${R} .prose-page:not(.toc):not(.toc-page):not(.copy):not(.copy-page) :is(p, li, blockquote, dd, dt, td, th, .data-table, .data-table *, .idioms-table, .idioms-table *, .dialogue-box, .dialogue-row, .dialogue-line, .word-box, .word-box *, .argument-box, .argument-box *, .idiom-block, .definition-block, .example-block, .idiom-def, .idiom-meaning, .idiom-example, .entry-text, .exercise-instruction, .exercise-item, .matching-item, .definition-item, .term-description, .callout-text, .callout-note, .answers-list li, .answers-inline, .over-to-you-content),
                         ${R} body :is(p, li, blockquote, dd, dt) {
                             font-family: var(--font-display, Georgia, "Times New Roman", serif) !important;
+                        }
+                        ${R_EXCL} :is(h1, h2.section-title, h3.section-title, .exercises-title, .page-title, .unit-title, .unit-num-box, .unit-number, .section-letter, .section-letter-box, .section-heading-text, .exercise-header, .exercise-num, .over-to-you-header) {
+                            font-family: var(--font-ui, Arial, Helvetica, sans-serif) !important;
                         }
                         ${R_EXCL} .book-page :is(pre, code, kbd, samp, pre *, code *, .code-block, .code-block *, .ascii-figure, .ascii-figure *),
                         ${R_EXCL} :is(pre, code, kbd, samp, pre *, code *, .code-block, .code-block *, .ascii-figure, .ascii-figure *) {
@@ -911,6 +923,13 @@ enum ReaderAppearance {
                             --bkb-lh: ${lhRule};
                             font-size: var(--bkb-body-size) !important;
                         }
+                        ${R} :is(.book-page, .book-page--sheet, .sheet-flow, .prose-page, .toc-page, .unit-page, .exercises-page, main, article) {
+                            padding: 0 !important;
+                            margin: 0 auto !important;
+                            height: auto !important;
+                            min-height: 0 !important;
+                            max-height: none !important;
+                        }
                         ${R} body,
                         ${R} .book-page,
                         ${R} .prose-page,
@@ -918,6 +937,7 @@ enum ReaderAppearance {
                         ${R} .toc-page,
                         ${R} .prose-content,
                         ${R} .unit-page,
+                        ${R} .exercises-page,
                         ${R} .main-content,
                         ${R} main,
                         ${R} article,
@@ -925,12 +945,12 @@ enum ReaderAppearance {
                         ${R} .book-page :is(p, li, blockquote, dd, dt, td, th),
                         ${R} .prose-page :is(p, li, blockquote, dd, dt, td, th),
                         ${R} .sheet-flow :is(p, li, blockquote, dd, dt, td, th),
-                        ${R} .prose-page :is(.exercise-list > li, .comp-box p, .comp-box li, .sidebar-note p, .sidebar-note li, .exercise-4-3-container p.story-paragraph, .listing-callout, .exercise-instruction, .exercise-item, .dialogue-row, .dialogue-line, .idiom-def, .idiom-meaning, .idiom-example, .entry-text, .matching-item, .definition-item, .term-description, .callout-text, .callout-note, .toc-row, .toc-item, .toc-unit-item),
-                        ${R} :is(.exercise-list > li, .exercise-instruction, .exercise-item, .dialogue-row, .dialogue-line, .idiom-def, .idiom-meaning, .idiom-example, .entry-text, .matching-item, .definition-item, .term-description, .callout-text, .callout-note, .listing-callout, .toc-row, .toc-item, .toc-unit-item) {
+                        ${R} .prose-page :is(.exercise-list > li, .comp-box p, .comp-box li, .sidebar-note p, .sidebar-note li, .exercise-4-3-container p.story-paragraph, .listing-callout, .exercise-instruction, .exercise-item, .dialogue-box, .dialogue-box *, .dialogue-row, .dialogue-line, .word-box, .word-box *, .argument-box, .argument-box *, .idiom-block, .definition-block, .example-block, .idiom-def, .idiom-meaning, .idiom-example, .entry-text, .matching-item, .definition-item, .term-description, .callout-text, .callout-note, .data-table, table.data-table td, table.data-table th, .idioms-table td, .idioms-table th, .exercise-header, .exercise-group .exercise-title, .section-intro, .section-heading-text, .answers-list li, .answers-inline, .answers-inline span, .over-to-you-content, .toc-row, .toc-item, .toc-unit-item),
+                        ${R} :is(.exercise-list > li, .exercise-instruction, .exercise-item, .dialogue-box, .dialogue-row, .dialogue-line, .word-box, .argument-box, .idiom-block, .definition-block, .example-block, .idiom-def, .idiom-meaning, .idiom-example, .entry-text, .matching-item, .definition-item, .term-description, .callout-text, .callout-note, .listing-callout, .data-table, table.data-table td, table.data-table th, .idioms-table td, .idioms-table th, .exercise-header, .section-intro, .section-heading-text, .answers-list li, .answers-inline, .answers-inline span, .over-to-you-content, .toc-row, .toc-item, .toc-unit-item) {
                             font-size: var(--bkb-body-size) !important;
                             line-height: var(--bkb-lh) !important;
                         }
-                        ${R_EXCL} :is(h1, .chapter-title, .part-title) {
+                        ${R_EXCL} :is(h1, .chapter-title, .part-title, .exercises-title, .page-title) {
                             font-size: calc(var(--bkb-body-size) * 1.45) !important;
                             line-height: 1.25 !important;
                         }
@@ -938,8 +958,16 @@ enum ReaderAppearance {
                             font-size: calc(var(--bkb-body-size) * 1.25) !important;
                             line-height: 1.3 !important;
                         }
-                        ${R_EXCL} :is(h3, .subsection-title, .exercises-title, .unit-title, .section-title--sub, .section-title--minor, .sidebar-note h3) {
+                        ${R_EXCL} :is(h3, .subsection-title, .unit-title, .section-title--sub, .section-title--minor, .sidebar-note h3) {
                             font-size: calc(var(--bkb-body-size) * 1.12) !important;
+                            line-height: 1.35 !important;
+                        }
+                        ${R_EXCL} :is(.unit-num-box, .unit-number) {
+                            font-size: calc(var(--bkb-body-size) * 1.35) !important;
+                            line-height: 1.2 !important;
+                        }
+                        ${R_EXCL} :is(.exercise-num, .section-letter, .section-letter-box, .over-to-you-header) {
+                            font-size: var(--bkb-body-size) !important;
                             line-height: 1.35 !important;
                         }
                         ${R_EXCL} :is(h4, h5, h6) {
@@ -968,6 +996,54 @@ enum ReaderAppearance {
                             line-height: 1.36 !important;
                         }
                     `);
+
+                    if (isExerciseOrUnitLayout) {
+                        blocks.push(`
+                            ${R_EXCL} .prose-page :is(p, li),
+                            ${R_EXCL} :is(.exercise-list > li, .answers-list > li) {
+                                margin-top: 0 !important;
+                                margin-bottom: 0.45em !important;
+                            }
+                            ${R_EXCL} :is(h1, h2, h3, h4, .section-title, .exercises-title, .page-title, .section-header-block, .exercise-header):not(.unit-title) {
+                                margin-top: 0 !important;
+                                margin-bottom: 0.45em !important;
+                            }
+                            ${R_EXCL} .unit-title {
+                                margin: 0 !important;
+                            }
+                            ${R_EXCL} :is(.exercise-block, .idiom-block, .definition-block, .example-block, .section-block, .unit-section, .exercise-group) {
+                                margin-bottom: 0.85em !important;
+                            }
+                            ${R_EXCL} :is(.unit-header, .unit-header-bar, .over-to-you-header) {
+                                margin-top: 0 !important;
+                                margin-bottom: 0.8em !important;
+                            }
+                            ${R_EXCL} .unit-main {
+                                padding: 0.45em 0.75em !important;
+                            }
+                            ${R_EXCL} :is(.unit-side, .unit-num-box) {
+                                width: auto !important;
+                                min-width: 2.5em !important;
+                                height: auto !important;
+                                padding: 0.28em 0.55em !important;
+                            }
+                            ${R_EXCL} :is(.section-letter, .section-letter-box) {
+                                width: 2em !important;
+                                height: 2em !important;
+                                min-width: 2em !important;
+                            }
+                            ${R_EXCL} :is(.dialogue-box, .word-box, .argument-box, .comp-box, .sidebar-note, .over-to-you-content) {
+                                padding: 0.65em 0.85em !important;
+                                margin-bottom: 0.7em !important;
+                            }
+                            ${R_EXCL} :is(table.data-table, table.idioms-table) {
+                                margin-bottom: 0.65em !important;
+                            }
+                            ${R_EXCL} :is(table.data-table th, table.data-table td, table.idioms-table th, table.idioms-table td) {
+                                padding: 0.35em 0.5em !important;
+                            }
+                        `);
+                    }
                 }
 
                 if (marginVal && marginVal !== 'default') {
