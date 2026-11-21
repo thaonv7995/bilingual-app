@@ -330,23 +330,27 @@ final class BackupManager: ObservableObject {
                     try await client.downloadBookArchive(slug: safeSlug, to: tempBKB)
 
                     syncPhase = "\(stepPrefix) Đang giải nén & kiểm tra SHA-256 '\(entry.title)'…"
-                    try BookArchiveExtractor.extractBKB(archiveURL: tempBKB, into: bookFolder)
+                    let fileResult = try await Task.detached(priority: .utility) {
+                        let fm = FileManager.default
+                        try BookArchiveExtractor.extractBKB(archiveURL: tempBKB, into: bookFolder)
 
-                    if FileManager.default.fileExists(atPath: bkbDest.path) {
-                        try FileManager.default.removeItem(at: bkbDest)
-                    }
-                    try FileManager.default.moveItem(at: tempBKB, to: bkbDest)
+                        if fm.fileExists(atPath: bkbDest.path) {
+                            try fm.removeItem(at: bkbDest)
+                        }
+                        try fm.moveItem(at: tempBKB, to: bkbDest)
 
-                    let sha = try BookArchiveExtractor.sha256Hex(fileURL: bkbDest)
-                    let attrs = try? FileManager.default.attributesOfItem(atPath: bkbDest.path)
-                    let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+                        let sha = try BookArchiveExtractor.sha256Hex(fileURL: bkbDest)
+                        let attrs = try? fm.attributesOfItem(atPath: bkbDest.path)
+                        let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+                        return (sha: sha, size: size)
+                    }.value
 
                     updatedIndex.booksBySlug[safeSlug] = LocalBookIndexEntry(
                         slug: safeSlug,
                         title: entry.title,
                         contentFingerprint: entry.contentFingerprint,
-                        bkbSizeBytes: size,
-                        bkbSha256: sha,
+                        bkbSizeBytes: fileResult.size,
+                        bkbSha256: fileResult.sha,
                         downloadedAt: now,
                         extractedAt: now
                     )

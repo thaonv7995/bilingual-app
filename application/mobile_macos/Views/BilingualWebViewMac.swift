@@ -760,22 +760,6 @@ struct BilingualWebViewMac: NSViewRepresentable {
             context.coordinator.applyAppearance(in: webView)
         }
 
-        if !api.token.isEmpty,
-           let serverURL = URL(string: api.normalizedServerUrl),
-           let host = serverURL.host {
-            let props: [HTTPCookiePropertyKey: Any] = [
-                .domain: host,
-                .path: "/",
-                .name: "jwt_token",
-                .value: api.token,
-                .secure: serverURL.scheme == "https" ? "TRUE" : "FALSE",
-                .expires: Date(timeIntervalSinceNow: 86400 * 30),
-            ]
-            if let cookie = HTTPCookie(properties: props) {
-                webView.configuration.websiteDataStore.httpCookieStore.setCookie(cookie)
-            }
-        }
-
         let target: String
         let localFileURL = BackupManager.shared.localPageURL(slug: bookSlug, lang: lang, page: page)
         if let localFileURL {
@@ -792,7 +776,13 @@ struct BilingualWebViewMac: NSViewRepresentable {
                 let outputDir = BackupManager.shared.localOutputDir(slug: bookSlug)
                 webView.loadFileURL(localFileURL, allowingReadAccessTo: outputDir)
             } else if let url = URL(string: urlString) {
-                webView.load(URLRequest(url: url))
+                context.coordinator.loadRemotePage(
+                    url,
+                    target: target,
+                    token: api.token,
+                    serverURL: URL(string: api.normalizedServerUrl),
+                    in: webView
+                )
             }
         } else {
             context.coordinator.syncHighlightsIfNeeded(in: webView)
@@ -815,10 +805,72 @@ struct BilingualWebViewMac: NSViewRepresentable {
         var lastAppearanceKey: String = ""
         var lastAppliedHighlights: [Highlight] = []
         var lastAppliedSentenceId: String? = nil
+        private var installedCookieToken: String?
+        private var cookieInstallToken: String?
         private static var oppositeCache: [String: String] = [:]
 
         init(_ parent: BilingualWebViewMac) {
             self.parent = parent
+        }
+
+        func loadRemotePage(
+            _ url: URL,
+            target: String,
+            token: String,
+            serverURL: URL?,
+            in webView: WKWebView
+        ) {
+            let loadIfCurrent = { [weak self, weak webView] in
+                guard let self,
+                      let webView,
+                      self.loadedTarget == target else {
+                    return
+                }
+                var request = URLRequest(url: url)
+                request.cachePolicy = .returnCacheDataElseLoad
+                request.timeoutInterval = 20
+                if !token.isEmpty {
+                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                }
+                webView.load(request)
+            }
+
+            // The main HTML request already carries the Bearer token, so start it
+            // immediately instead of leaving the reader blank while WebKit commits
+            // the cookie asynchronously. The cookie is installed in parallel for
+            // CSS, images, fonts and other protected subresources.
+            loadIfCurrent()
+
+            guard !token.isEmpty,
+                  installedCookieToken != token,
+                  let serverURL,
+                  let host = serverURL.host else {
+                return
+            }
+
+            guard cookieInstallToken != token else {
+                return
+            }
+            cookieInstallToken = token
+
+            let properties: [HTTPCookiePropertyKey: Any] = [
+                .domain: host,
+                .path: "/",
+                .name: "jwt_token",
+                .value: token,
+                .secure: serverURL.scheme == "https" ? "TRUE" : "FALSE",
+                .expires: Date(timeIntervalSinceNow: 86400 * 30),
+            ]
+            guard let cookie = HTTPCookie(properties: properties) else {
+                cookieInstallToken = nil
+                return
+            }
+
+            webView.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { [weak self] in
+                guard let self else { return }
+                self.installedCookieToken = token
+                self.cookieInstallToken = nil
+            }
         }
 
         func syncHighlightsIfNeeded(in webView: WKWebView, force: Bool = false) {

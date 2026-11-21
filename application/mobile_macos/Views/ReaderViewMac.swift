@@ -68,6 +68,8 @@ struct ReaderViewMac: View {
     @State private var pageTurnShift: CGFloat = 0
     @State private var pageTurnShadowOpacity: Double = 0
     @State private var pageTurnForward: Bool = true
+    @State private var pageCurlProgress: CGFloat = 1
+    @State private var isPageTurnAnimating: Bool = false
 
     private let highlightColors: [(name: String, hex: String)] = [
         ("Vàng", "#fde68a"),
@@ -155,6 +157,95 @@ struct ReaderViewMac: View {
                                         )
                                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                                         .clipShape(RoundedRectangle(cornerRadius: isFullScreen ? 0 : 16, style: .continuous))
+                                        .allowsHitTesting(false)
+                                    }
+                                }
+                                .overlay {
+                                    if isPageTurnAnimating {
+                                        GeometryReader { proxy in
+                                            let width = proxy.size.width
+                                            let height = proxy.size.height
+                                            let sheetWidth = max(48, width * 0.52)
+                                            let travel = width + sheetWidth
+                                            let x = pageTurnForward
+                                                ? width - pageCurlProgress * travel
+                                                : -sheetWidth + pageCurlProgress * travel
+                                            let angle = pageTurnForward
+                                                ? -12 + Double(pageCurlProgress) * 24
+                                                : 12 - Double(pageCurlProgress) * 24
+                                            let cornerLift = sin(Double(pageCurlProgress) * .pi) * min(42, height * 0.07)
+                                            let cornerTwist = sin(Double(pageCurlProgress) * .pi)
+                                                * (pageTurnForward ? -3.2 : 3.2)
+
+                                            ZStack {
+                                                LinearGradient(
+                                                    colors: [
+                                                        paperColorForStage.opacity(0.98),
+                                                        paperColorForStage,
+                                                        Color.black.opacity(0.08),
+                                                        paperColorForStage.opacity(0.96),
+                                                    ],
+                                                    startPoint: pageTurnForward ? .leading : .trailing,
+                                                    endPoint: pageTurnForward ? .trailing : .leading
+                                                )
+
+                                                LinearGradient(
+                                                    colors: [
+                                                        .clear,
+                                                        .white.opacity(0.18),
+                                                        .black.opacity(0.14),
+                                                    ],
+                                                    startPoint: pageTurnForward ? .leading : .trailing,
+                                                    endPoint: pageTurnForward ? .trailing : .leading
+                                                )
+                                                .blendMode(.softLight)
+
+                                                HStack {
+                                                    if pageTurnForward { Spacer() }
+                                                    LinearGradient(
+                                                        colors: [
+                                                            .clear,
+                                                            .black.opacity(0.24),
+                                                        ],
+                                                        startPoint: pageTurnForward ? .leading : .trailing,
+                                                        endPoint: pageTurnForward ? .trailing : .leading
+                                                    )
+                                                    .frame(width: 32)
+                                                    if !pageTurnForward { Spacer() }
+                                                }
+                                            }
+                                            .frame(width: sheetWidth, height: height)
+                                            .clipShape(
+                                                RoundedRectangle(
+                                                    cornerRadius: isFullScreen ? 0 : 10,
+                                                    style: .continuous
+                                                )
+                                            )
+                                            .shadow(
+                                                color: .black.opacity(0.34 * (1 - abs(pageCurlProgress - 0.5))),
+                                                radius: 18,
+                                                x: pageTurnForward ? -10 : 10,
+                                                y: 4
+                                            )
+                                            .rotation3DEffect(
+                                                .degrees(angle),
+                                                axis: (x: 0, y: 1, z: 0),
+                                                anchor: pageTurnForward ? .bottomTrailing : .bottomLeading,
+                                                anchorZ: 8,
+                                                perspective: 0.42
+                                            )
+                                            .rotationEffect(
+                                                .degrees(cornerTwist),
+                                                anchor: pageTurnForward ? .bottomTrailing : .bottomLeading
+                                            )
+                                            .offset(x: x, y: -cornerLift)
+                                        }
+                                        .clipShape(
+                                            RoundedRectangle(
+                                                cornerRadius: isFullScreen ? 0 : 16,
+                                                style: .continuous
+                                            )
+                                        )
                                         .allowsHitTesting(false)
                                     }
                                 }
@@ -1506,28 +1597,53 @@ struct ReaderViewMac: View {
 
     private func goToPage(_ target: Int) {
         let clamped = max(1, min(totalPages, target))
-        guard clamped != currentPage else { return }
+        guard clamped != currentPage, !isPageTurnAnimating else { return }
         let forward = clamped > currentPage
-        currentPage = clamped
-        jumpPageText = "\(clamped)"
         clearSelectionBar()
-        saveProgress()
-        triggerPageTurnAnimation(forward: forward)
+        triggerPageTurnAnimation(forward: forward) {
+            currentPage = clamped
+            jumpPageText = "\(clamped)"
+            saveProgress()
+        }
     }
 
-    private func triggerPageTurnAnimation(forward: Bool) {
+    private func triggerPageTurnAnimation(forward: Bool, changePage: @escaping () -> Void) {
         var instantTx = Transaction()
         instantTx.disablesAnimations = true
         withTransaction(instantTx) {
             pageTurnForward = forward
-            pageTurnSkew = forward ? -3.2 : 3.2
-            pageTurnShift = forward ? 20 : -20
-            pageTurnShadowOpacity = 0.24
+            pageCurlProgress = 0
+            isPageTurnAnimating = true
+            pageTurnSkew = forward ? -1.8 : 1.8
+            pageTurnShift = forward ? 8 : -8
+            pageTurnShadowOpacity = 0.18
         }
-        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
-            pageTurnSkew = 0
-            pageTurnShift = 0
-            pageTurnShadowOpacity = 0
+
+        withAnimation(.timingCurve(0.28, 0.02, 0.18, 1, duration: 0.66)) {
+            pageCurlProgress = 0.52
+            pageTurnSkew = forward ? -4.6 : 4.6
+            pageTurnShift = forward ? -8 : 8
+            pageTurnShadowOpacity = 0.32
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
+            changePage()
+
+            withAnimation(.timingCurve(0.16, 0.68, 0.18, 1, duration: 0.58)) {
+                pageCurlProgress = 1
+                pageTurnSkew = 0
+                pageTurnShift = 0
+                pageTurnShadowOpacity = 0
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.98) {
+            var cleanup = Transaction()
+            cleanup.disablesAnimations = true
+            withTransaction(cleanup) {
+                isPageTurnAnimating = false
+                pageCurlProgress = 1
+            }
         }
     }
 

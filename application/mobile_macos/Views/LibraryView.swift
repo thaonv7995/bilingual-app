@@ -26,6 +26,8 @@ struct LibraryView: View {
     @State private var hideFinishedBooks: Bool = UserDefaults.standard.object(forKey: "hideFinishedBooks") as? Bool ?? true
     @State private var statusBanner: String?
     @State private var coverCache: [String: NSImage] = [:]
+    @State private var coverRequestsInFlight: Set<String> = []
+    @State private var lastReadCache: [String: Int] = [:]
 
     private let columns = [
         GridItem(.adaptive(minimum: 165, maximum: 210), spacing: 22)
@@ -387,11 +389,20 @@ struct LibraryView: View {
     // MARK: - Data & Helpers
 
     private func cachedLastRead(for slug: String) -> Int? {
-        guard let data = UserDefaults.standard.data(forKey: "progress_\(slug)"),
-              let prog = try? JSONDecoder().decode(ReadingProgress.self, from: data) else {
-            return nil
+        lastReadCache[slug]
+    }
+
+    private func rebuildLastReadCache(for books: [Book]) {
+        var cache: [String: Int] = [:]
+        let decoder = JSONDecoder()
+        for book in books {
+            guard let data = UserDefaults.standard.data(forKey: "progress_\(book.slug)"),
+                  let progress = try? decoder.decode(ReadingProgress.self, from: data) else {
+                continue
+            }
+            cache[book.slug] = progress.lastRead
         }
-        return prog.lastRead
+        lastReadCache = cache
     }
 
     private func refreshLibrary() async {
@@ -416,11 +427,13 @@ struct LibraryView: View {
                     readerTheme: normTheme
                 )
             }
+            rebuildLastReadCache(for: fetched)
             Task {
                 for book in fetched {
                     _ = await api.fetchReadingProgress(slug: book.slug)
                 }
                 await MainActor.run {
+                    rebuildLastReadCache(for: fetched)
                     progressUpdateCounter += 1
                 }
             }
@@ -435,19 +448,60 @@ struct LibraryView: View {
 
     private func loadCachedOrLocalCover(book: Book) -> NSImage? {
         if let img = coverCache[book.slug] { return img }
-        if let localURL = backup.localCoverURL(slug: book.slug, coverPath: book.cover),
-           let img = NSImage(contentsOf: localURL) {
-            DispatchQueue.main.async { coverCache[book.slug] = img }
-            return img
-        }
-        if let coverPath = book.cover, !coverPath.isEmpty, !api.isOfflineMode {
+
+        let slug = book.slug
+        let coverPath = book.cover
+        let localURL = backup.localCoverURL(slug: slug, coverPath: coverPath)
+        let canFetchRemote = !(coverPath ?? "").isEmpty && !api.isOfflineMode
+
+        // This helper is evaluated while SwiftUI builds every visible card.
+        // Never decode multi-megabyte cover images or mutate @State inline here:
+        // both operations block the main thread and produce the spinning cursor.
+        DispatchQueue.main.async {
+            guard coverCache[slug] == nil,
+                  !coverRequestsInFlight.contains(slug) else {
+                return
+            }
+
+            coverRequestsInFlight.insert(slug)
             Task {
-                if let data = await api.fetchBookCoverData(coverPath: coverPath),
-                   let img = NSImage(data: data) {
-                    await MainActor.run { coverCache[book.slug] = img }
+                defer {
+                    Task { @MainActor in
+                        coverRequestsInFlight.remove(slug)
+                    }
+                }
+
+                if let localURL {
+                    let localImage = await Task.detached(priority: .utility) {
+                        guard let data = try? Data(contentsOf: localURL, options: [.mappedIfSafe]) else {
+                            return nil as NSImage?
+                        }
+                        return NSImage(data: data)
+                    }.value
+
+                    if let localImage {
+                        await MainActor.run {
+                            coverCache[slug] = localImage
+                        }
+                        return
+                    }
+                }
+
+                guard canFetchRemote, let coverPath else { return }
+                if let data = await api.fetchBookCoverData(coverPath: coverPath) {
+                    let remoteImage = await Task.detached(priority: .utility) {
+                        NSImage(data: data)
+                    }.value
+
+                    if let remoteImage {
+                        await MainActor.run {
+                            coverCache[slug] = remoteImage
+                        }
+                    }
                 }
             }
         }
+
         return nil
     }
 
