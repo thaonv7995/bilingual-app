@@ -18,6 +18,8 @@ export interface AuthResponse {
  * last read of this book) are unix SECONDS, or null when unknown / never read —
  * they drive the shelf order, see features/library/bookOrder.ts. Optional so the
  * client still typechecks against a backend that predates them. */
+export type BookFormat = 'bkb' | 'pdf' | 'epub';
+
 export interface Book {
   /** Autoincrement row id == import order. Optional: a backend that predates the
    * shelf order omits it, and the comparator then falls through to slug. */
@@ -27,6 +29,10 @@ export interface Book {
   author: string;
   pageCount: number;
   cover: string | null;
+  /** Book format: 'bkb' (default bilingual HTML), 'pdf', or 'epub'. */
+  format?: BookFormat;
+  /** Relative URL to raw PDF/EPUB source file when format is 'pdf' or 'epub'. */
+  sourceUrl?: string | null;
   isPublished: boolean;
   createdAt?: number | null;
   lastRead?: number | null;
@@ -51,7 +57,7 @@ export interface BookAppearanceDefaultsPatch {
   defaultTheme?: string;
 }
 
-export type HighlightLang = 'en' | 'vi';
+export type HighlightLang = 'en' | 'vi' | 'pdf' | 'epub';
 
 /** GET/POST /api/books/:slug/highlights item. `color` is the CSS hex the mark is
  * painted with (v1 stores the value, not a palette name). */
@@ -64,6 +70,8 @@ export interface Highlight {
   startOffset: number;
   endOffset: number;
   paragraphIndex: number;
+  /** JSON anchor for PDF normalized rects or EPUB CFI ranges. */
+  anchorJson?: string;
   note: string;
   createdAt: number;
 }
@@ -75,6 +83,8 @@ export type ViewMode = 'en' | 'vi' | 'split';
 export interface ReadingProgress {
   page: number;
   viewMode: ViewMode;
+  locator?: string;
+  progression?: number | null;
   lastRead?: number | null;
 }
 

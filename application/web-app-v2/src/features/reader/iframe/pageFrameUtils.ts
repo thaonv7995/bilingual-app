@@ -120,13 +120,15 @@ export function prepareBookIframeDocument(
   applyStoredHighlights(doc, options.slug, options.page, options.lang);
 
   const currentDesc = parseThemeDescriptor(options.themeId);
-  void applyInterlinearToDoc(doc, {
-    slug: options.slug,
-    page: options.page,
-    sourceLang: options.lang,
-    enabled: currentDesc.interlinear,
-    onLayoutUpdated: options.onScale,
-  });
+  if (options.lang === 'en' || options.lang === 'vi') {
+    void applyInterlinearToDoc(doc, {
+      slug: options.slug,
+      page: options.page,
+      sourceLang: options.lang,
+      enabled: currentDesc.interlinear,
+      onLayoutUpdated: options.onScale,
+    });
+  }
 
   options.previousObserver?.disconnect();
   let resizeObserver: ResizeObserver | undefined;

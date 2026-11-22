@@ -7,6 +7,7 @@ export function HighlightsSidebar({
   open,
   currentPage,
   highlights,
+  bookFormat = 'bkb',
   activePreviewId,
   onOpenReference,
   onDeleteHighlight,
@@ -15,6 +16,7 @@ export function HighlightsSidebar({
   open: boolean;
   currentPage: number;
   highlights: Highlight[];
+  bookFormat?: 'bkb' | 'pdf' | 'epub';
   activePreviewId?: string | null;
   onOpenReference: (highlight: Highlight) => void;
   onDeleteHighlight: (id: string) => void;
@@ -113,7 +115,13 @@ export function HighlightsSidebar({
                 {trimmedNote && <div className="highlight-card__note">{trimmedNote}</div>}
 
                 <div className="highlight-card__hint">
-                  <span>↗ Mở trang {hl.page} ở cửa sổ xem riêng (giữ nguyên trang {currentPage})</span>
+                  <span>
+                    {bookFormat === 'bkb'
+                      ? `↗ Mở trang ${hl.page} ở cửa sổ xem riêng (giữ nguyên trang ${currentPage})`
+                      : bookFormat === 'epub'
+                        ? '↗ Nhảy đến đoạn đánh dấu'
+                        : `↗ Nhảy đến trang ${hl.page}`}
+                  </span>
                 </div>
               </div>
             );

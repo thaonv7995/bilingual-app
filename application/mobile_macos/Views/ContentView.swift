@@ -28,11 +28,22 @@ struct ContentView: View {
                 LoginView()
                     .transition(.opacity)
             } else if let book = activeBook {
-                ReaderViewMac(book: book) {
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
-                        activeBook = nil
+                Group {
+                    if book.resolvedFormat == "pdf" || book.resolvedFormat == "epub" {
+                        DocumentReaderViewMac(book: book) {
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+                                activeBook = nil
+                            }
+                            NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
+                        }
+                    } else {
+                        ReaderViewMac(book: book) {
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+                                activeBook = nil
+                            }
+                            NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
+                        }
                     }
-                    NotificationCenter.default.post(name: NSNotification.Name("ReadingProgressUpdated"), object: nil)
                 }
                 .transition(
                     .asymmetric(

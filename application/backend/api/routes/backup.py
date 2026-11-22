@@ -39,6 +39,7 @@ from api.database import (
     get_db,
 )
 from books_core.package import validate_book_slug
+from books_core.document_import import infer_book_format, resolve_book_source_file
 
 router = APIRouter(prefix="/api/backup", tags=["backup"])
 
@@ -71,8 +72,12 @@ def _require_real_session(current_user: User) -> User:
     return current_user
 
 
-def _compute_book_content_stats(slug: str) -> dict[str, Any]:
-    """Compute output file stats and a deterministic content SHA-256 fingerprint."""
+def _compute_book_content_stats(
+    slug: str,
+    book_format: str | None = None,
+    source_filename: str | None = None,
+) -> dict[str, Any]:
+    """Compute file stats and a deterministic content SHA-256 fingerprint for BKB, PDF, or EPUB."""
     safe_slug = _ensure_safe_slug_or_400(slug)
     books_root = _books_dir()
     book_dir = (books_root / safe_slug).resolve()
@@ -84,23 +89,45 @@ def _compute_book_content_stats(slug: str) -> dict[str, Any]:
             "contentFingerprint": "",
         }
 
+    fmt = (book_format or "").strip().lower() or infer_book_format(book_dir)
     output_dir = book_dir / "output"
     files: list[tuple[str, Path, os.stat_result]] = []
 
     output_file_count = 0
     output_size_bytes = 0
-    if output_dir.is_dir():
-        for p in output_dir.rglob("*"):
-            if p.is_file():
-                rel = (Path("output") / p.relative_to(output_dir)).as_posix()
-                st = p.stat()
-                files.append((rel, p, st))
-                output_file_count += 1
-                output_size_bytes += st.st_size
+    has_content = False
+
+    if fmt in ("pdf", "epub"):
+        source_file = resolve_book_source_file(book_dir, fmt, source_filename)
+        if source_file and source_file.is_file():
+            st = source_file.stat()
+            files.append((f"source/{source_file.name}", source_file, st))
+            output_file_count += 1
+            output_size_bytes += st.st_size
+            has_content = True
+        book_json = book_dir / "book.json"
+        if book_json.is_file():
+            files.append(("book.json", book_json, book_json.stat()))
+        if output_dir.is_dir():
+            for p in output_dir.rglob("*"):
+                if p.is_file():
+                    rel = (Path("output") / p.relative_to(output_dir)).as_posix()
+                    st = p.stat()
+                    files.append((rel, p, st))
+    else:
+        has_content = output_dir.is_dir()
+        if output_dir.is_dir():
+            for p in output_dir.rglob("*"):
+                if p.is_file():
+                    rel = (Path("output") / p.relative_to(output_dir)).as_posix()
+                    st = p.stat()
+                    files.append((rel, p, st))
+                    output_file_count += 1
+                    output_size_bytes += st.st_size
 
     if not files:
         return {
-            "hasOutputDir": output_dir.is_dir(),
+            "hasOutputDir": has_content,
             "outputFileCount": 0,
             "outputSizeBytes": 0,
             "contentFingerprint": "",
@@ -111,7 +138,7 @@ def _compute_book_content_stats(slug: str) -> dict[str, Any]:
     max_mtime_ns = max(item[2].st_mtime_ns for item in files)
     stat_sig = (len(files), total_size, max_mtime_ns)
 
-    cache_key = str(book_dir)
+    cache_key = f"{book_dir}:{fmt}"
     cached = _FINGERPRINT_CACHE.get(cache_key)
     if cached and cached[0] == stat_sig:
         fingerprint = cached[1]
@@ -131,7 +158,7 @@ def _compute_book_content_stats(slug: str) -> dict[str, Any]:
         _FINGERPRINT_CACHE[cache_key] = (stat_sig, fingerprint)
 
     return {
-        "hasOutputDir": output_dir.is_dir(),
+        "hasOutputDir": has_content,
         "outputFileCount": output_file_count,
         "outputSizeBytes": output_size_bytes,
         "contentFingerprint": fingerprint,
@@ -150,6 +177,7 @@ def _serialize_book(b: Book, stats: dict[str, Any]) -> dict[str, Any]:
         "slug": b.slug,
         "title": b.title,
         "author": b.author or "Unknown",
+        "format": (getattr(b, "format", None) or "bkb"),
         "pageCount": b.page_count or 0,
         "coverPath": b.cover_path or "",
         "isPublished": bool(b.is_published),
@@ -261,7 +289,11 @@ def get_backup_manifest(
 
     serialized_books = []
     for b in books:
-        stats = _compute_book_content_stats(b.slug)
+        stats = _compute_book_content_stats(
+            b.slug,
+            getattr(b, "format", None),
+            getattr(b, "source_filename", None),
+        )
         serialized_books.append(_serialize_book(b, stats))
 
     return {
@@ -353,7 +385,15 @@ def export_backup_snapshot(
         )
 
     serialized_books = [
-        _serialize_book(b, _compute_book_content_stats(b.slug)) for b in books
+        _serialize_book(
+            b,
+            _compute_book_content_stats(
+                b.slug,
+                getattr(b, "format", None),
+                getattr(b, "source_filename", None),
+            ),
+        )
+        for b in books
     ]
 
     serialized_users = [
@@ -393,6 +433,7 @@ def export_backup_snapshot(
             "startOffset": h.start_offset or 0,
             "endOffset": h.end_offset or 0,
             "paragraphIndex": h.paragraph_index or 0,
+            "anchorJson": getattr(h, "anchor_json", None) or "",
             "note": h.note or "",
             "createdAt": h.created_at or 0,
         }
@@ -409,6 +450,8 @@ def export_backup_snapshot(
                     "bookSlug": pr.book_slug,
                     "page": pr.page or 1,
                     "viewMode": pr.view_mode or "en",
+                    "locator": getattr(pr, "locator", None) or "",
+                    "progression": getattr(pr, "progression", None),
                     "lastRead": pr.last_read or 0,
                 }
             )
@@ -764,6 +807,7 @@ def _restore_highlights(
         start_offset = int(raw.get("startOffset") or 0)
         end_offset = int(raw.get("endOffset") or 0)
         paragraph_idx = int(raw.get("paragraphIndex") or 0)
+        anchor_json = str(raw.get("anchorJson") or "")
         created_at = int(raw.get("createdAt") or int(time.time()))
 
         if not existing:
@@ -780,6 +824,7 @@ def _restore_highlights(
                         start_offset=start_offset,
                         end_offset=end_offset,
                         paragraph_index=paragraph_idx,
+                        anchor_json=anchor_json,
                         note=note_val,
                         created_at=created_at,
                         username=owner,
@@ -799,6 +844,7 @@ def _restore_highlights(
                     or existing.start_offset != start_offset
                     or existing.end_offset != end_offset
                     or existing.paragraph_index != paragraph_idx
+                    or (getattr(existing, "anchor_json", None) or "") != anchor_json
                     or (existing.note or "") != note_val
                     or (existing.username or "") != owner
                 )
@@ -813,15 +859,23 @@ def _restore_highlights(
                         existing.start_offset = start_offset
                         existing.end_offset = end_offset
                         existing.paragraph_index = paragraph_idx
+                        existing.anchor_json = anchor_json
                         existing.note = note_val
                         existing.username = owner
                 else:
                     counts["skipped"] += 1
             else:
+                changed = False
                 if not existing.note and note_val:
-                    counts["updated"] += 1
+                    changed = True
                     if apply:
                         existing.note = note_val
+                if not (getattr(existing, "anchor_json", None) or "") and anchor_json:
+                    changed = True
+                    if apply:
+                        existing.anchor_json = anchor_json
+                if changed:
+                    counts["updated"] += 1
                 else:
                     counts["skipped"] += 1
 
@@ -875,6 +929,13 @@ def _restore_progress(
 
         page = int(raw.get("page") or 1)
         view_mode = str(raw.get("viewMode") or "en")
+        locator = str(raw.get("locator") or "")
+        raw_prog = raw.get("progression")
+        progression = (
+            max(0.0, min(1.0, float(raw_prog)))
+            if isinstance(raw_prog, (int, float)) and not isinstance(raw_prog, bool)
+            else None
+        )
         last_read = int(raw.get("lastRead") or 0)
         key = (uname, slug)
         seen_keys.add(key)
@@ -891,29 +952,32 @@ def _restore_progress(
                             book_slug=slug,
                             page=page,
                             view_mode=view_mode,
+                            locator=locator,
+                            progression=progression,
                             last_read=last_read,
                         )
                     )
         else:
+            same_values = (
+                existing.page == page
+                and existing.view_mode == view_mode
+                and (getattr(existing, "locator", None) or "") == locator
+                and getattr(existing, "progression", None) == progression
+                and (existing.last_read or 0) == last_read
+            )
             should_update = False
             if mode == "overwrite":
-                should_update = (
-                    existing.page != page
-                    or existing.view_mode != view_mode
-                    or (existing.last_read or 0) != last_read
-                )
+                should_update = not same_values
             else:
                 if prefer_snapshot_progress or last_read > (existing.last_read or 0):
-                    should_update = (
-                        existing.page != page
-                        or existing.view_mode != view_mode
-                        or (existing.last_read or 0) != last_read
-                    )
+                    should_update = not same_values
             if should_update:
                 counts["updated"] += 1
                 if apply:
                     existing.page = page
                     existing.view_mode = view_mode
+                    existing.locator = locator
+                    existing.progression = progression
                     existing.last_read = last_read
             else:
                 counts["skipped"] += 1

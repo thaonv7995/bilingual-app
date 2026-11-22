@@ -11,6 +11,7 @@ from api.auth import get_password_hash
 from api.config import WORKSPACE_ROOT, BOOKS_DIR, WEB_APP_DIR, APPLICATION_DIR
 from api.routes import auth, books, admin, chat, voca, settings, notebook, audio, config, backup
 from books_core.paths import BookPaths
+from books_core.document_import import infer_book_format, resolve_book_source_file
 
 app = FastAPI(title="Bilingual Digital Library API")
 
@@ -80,16 +81,30 @@ def sync_books_directory_to_db(db: Session):
             try:
                 book_paths = BookPaths.open(item)
                 metadata = book_paths.load_book_json()
-                
+                book_format = infer_book_format(item, metadata)
+                source_file = resolve_book_source_file(
+                    item, book_format, metadata.get("source_filename")
+                )
+                source_filename = (
+                    source_file.name
+                    if source_file
+                    else (metadata.get("source_filename") or "")
+                )
+
                 # Check if book already in DB
                 db_book = db.query(Book).filter(Book.slug == item.name).first()
                 cover_val = metadata.get("cover") or ""
                 if not cover_val:
-                    for possible_cover in ["assets/cover.jpg", "assets/cover.png", "assets/images/page_0001_cover_logo.png"]:
+                    for possible_cover in [
+                        "assets/cover.jpg",
+                        "assets/cover.png",
+                        "assets/cover.webp",
+                        "assets/images/page_0001_cover_logo.png",
+                    ]:
                         if (item / "output" / possible_cover).is_file():
                             cover_val = possible_cover
                             break
-                
+
                 if not db_book:
                     new_book = Book(
                         slug=item.name,
@@ -98,16 +113,20 @@ def sync_books_directory_to_db(db: Session):
                         page_count=book_paths.estimate_page_count(),
                         cover_path=cover_val,
                         is_published=True,
+                        format=book_format,
+                        source_filename=source_filename,
                         default_font=metadata.get("default_font") or "default",
                         default_theme=metadata.get("default_theme") or "default",
                     )
                     db.add(new_book)
-                    print(f"[Startup Sync] Added book to DB: {item.name}")
+                    print(f"[Startup Sync] Added book to DB: {item.name} ({book_format})")
                 else:
-                    # Sync page count, author and cover path if updated
+                    # Sync page count, author, format and cover path if updated
                     db_book.page_count = book_paths.estimate_page_count()
                     db_book.title = metadata.get("title", db_book.title)
                     db_book.author = metadata.get("author", db_book.author)
+                    db_book.format = book_format
+                    db_book.source_filename = source_filename
                     if cover_val:
                         db_book.cover_path = cover_val
                     if metadata.get("default_font"):

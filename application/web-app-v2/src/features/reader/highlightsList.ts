@@ -26,6 +26,7 @@ export function resolveInitialReferenceViewMode(
   mainViewMode: ViewMode,
   highlightLang: HighlightLang,
 ): ViewMode {
-  return mainViewMode === 'split' ? 'split' : highlightLang;
+  if (mainViewMode === 'split') return 'split';
+  return highlightLang === 'vi' ? 'vi' : 'en';
 }
 

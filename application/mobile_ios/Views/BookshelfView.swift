@@ -204,6 +204,7 @@ struct BookshelfView: View {
                                                                 await cacheManager.downloadBook(
                                                                     slug: book.slug,
                                                                     api: api,
+                                                                    format: book.resolvedFormat,
                                                                     forceRedownload: true
                                                                 )
                                                             }
@@ -215,7 +216,11 @@ struct BookshelfView: View {
                                                 } else if !api.isOfflineMode {
                                                     Button("Tải về đọc offline") {
                                                         Task {
-                                                            await cacheManager.downloadBook(slug: book.slug, api: api)
+                                                            await cacheManager.downloadBook(
+                                                                slug: book.slug,
+                                                                api: api,
+                                                                format: book.resolvedFormat
+                                                            )
                                                         }
                                                     }
                                                 }
@@ -317,7 +322,11 @@ struct BookshelfView: View {
                 }
             }
             .fullScreenCover(item: $selectedBook) { book in
-                ReaderView(book: book)
+                if book.resolvedFormat == "pdf" || book.resolvedFormat == "epub" {
+                    DocumentReaderViewIOS(book: book)
+                } else {
+                    ReaderView(book: book)
+                }
             }
             .sheet(isPresented: $showSettings) {
                 AISettingsView(books: books)
@@ -689,9 +698,15 @@ struct BookCard: View {
                         // Progress
                         HStack(alignment: .firstTextBaseline) {
                             if let progress = progress {
-                                Text("Trang \(progress.page)/\(book.pageCount)")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(Color(hex: "2dd4bf"))
+                                if book.resolvedFormat == "epub", let frac = progress.progression, frac > 0 {
+                                    Text("\(Int(round(min(1.0, frac) * 100)))%")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(Color(hex: "2dd4bf"))
+                                } else {
+                                    Text("Trang \(progress.page)/\(book.pageCount)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(Color(hex: "2dd4bf"))
+                                }
                             } else {
                                 Text("\(book.pageCount) trang")
                                     .font(.system(size: 10, weight: .bold))
@@ -709,7 +724,9 @@ struct BookCard: View {
                         
                         // Progress Bar
                         if let progress = progress {
-                            let percent = Double(progress.page) / Double(max(1, book.pageCount))
+                            let percent: Double = (book.resolvedFormat == "epub" && progress.progression != nil)
+                                ? min(1.0, max(0.0, progress.progression!))
+                                : Double(progress.page) / Double(max(1, book.pageCount))
                             GeometryReader { geo in
                                 ZStack(alignment: .leading) {
                                     Capsule()
@@ -736,6 +753,23 @@ struct BookCard: View {
                         )
                     )
                 }
+            )
+            .overlay(
+                Group {
+                    if book.resolvedFormat != "bkb" {
+                        Text(book.resolvedFormat.uppercased())
+                            .font(.system(size: 9.5, weight: .heavy))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(
+                                (book.resolvedFormat == "pdf" ? Color(hex: "ef4444") : Color(hex: "6366f1")).opacity(0.9),
+                                in: Capsule()
+                            )
+                            .padding(8)
+                    }
+                },
+                alignment: .topLeading
             )
             .overlay(
                 downloadStatusOverlay,

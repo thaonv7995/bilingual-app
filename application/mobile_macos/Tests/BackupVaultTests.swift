@@ -202,6 +202,147 @@ final class BackupVaultTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.slug), ["priority-book", "read-recent", "unread-new", "unread-old"])
     }
 
+    func testPdfAndEpubIncrementalSyncOfflineAndPushRestore() async throws {
+        let samplePdf = tempRoot.appendingPathComponent("clean-code.pdf")
+        try Data("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n".utf8).write(to: samplePdf)
+        let sampleEpub = tempRoot.appendingPathComponent("atomic.epub")
+        try Data("PK\u{03}\u{04}fake-epub-bytes".utf8).write(to: sampleEpub)
+
+        let pdfEntry = ManifestBookEntry(
+            slug: "clean-code",
+            title: "Clean Code",
+            author: "Robert C. Martin",
+            format: "pdf",
+            pageCount: 10,
+            coverPath: "",
+            isPublished: true,
+            defaultFont: "default",
+            defaultTheme: "default",
+            createdAt: 1500,
+            hasOutputDir: true,
+            outputFileCount: 1,
+            outputSizeBytes: 32,
+            contentFingerprint: "fp-pdf-1"
+        )
+        let epubEntry = ManifestBookEntry(
+            slug: "atomic",
+            title: "Atomic Habits",
+            author: "James Clear",
+            format: "epub",
+            pageCount: 20,
+            coverPath: "",
+            isPublished: true,
+            defaultFont: "default",
+            defaultTheme: "default",
+            createdAt: 1600,
+            hasOutputDir: true,
+            outputFileCount: 1,
+            outputSizeBytes: 20,
+            contentFingerprint: "fp-epub-1"
+        )
+        let manifest = BackupManifest(
+            version: 1,
+            generatedAt: 1700,
+            scope: "admin_full",
+            username: "admin",
+            counts: BackupCounts(books: 2, users: 1, permissions: 0, highlights: 1, readingProgress: 1, userBookStates: 0, userSettings: 0, apiKeys: 0),
+            books: [pdfEntry, epubEntry]
+        )
+        let cfi = "epubcfi(/6/4!/4/2/2,/1:0,/1:8)"
+        let hlAnchor = DocumentHighlightAnchor.encodeEpub(cfi: cfi, chapterTitle: "Chapter 1")
+        let snapshot = BackupSnapshot(
+            version: 1,
+            exportedAt: 1700,
+            scope: "admin_full",
+            exportedBy: "admin",
+            includesSecrets: false,
+            books: [pdfEntry, epubEntry],
+            users: [SnapshotUser(username: "admin", passwordHash: "h1", isAdmin: true)],
+            permissions: [],
+            apiKeys: [],
+            highlights: [
+                SnapshotHighlight(
+                    id: "hl-epub-1",
+                    bookSlug: "atomic",
+                    username: "admin",
+                    page: 2,
+                    lang: "epub",
+                    color: "#fde68a",
+                    text: "Atomic",
+                    startOffset: 0,
+                    endOffset: 6,
+                    paragraphIndex: 0,
+                    anchorJson: hlAnchor,
+                    note: "Saved note",
+                    createdAt: 1700
+                )
+            ],
+            readingProgress: [
+                SnapshotReadingProgress(
+                    username: "admin",
+                    bookSlug: "atomic",
+                    page: 2,
+                    viewMode: "en",
+                    locator: cfi,
+                    progression: 0.35,
+                    lastRead: 1700
+                )
+            ],
+            userBookStates: [],
+            userSettings: []
+        )
+
+        let transport = MockBackupTransport(
+            archivesBySlug: ["clean-code": samplePdf, "atomic": sampleEpub],
+            manifest: manifest,
+            snapshot: snapshot
+        )
+        let suiteName = "bilingual.mac.multiformat.\(UUID().uuidString)"
+        let defs = UserDefaults(suiteName: suiteName)!
+        defer { defs.removePersistentDomain(forName: suiteName) }
+
+        let manager = BackupManager(
+            defaultVaultURL: tempRoot.appendingPathComponent("vault_multi", isDirectory: true),
+            defaults: defs,
+            transport: transport,
+            startTimer: false
+        )
+
+        let run1 = await manager.syncFromServer()
+        XCTAssertEqual(run1?.downloadedBooks, 2)
+        XCTAssertTrue(manager.hasOfflineBook(slug: "clean-code", format: "pdf"))
+        XCTAssertTrue(manager.hasOfflineBook(slug: "atomic", format: "epub"))
+
+        let offlineBooks = manager.offlineBooks(forUsername: "admin", isAdmin: true)
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: offlineBooks.map { ($0.slug, $0.resolvedFormat) }), [
+            "clean-code": "pdf",
+            "atomic": "epub",
+        ])
+        let offlineProg = manager.offlineProgress(forUsername: "admin", slug: "atomic")
+        XCTAssertEqual(offlineProg?.locator, cfi)
+        XCTAssertEqual(offlineProg?.progression ?? 0, 0.35, accuracy: 0.001)
+        let offlineHls = manager.offlineHighlights(forUsername: "admin", slug: "atomic")
+        XCTAssertEqual(offlineHls.first?.anchorJson, hlAnchor)
+
+        // Second sync skips both unchanged files
+        transport.downloadedSlugs.removeAll()
+        let run2 = await manager.syncFromServer()
+        XCTAssertEqual(run2?.downloadedBooks, 0)
+        XCTAssertEqual(run2?.skippedUnchangedBooks, 2)
+
+        // Push restore uploads both native .pdf and .epub files
+        var selection = RestoreSelection()
+        selection.uploadMissingBooks = true
+        let restoreRes = try await manager.executePushRestore(
+            snapshot: snapshot,
+            selection: selection,
+            dryRunMissingSlugs: ["clean-code", "atomic"],
+            onLog: { _ in }
+        )
+        XCTAssertEqual(restoreRes.uploadedBooks, ["clean-code", "atomic"])
+        XCTAssertEqual(transport.uploadedSlugs, ["clean-code", "atomic"])
+    }
+
     // MARK: - Helpers
 
     private func makeSampleBKB(slug: String, versionTag: String) throws -> URL {

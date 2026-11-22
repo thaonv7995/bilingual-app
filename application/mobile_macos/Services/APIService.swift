@@ -468,8 +468,21 @@ class APIService: ObservableObject {
         }
     }
 
-    func saveReadingProgress(slug: String, page: Int, viewMode: String, lastRead: Int) async {
-        let localProgress = ReadingProgress(page: page, viewMode: viewMode, lastRead: lastRead)
+    func saveReadingProgress(
+        slug: String,
+        page: Int,
+        viewMode: String,
+        lastRead: Int,
+        locator: String? = nil,
+        progression: Double? = nil
+    ) async {
+        let localProgress = ReadingProgress(
+            page: page,
+            viewMode: viewMode,
+            locator: locator,
+            progression: progression,
+            lastRead: lastRead
+        )
         if let encoded = try? JSONEncoder().encode(localProgress) {
             UserDefaults.standard.set(encoded, forKey: "progress_\(slug)")
         }
@@ -482,14 +495,18 @@ class APIService: ObservableObject {
 
         guard let encodedSlug = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
               let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/progress") else { return }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+        var body: [String: Any] = [
             "page": page,
             "viewMode": viewMode,
             "lastRead": lastRead,
-        ])
+        ]
+        if let locator, !locator.isEmpty { body["locator"] = locator }
+        if let progression { body["progression"] = progression }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         _ = try? await sendRequest(request)
     }
 
@@ -665,6 +682,21 @@ class APIService: ObservableObject {
         return try JSONDecoder().decode(BackupSnapshot.self, from: data)
     }
 
+    func fetchBookSourceData(slug: String) async throws -> Data {
+        let safeSlug = try BookArchiveExtractor.validateSlug(slug)
+        guard let encodedSlug = safeSlug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "\(normalizedServerUrl)/books/\(encodedSlug)/source") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 300
+        let (data, response) = try await sendRequest(request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        return data
+    }
+
     func downloadBookArchive(slug: String, to destinationURL: URL) async throws {
         let safeSlug = try BookArchiveExtractor.validateSlug(slug)
         guard let encodedSlug = safeSlug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
@@ -675,7 +707,7 @@ class APIService: ObservableObject {
         request.timeoutInterval = 300
         let (data, response) = try await sendRequest(request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            let errText = String(data: data, encoding: .utf8) ?? "Download .bkb thất bại"
+            let errText = String(data: data, encoding: .utf8) ?? "Download sách thất bại"
             throw NSError(domain: "BackupAPI", code: (response as? HTTPURLResponse)?.statusCode ?? 500, userInfo: [NSLocalizedDescriptionKey: errText])
         }
         try FileManager.default.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -683,7 +715,16 @@ class APIService: ObservableObject {
     }
 
     func uploadBookArchive(fileURL: URL) async throws -> String {
-        guard let url = URL(string: "\(normalizedServerUrl)/api/books/upload") else {
+        try await uploadBookArchive(fileURL: fileURL, explicitSlug: nil)
+    }
+
+    func uploadBookArchive(fileURL: URL, explicitSlug: String?) async throws -> String {
+        var urlString = "\(normalizedServerUrl)/api/books/upload"
+        if let explicitSlug, !explicitSlug.isEmpty,
+           let encodedSlug = explicitSlug.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            urlString += "?slug=\(encodedSlug)"
+        }
+        guard let url = URL(string: urlString) else {
             throw URLError(.badURL)
         }
         let fileData = try Data(contentsOf: fileURL)
@@ -704,7 +745,7 @@ class APIService: ObservableObject {
 
         let (data, response) = try await sendRequest(request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            let errText = String(data: data, encoding: .utf8) ?? "Upload .bkb thất bại"
+            let errText = String(data: data, encoding: .utf8) ?? "Upload sách thất bại"
             throw NSError(domain: "BackupAPI", code: (response as? HTTPURLResponse)?.statusCode ?? 500, userInfo: [NSLocalizedDescriptionKey: errText])
         }
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

@@ -1,0 +1,640 @@
+/* Apple Books-inspired PDF & EPUB Reader layout and overlays */
+
+.doc-reader-workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+  background: var(--reader-canvas, #14171f);
+}
+
+/* Left collapsible Navigation Drawer (TOC / Thumbnails / Search) */
+.doc-nav-drawer {
+  width: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--surface-color, #1a1f2b);
+  border-right: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s ease, border-color 0.2s ease;
+  z-index: 20;
+}
+
+.doc-nav-drawer.is-open {
+  width: 296px;
+  border-right-color: var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.doc-nav-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  gap: 8px;
+}
+
+.doc-nav-drawer__tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(128, 128, 128, 0.12);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.doc-nav-drawer__tab {
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #94a3b8);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.doc-nav-drawer__tab.is-active {
+  background: var(--accent-color, #38bdf8);
+  color: #0b1120;
+}
+
+.doc-nav-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.doc-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.doc-toc-item {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text-main, #e2e8f0);
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  transition: background 0.15s ease;
+}
+
+.doc-toc-item:hover {
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.doc-toc-item.is-active {
+  background: rgba(56, 189, 248, 0.18);
+  color: var(--accent-color, #38bdf8);
+  font-weight: 600;
+}
+
+.doc-toc-item__page {
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  flex-shrink: 0;
+}
+
+.doc-drawer-empty {
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--text-muted, #94a3b8);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* PDF Thumbnails Grid */
+.pdf-thumbs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pdf-thumb-card {
+  border: 2px solid transparent;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.pdf-thumb-card:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+.pdf-thumb-card.is-active {
+  border-color: var(--accent-color, #38bdf8);
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.pdf-thumb-canvas {
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+}
+
+.pdf-thumb-label {
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  font-weight: 600;
+}
+
+/* Search Box in EPUB Drawer */
+.doc-search-form {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.doc-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+  background: rgba(15, 23, 42, 0.45);
+  color: var(--text-main, #f1f5f9);
+  font-size: 13px;
+  outline: none;
+}
+
+.doc-search-input:focus {
+  border-color: var(--accent-color, #38bdf8);
+}
+
+.doc-search-result {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  color: var(--text-main, #e2e8f0);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.doc-search-result:hover {
+  border-color: var(--accent-color, #38bdf8);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.doc-search-result mark {
+  background: rgba(250, 204, 21, 0.4);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* Main Stage */
+.doc-reader-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* PDF Viewport */
+.pdf-stage-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 24px 36px;
+  gap: 20px;
+  position: relative;
+}
+
+.pdf-stage-scroll.is-spread {
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+}
+
+.pdf-page-shell {
+  position: relative;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-radius: 4px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  user-select: text;
+}
+
+.pdf-stage-scroll[data-pdf-filter='warm'] .pdf-page-shell {
+  filter: sepia(0.24) brightness(0.96) contrast(0.97);
+}
+
+.pdf-stage-scroll[data-pdf-filter='dark'] .pdf-page-shell {
+  filter: invert(0.89) hue-rotate(180deg) contrast(0.94);
+}
+
+.pdf-page-canvas {
+  display: block;
+}
+
+/* PDF.js Text Layer overlay */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.25;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 2;
+}
+
+.pdf-text-layer span,
+.pdf-text-layer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.pdf-text-layer ::selection {
+  background: rgba(56, 189, 248, 0.55);
+}
+
+/* Normalized PDF Highlight Layer */
+.pdf-highlight-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.pdf-highlight-rect {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  border-radius: 2px;
+  opacity: 0.42;
+  mix-blend-mode: multiply;
+  transition: opacity 0.15s ease, box-shadow 0.2s ease;
+}
+
+.pdf-highlight-rect:hover {
+  opacity: 0.62;
+}
+
+.pdf-highlight-rect.is-pulsing {
+  animation: pdfHighlightPulse 1.4s ease;
+}
+
+.pdf-highlight-rect[data-has-note='true']::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 1.5px solid #ffffff;
+}
+
+@keyframes pdfHighlightPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+  35% {
+    box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.72), 0 0 18px rgba(56, 189, 248, 0.55);
+  }
+}
+
+/* EPUB Apple Books Container */
+.epub-stage-wrapper {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  overflow: hidden;
+  transition: background-color 0.2s ease;
+}
+
+.epub-view-host {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  z-index: 2;
+}
+
+.epub-view-host foliate-view {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.epub-turn-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 44px;
+  z-index: 6;
+  border: none;
+  background: transparent;
+  color: rgba(148, 163, 184, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.epub-turn-zone:hover {
+  opacity: 1;
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--accent-color, #38bdf8);
+}
+
+.epub-turn-zone.is-prev {
+  left: 0;
+}
+
+.epub-turn-zone.is-next {
+  right: 0;
+}
+
+/* Apple Books Bottom Status & Scrubber Bar */
+.doc-bottom-bar {
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  background: var(--surface-color, rgba(20, 24, 34, 0.94));
+  border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+}
+
+.doc-bottom-bar__chapter {
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.doc-bottom-bar__slider {
+  flex: 1;
+  accent-color: var(--accent-color, #38bdf8);
+  cursor: pointer;
+  height: 4px;
+}
+
+.doc-bottom-bar__meta {
+  min-width: 96px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Loading / Error Overlay */
+.doc-status-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(15, 18, 25, 0.78);
+  color: #e2e8f0;
+  z-index: 30;
+  padding: 24px;
+  text-align: center;
+}
+
+.doc-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid rgba(148, 163, 184, 0.25);
+  border-top-color: var(--accent-color, #38bdf8);
+  animation: docSpin 0.8s linear infinite;
+}
+
+@keyframes docSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Compact Mode Pill Controls in Topbar */
+.doc-mode-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.doc-mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #94a3b8);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.doc-mode-btn.active {
+  background: var(--accent-color, #38bdf8);
+  color: #0b1120;
+}
+
+/* Floating Selection / Highlight Toolbar */
+.doc-selection-popover {
+  position: fixed;
+  z-index: 2147482500;
+  transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.doc-selection-popover.is-below {
+  transform: translate(-50%, 0);
+}
+
+.doc-selection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 13px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.28);
+}
+
+.doc-selection-toolbar__colors {
+  display: flex;
+  gap: 6px;
+}
+
+.doc-selection-toolbar__color {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+
+.doc-selection-toolbar__color:hover,
+.doc-selection-toolbar__color.is-active {
+  transform: scale(1.14);
+  border-color: #0f172a;
+}
+
+.doc-selection-toolbar__divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(15, 23, 42, 0.14);
+  margin: 0 2px;
+}
+
+.doc-selection-toolbar__btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: #f8fafc;
+  color: #0f172a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.doc-selection-toolbar__btn:hover,
+.doc-selection-toolbar__btn.is-active {
+  background: #e0f2fe;
+  border-color: rgba(2, 132, 199, 0.35);
+}
+
+.doc-selection-toolbar__btn.is-danger {
+  color: #b91c1c;
+}
+
+.doc-selection-toolbar__btn.is-danger:hover {
+  background: #fee2e2;
+  border-color: rgba(239, 68, 68, 0.32);
+}
+
+.doc-selection-toolbar__btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.doc-selection-note {
+  width: 240px;
+  background: linear-gradient(160deg, #fef9c3 0%, #fde68a 60%, #fcd34d 100%);
+  border: 1px solid rgba(180, 130, 0, 0.35);
+  border-radius: 10px;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.28);
+  padding: 8px 10px;
+}
+
+.doc-selection-note__input {
+  width: 100%;
+  min-height: 62px;
+  border: none;
+  background: transparent;
+  resize: vertical;
+  outline: none;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #422006;
+  font-family: inherit;
+}
+
+.doc-selection-note__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.doc-selection-note__btn {
+  border: 1px solid rgba(66, 32, 6, 0.22);
+  background: rgba(255, 255, 255, 0.65);
+  color: #422006;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.doc-selection-note__btn.is-primary {
+  background: #422006;
+  color: #fef9c3;
+  border-color: #422006;
+}
+
+@media (max-width: 768px) {
+  .doc-nav-drawer.is-open {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: min(84vw, 300px);
+    box-shadow: 8px 0 28px rgba(0, 0, 0, 0.45);
+  }
+
+  .doc-bottom-bar__chapter {
+    display: none;
+  }
+}

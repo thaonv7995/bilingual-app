@@ -38,6 +38,7 @@ enum OfflinePendingOp: Codable, Equatable, Identifiable {
     case upsertHighlight(slug: String, highlight: Highlight)
     case deleteHighlight(slug: String, highlightId: String)
     case saveProgress(slug: String, page: Int, viewMode: String, lastRead: Int64)
+    case saveDocumentProgress(slug: String, page: Int, viewMode: String, locator: String?, progression: Double?, lastRead: Int64)
     case patchBookState(slug: String, isFinished: Bool?, isPriority: Bool?, readerFont: String?, readerTheme: String?)
 
     var id: String {
@@ -46,7 +47,8 @@ enum OfflinePendingOp: Codable, Equatable, Identifiable {
             return "hl_upsert:\(slug):\(highlight.id)"
         case .deleteHighlight(let slug, let highlightId):
             return "hl_delete:\(slug):\(highlightId)"
-        case .saveProgress(let slug, _, _, _):
+        case .saveProgress(let slug, _, _, _),
+             .saveDocumentProgress(let slug, _, _, _, _, _):
             return "progress:\(slug)"
         case .patchBookState(let slug, _, _, _, _):
             return "state:\(slug)"
@@ -58,6 +60,7 @@ enum OfflinePendingOp: Codable, Equatable, Identifiable {
         case .upsertHighlight(let slug, _),
              .deleteHighlight(let slug, _),
              .saveProgress(let slug, _, _, _),
+             .saveDocumentProgress(let slug, _, _, _, _, _),
              .patchBookState(let slug, _, _, _, _):
             return slug
         }
@@ -137,7 +140,8 @@ final class OfflineSyncStore {
                 if let isPriority { decoded[idx].isPriority = isPriority }
                 if let readerFont { decoded[idx].readerFont = readerFont }
                 if let readerTheme { decoded[idx].readerTheme = readerTheme }
-            case .saveProgress(let slug, _, _, let lastRead):
+            case .saveProgress(let slug, _, _, let lastRead),
+                 .saveDocumentProgress(let slug, _, _, _, _, let lastRead):
                 guard let idx = decoded.firstIndex(where: { $0.slug == slug }) else { continue }
                 decoded[idx].lastRead = max(decoded[idx].lastRead ?? 0, lastRead)
             case .upsertHighlight, .deleteHighlight:
@@ -271,7 +275,7 @@ final class OfflineSyncStore {
                 }
             case .deleteHighlight(_, let highlightId):
                 merged.removeAll { $0.id == highlightId }
-            case .saveProgress, .patchBookState:
+            case .saveProgress, .saveDocumentProgress, .patchBookState:
                 break
             }
         }
@@ -334,16 +338,32 @@ final class OfflineSyncStore {
             }
             ops.append(newOp)
 
-        case .saveProgress(let slug, _, _, let incomingTs):
+        case .saveProgress(let slug, _, _, let incomingTs),
+             .saveDocumentProgress(let slug, _, _, _, _, let incomingTs):
             if let existingIdx = ops.firstIndex(where: {
-                if case .saveProgress(let s, _, _, _) = $0 { return s == slug }
-                return false
-            }), case .saveProgress(_, _, _, let existingTs) = ops[existingIdx], existingTs > incomingTs {
-                return
+                switch $0 {
+                case .saveProgress(let s, _, _, _), .saveDocumentProgress(let s, _, _, _, _, _):
+                    return s == slug
+                default:
+                    return false
+                }
+            }) {
+                let existingTs: Int64
+                switch ops[existingIdx] {
+                case .saveProgress(_, _, _, let ts), .saveDocumentProgress(_, _, _, _, _, let ts):
+                    existingTs = ts
+                default:
+                    existingTs = 0
+                }
+                if existingTs > incomingTs { return }
             }
             ops.removeAll {
-                if case .saveProgress(let s, _, _, _) = $0 { return s == slug }
-                return false
+                switch $0 {
+                case .saveProgress(let s, _, _, _), .saveDocumentProgress(let s, _, _, _, _, _):
+                    return s == slug
+                default:
+                    return false
+                }
             }
             ops.append(newOp)
 
@@ -387,7 +407,16 @@ final class OfflineSyncStore {
         guard account.isValid else { return }
         var ops = loadPendingOps(for: account)
         ops.removeAll { item in
-            guard case .saveProgress(let s, _, _, let ts) = item, s == slug else { return false }
+            let itemSlug: String
+            let ts: Int64
+            switch item {
+            case .saveProgress(let s, _, _, let t), .saveDocumentProgress(let s, _, _, _, _, let t):
+                itemSlug = s
+                ts = t
+            default:
+                return false
+            }
+            guard itemSlug == slug else { return false }
             guard let cutoff = lastRead else { return true }
             return ts <= cutoff
         }

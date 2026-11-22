@@ -6,6 +6,7 @@ struct BackupBookManifestItem: Codable, Equatable, Identifiable {
     let slug: String
     let title: String
     let author: String
+    let format: String?
     let pageCount: Int
     let coverPath: String
     let isPublished: Bool
@@ -16,6 +17,11 @@ struct BackupBookManifestItem: Codable, Equatable, Identifiable {
     let outputFileCount: Int
     let outputSizeBytes: Int64
     let contentFingerprint: String
+
+    var resolvedFormat: String {
+        let f = (format ?? "bkb").lowercased()
+        return (f == "pdf" || f == "epub") ? f : "bkb"
+    }
 }
 
 struct BackupManifestResponse: Codable, Equatable {
@@ -28,9 +34,15 @@ struct BackupManifestResponse: Codable, Equatable {
 
 struct LocalBookCacheMeta: Codable, Equatable {
     let slug: String
+    let format: String?
     let contentFingerprint: String
     let cachedAt: Int64
     let sizeBytes: Int64
+
+    var resolvedFormat: String {
+        let f = (format ?? "bkb").lowercased()
+        return (f == "pdf" || f == "epub") ? f : "bkb"
+    }
 }
 
 @MainActor
@@ -81,6 +93,17 @@ class BookCacheManager: ObservableObject {
 
     func localOutputDir(slug: String) -> URL {
         localBookDir(slug: slug).appendingPathComponent("output", isDirectory: true)
+    }
+
+    func localSourceFileURL(slug: String, format: String) -> URL {
+        let ext = (format == "pdf" || format == "epub") ? format : "bkb"
+        return localBookDir(slug: slug).appendingPathComponent("book.\(ext)")
+    }
+
+    func existingLocalSourceFileURL(slug: String, format: String) -> URL? {
+        guard format == "pdf" || format == "epub" else { return nil }
+        let file = localSourceFileURL(slug: slug, format: format)
+        return FileManager.default.fileExists(atPath: file.path) ? file : nil
     }
 
     func localPageURL(slug: String, lang: String, page: Int) -> URL? {
@@ -191,9 +214,14 @@ class BookCacheManager: ObservableObject {
                 let manifestURL = url.appendingPathComponent("manifest.json")
                 let metaURL = url.appendingPathComponent("cache_meta.json")
                 let outputDir = url.appendingPathComponent("output", isDirectory: true)
+                let pdfFile = url.appendingPathComponent("book.pdf")
+                let epubFile = url.appendingPathComponent("book.epub")
 
-                guard fm.fileExists(atPath: outputDir.path),
-                      fm.fileExists(atPath: manifestURL.path) || fm.fileExists(atPath: metaURL.path) else {
+                let hasBKB = fm.fileExists(atPath: outputDir.path)
+                    && (fm.fileExists(atPath: manifestURL.path) || fm.fileExists(atPath: metaURL.path))
+                let hasDirectDoc = fm.fileExists(atPath: pdfFile.path) || fm.fileExists(atPath: epubFile.path)
+
+                guard hasBKB || hasDirectDoc else {
                     continue
                 }
 
@@ -269,6 +297,7 @@ class BookCacheManager: ObservableObject {
     func downloadBook(
         slug: String,
         api: APIService,
+        format: String? = nil,
         expectedFingerprint: String? = nil,
         forceRedownload: Bool = false
     ) async {
@@ -278,6 +307,7 @@ class BookCacheManager: ObservableObject {
         }
         guard downloadStatus[safeSlug] != .downloading else { return }
 
+        let resolvedFormat = (format ?? serverManifestBySlug[safeSlug]?.resolvedFormat ?? "bkb").lowercased()
         let hadExistingCache = hasCompleteLocalBook(slug: safeSlug)
         downloadErrors.removeValue(forKey: safeSlug)
         downloadStatus[safeSlug] = .downloading
@@ -304,11 +334,23 @@ class BookCacheManager: ObservableObject {
                     self.downloadProgress[safeSlug] = 0.92
 
                     let destBookDir = self.localBookDir(slug: safeSlug)
-                    try await Task.detached(priority: .userInitiated) {
-                        try BookArchiveExtractorIOS.extractBKB(archiveURL: archiveURL, into: destBookDir)
-                    }.value
+                    if resolvedFormat == "pdf" || resolvedFormat == "epub" {
+                        let targetFile = self.localSourceFileURL(slug: safeSlug, format: resolvedFormat)
+                        try await Task.detached(priority: .userInitiated) {
+                            let fm = FileManager.default
+                            try fm.createDirectory(at: destBookDir, withIntermediateDirectories: true)
+                            if fm.fileExists(atPath: targetFile.path) {
+                                try fm.removeItem(at: targetFile)
+                            }
+                            try fm.moveItem(at: archiveURL, to: targetFile)
+                        }.value
+                    } else {
+                        try await Task.detached(priority: .userInitiated) {
+                            try BookArchiveExtractorIOS.extractBKB(archiveURL: archiveURL, into: destBookDir)
+                        }.value
+                    }
                 } else {
-                    // Defensive fallback when an older backend lacks `.bkb` package download
+                    // Defensive fallback when an older backend lacks package download
                     try await self.downloadBookViaLegacyManifest(slug: safeSlug, serverUrl: serverUrl, api: api)
                 }
 
@@ -324,6 +366,7 @@ class BookCacheManager: ObservableObject {
                     ?? ""
                 let meta = LocalBookCacheMeta(
                     slug: safeSlug,
+                    format: resolvedFormat,
                     contentFingerprint: fingerprint,
                     cachedAt: Int64(Date().timeIntervalSince1970),
                     sizeBytes: sizeBytes
@@ -373,6 +416,7 @@ class BookCacheManager: ObservableObject {
                 await downloadBook(
                     slug: book.slug,
                     api: api,
+                    format: book.resolvedFormat,
                     expectedFingerprint: fp,
                     forceRedownload: needsUpdate(slug: book.slug)
                 )
@@ -406,6 +450,10 @@ class BookCacheManager: ObservableObject {
     private func hasCompleteLocalBook(slug: String) -> Bool {
         let dir = localBookDir(slug: slug)
         let fm = FileManager.default
+        if fm.fileExists(atPath: dir.appendingPathComponent("book.pdf").path)
+            || fm.fileExists(atPath: dir.appendingPathComponent("book.epub").path) {
+            return true
+        }
         return fm.fileExists(atPath: dir.appendingPathComponent("output").path)
             && (fm.fileExists(atPath: dir.appendingPathComponent("manifest.json").path)
                 || fm.fileExists(atPath: dir.appendingPathComponent("cache_meta.json").path))

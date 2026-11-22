@@ -86,8 +86,9 @@ export function BooksTab() {
     // Guard against double-submit: ignore any file dropped while one is in flight.
     if (uploading) return;
 
-    if (!file.name.endsWith('.bkb')) {
-      toast.show('Định dạng file không hỗ trợ. Vui lòng chọn file .bkb', 'danger');
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith('.bkb') && !lower.endsWith('.pdf') && !lower.endsWith('.epub')) {
+      toast.show('Định dạng file không hỗ trợ. Vui lòng chọn file .bkb, .pdf hoặc .epub', 'danger');
       resetFileInput();
       return;
     }
@@ -136,7 +137,9 @@ export function BooksTab() {
     void handleUpload(file);
   }
 
-  async function handleDownload(slug: string) {
+  async function handleDownload(book: Book) {
+    const slug = book.slug;
+    const ext = book.format === 'pdf' ? 'pdf' : book.format === 'epub' ? 'epub' : 'bkb';
     if (downloadingSlug) return;
     setDownloadingSlug(slug);
     try {
@@ -149,7 +152,7 @@ export function BooksTab() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${slug}.bkb`;
+      a.download = `${slug}.${ext}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -218,7 +221,7 @@ export function BooksTab() {
     <div className={styles.tabPanel}>
       <section className={styles.card}>
         <div className={styles.cardHeader}>
-          <h2>Tải Sách Mới (.bkb Package)</h2>
+          <h2>Tải Sách Mới (.bkb / .pdf / .epub)</h2>
         </div>
         <div
           className={`${styles.uploadZone} ${dragging ? styles.uploadZoneDrag : ''}`}
@@ -243,14 +246,14 @@ export function BooksTab() {
             </svg>
           </div>
           <p>
-            Nhấp hoặc kéo thả file <strong>.bkb</strong> vào đây
+            Nhấp hoặc kéo thả file <strong>.bkb</strong>, <strong>.pdf</strong> hoặc <strong>.epub</strong> vào đây
           </p>
-          <span className={styles.uploadHint}>Kích thước khuyên dùng &lt; 50MB</span>
+          <span className={styles.uploadHint}>Hỗ trợ sách song ngữ .bkb, PDF gốc và EPUB chuẩn Apple Books</span>
           <input
             ref={fileInputRef}
             type="file"
             className={styles.hiddenInput}
-            accept=".bkb"
+            accept=".bkb,.pdf,.epub,application/pdf,application/epub+zip"
             onChange={(e) => void handleUpload(e.target.files?.[0])}
           />
           {(uploading || progress > 0) && (
@@ -292,7 +295,7 @@ export function BooksTab() {
                 book={book}
                 downloading={downloadingSlug === book.slug}
                 deleting={deletingSlug === book.slug}
-                onDownload={() => void handleDownload(book.slug)}
+                onDownload={() => void handleDownload(book)}
                 onDelete={() => void handleDelete(book.slug, book.title)}
                 onUpdateDefaults={(patch) =>
                   void handleUpdateBookDefaults(book.slug, book.title, patch)
@@ -343,7 +346,9 @@ function BookCard({
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 20H19V18H5V20M19 9H15V3H9V9H5L12 16L19 9Z" />
             </svg>
-            {downloading ? 'Đang tải…' : 'Tải về .bkb'}
+            {downloading
+              ? 'Đang tải…'
+              : `Tải về .${book.format === 'pdf' ? 'pdf' : book.format === 'epub' ? 'epub' : 'bkb'}`}
           </button>
           <button
             type="button"

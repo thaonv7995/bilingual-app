@@ -1216,6 +1216,7 @@ struct AISettingsView: View {
                                                         await cacheManager.downloadBook(
                                                             slug: book.slug,
                                                             api: api,
+                                                            format: book.resolvedFormat,
                                                             expectedFingerprint: fp,
                                                             forceRedownload: true
                                                         )

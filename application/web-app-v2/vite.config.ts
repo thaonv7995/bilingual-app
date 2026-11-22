@@ -27,7 +27,8 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api/, /^\/books/],
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.startsWith('/books/'),
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith('/books/') && url.pathname.includes('/output/'),
             handler: 'CacheFirst',
             options: {
               cacheName: 'bilingual-reader-books-v3',

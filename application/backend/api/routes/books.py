@@ -3,7 +3,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, Response, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, Response, Query, status, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -18,6 +18,12 @@ from api.auth import (
 from api.config import BOOKS_DIR
 from books_core.paths import BookPaths
 from books_core.package import pack_book, unpack_book, validate_book_slug
+from books_core.document_import import (
+    import_epub_file,
+    import_pdf_file,
+    infer_book_format,
+    resolve_book_source_file,
+)
 
 router = APIRouter(prefix="/api/books", tags=["books"])
 content_router = APIRouter(prefix="/books", tags=["books content"])
@@ -238,6 +244,58 @@ def serve_secure_book_static(slug: str, path: str, request: Request, db: Session
         headers={"Cache-Control": f"private, max-age={cache_max_age}"},
     )
 
+
+@content_router.get("/{slug}/source")
+def serve_secure_book_source(slug: str, request: Request, db: Session = Depends(get_db)):
+    """
+    Serve the original PDF or EPUB source file for authorized users with HTTP Range support.
+    """
+    user = get_user_from_request(request, db)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Access Denied: Please log in first.",
+        )
+
+    slug = _ensure_safe_slug(slug)
+
+    if not user.is_admin:
+        has_permission = db.query(UserPermission).filter(
+            UserPermission.user_id == user.id,
+            UserPermission.book_slug == slug,
+        ).first()
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access Denied: You do not have permission to view this book.",
+            )
+
+    books_root = BOOKS_DIR.resolve()
+    book_dir = (books_root / slug).resolve()
+    if book_dir.parent != books_root or not book_dir.is_dir():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found.")
+
+    db_book = db.query(Book).filter(Book.slug == slug).first()
+    meta = BookPaths.open(book_dir).load_book_json()
+    fmt = (db_book.format if db_book and getattr(db_book, "format", None) else None) or infer_book_format(book_dir, meta)
+    if fmt not in ("pdf", "epub"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book has no direct PDF/EPUB source file.")
+
+    source_name = (db_book.source_filename if db_book else None) or meta.get("source_filename")
+    source_file = resolve_book_source_file(book_dir, fmt, source_name)
+    if not source_file or not source_file.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book source file not found.")
+
+    media_type = "application/pdf" if fmt == "pdf" else "application/epub+zip"
+    return FileResponse(
+        source_file,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, max-age=86400",
+            "Accept-Ranges": "bytes",
+        },
+    )
+
 # --- Books CRUD APIs ---
 @router.get("")
 @router.get("/")
@@ -304,6 +362,8 @@ def list_books(current_user: User = Depends(get_current_user_or_apikey), db: Ses
             "author": b.author,
             "pageCount": b.page_count,
             "cover": f"books/{b.slug}/output/{b.cover_path}" if b.cover_path else None,
+            "format": (getattr(b, "format", None) or "bkb"),
+            "sourceUrl": f"books/{b.slug}/source" if (getattr(b, "format", None) or "bkb") in ("pdf", "epub") else None,
             "isPublished": b.is_published,
             "createdAt": b.created_at,
             "lastRead": last_read_by_slug.get(b.slug),
@@ -452,62 +512,108 @@ def update_book_appearance_defaults(
 @router.post("/upload")
 def upload_bkb(
     file: UploadFile = File(...),
+    slug: Optional[str] = Query(None),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    """Admin endpoint to upload a .bkb package file."""
-    if not file.filename.endswith(".bkb"):
-        raise HTTPException(status_code=400, detail="Only .bkb packages are supported")
-        
+    """Admin endpoint to upload a .bkb, .pdf, or .epub book."""
+    filename = file.filename or ""
+    ext = Path(filename).suffix.lower()
+    if ext not in (".bkb", ".pdf", ".epub"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only .bkb, .pdf, and .epub books are supported",
+        )
+
+    explicit_slug = _ensure_safe_slug(slug) if slug else None
+
     # Save uploaded file to temp file
-    with tempfile.NamedTemporaryFile(suffix=".bkb", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = Path(tmp.name)
-        
+
     try:
-        # Unpack the book into workspace books folder
-        result = unpack_book(tmp_path, BOOKS_DIR)
-        
+        if ext == ".bkb":
+            result = unpack_book(tmp_path, BOOKS_DIR)
+            book_format = "bkb"
+            source_filename = ""
+        elif ext == ".pdf":
+            result = import_pdf_file(
+                tmp_path,
+                BOOKS_DIR,
+                original_filename=filename,
+                explicit_slug=explicit_slug,
+            )
+            book_format = "pdf"
+            source_filename = result.get("source_filename") or "book.pdf"
+        else:
+            result = import_epub_file(
+                tmp_path,
+                BOOKS_DIR,
+                original_filename=filename,
+                explicit_slug=explicit_slug,
+            )
+            book_format = "epub"
+            source_filename = result.get("source_filename") or "book.epub"
+
         # Sync the new book to Database
         book_slug = result["slug"]
         book_paths = BookPaths.open(BOOKS_DIR / book_slug)
         metadata = book_paths.load_book_json()
-        
-        cover_val = metadata.get("cover") or ""
+
+        cover_val = result.get("cover") or metadata.get("cover") or ""
         if not cover_val:
-            for possible_cover in ["assets/cover.jpg", "assets/cover.png", "assets/images/page_0001_cover_logo.png"]:
+            for possible_cover in [
+                "assets/cover.jpg",
+                "assets/cover.png",
+                "assets/cover.webp",
+                "assets/images/page_0001_cover_logo.png",
+            ]:
                 if (BOOKS_DIR / book_slug / "output" / possible_cover).is_file():
                     cover_val = possible_cover
                     break
+
+        page_count = int(result.get("page_count") or book_paths.estimate_page_count() or 1)
         db_book = db.query(Book).filter(Book.slug == book_slug).first()
         if not db_book:
             db_book = Book(
                 slug=book_slug,
                 title=metadata.get("title", result["title"]),
-                author=metadata.get("author", "Unknown"),
-                page_count=book_paths.estimate_page_count(),
+                author=metadata.get("author", result.get("author", "Unknown")),
+                page_count=page_count,
                 cover_path=cover_val,
                 is_published=True,
+                format=book_format,
+                source_filename=source_filename,
                 default_font=metadata.get("default_font") or "default",
                 default_theme=metadata.get("default_theme") or "default",
-                created_at=int(time.time())
+                created_at=int(time.time()),
             )
             db.add(db_book)
         else:
-            db_book.page_count = book_paths.estimate_page_count()
+            db_book.page_count = page_count
             db_book.title = metadata.get("title", db_book.title)
             db_book.author = metadata.get("author", db_book.author)
+            db_book.format = book_format
+            db_book.source_filename = source_filename
             if cover_val:
                 db_book.cover_path = cover_val
             if metadata.get("default_font"):
                 db_book.default_font = metadata["default_font"]
             if metadata.get("default_theme"):
                 db_book.default_theme = metadata["default_theme"]
-                
+
         db.commit()
-        return {"ok": True, "slug": book_slug, "message": f"Successfully imported '{result['title']}'"}
+        return {
+            "ok": True,
+            "slug": book_slug,
+            "format": book_format,
+            "message": f"Successfully imported '{result['title']}'",
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process BKB archive: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to process {ext} book: {str(e)}")
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
@@ -519,7 +625,7 @@ def download_bkb(
     current_user: User = Depends(get_current_user_or_apikey),
     db: Session = Depends(get_db)
 ):
-    """Download the book as a .bkb package file."""
+    """Download the book in its native format (.bkb package, .pdf, or .epub)."""
     slug = _ensure_safe_slug(slug)
     # Check permissions
     if not current_user.is_admin:
@@ -533,7 +639,24 @@ def download_bkb(
     book_dir = (BOOKS_DIR / slug).resolve()
     if book_dir.parent != BOOKS_DIR.resolve() or not book_dir.is_dir():
         raise HTTPException(status_code=404, detail="Book directory not found")
-        
+
+    db_book = db.query(Book).filter(Book.slug == slug).first()
+    meta = BookPaths.open(book_dir).load_book_json()
+    fmt = (db_book.format if db_book and getattr(db_book, "format", None) else None) or infer_book_format(book_dir, meta)
+
+    if fmt in ("pdf", "epub"):
+        source_name = (db_book.source_filename if db_book else None) or meta.get("source_filename")
+        source_file = resolve_book_source_file(book_dir, fmt, source_name)
+        if not source_file or not source_file.is_file():
+            raise HTTPException(status_code=404, detail=f"Book .{fmt} source file not found")
+        media_type = "application/pdf" if fmt == "pdf" else "application/epub+zip"
+        return FileResponse(
+            source_file,
+            media_type=media_type,
+            filename=f"{slug}.{fmt}",
+            headers={"Accept-Ranges": "bytes"},
+        )
+
     # Create a unique temp file (not inside a TemporaryDirectory that deletes itself on return)
     tmp_file = tempfile.NamedTemporaryFile(suffix=".bkb", delete=False)
     tmp_file.close()
@@ -640,6 +763,7 @@ def get_highlights(slug: str, current_user: User = Depends(get_current_user_or_a
                 "startOffset": h.start_offset,
                 "endOffset": h.end_offset,
                 "paragraphIndex": h.paragraph_index,
+                "anchorJson": getattr(h, "anchor_json", None) or "",
                 "note": h.note,
                 "createdAt": h.created_at
             }
@@ -668,6 +792,11 @@ def create_or_update_highlight(
     if not hl_id or not isinstance(hl_id, str):
         raise HTTPException(status_code=400, detail="Highlight ID is required")
 
+    raw_anchor = highlight_data.get("anchorJson")
+    if raw_anchor is not None:
+        if not isinstance(raw_anchor, str) or len(raw_anchor) > 65536:
+            raise HTTPException(status_code=422, detail="Invalid anchorJson")
+
     db_hl = db.query(Highlight).filter(Highlight.id == hl_id).first()
     if not db_hl:
         page = highlight_data.get("page")
@@ -686,6 +815,7 @@ def create_or_update_highlight(
             start_offset=int(highlight_data.get("startOffset", 0)),
             end_offset=int(highlight_data.get("endOffset", 0)),
             paragraph_index=int(highlight_data.get("paragraphIndex", 0)),
+            anchor_json=raw_anchor or "",
             note=str(highlight_data.get("note", "") or ""),
             username=current_user.username
         )
@@ -700,6 +830,8 @@ def create_or_update_highlight(
         # Update fields
         db_hl.color = highlight_data.get("color", db_hl.color)
         db_hl.note = highlight_data.get("note", db_hl.note)
+        if raw_anchor is not None:
+            db_hl.anchor_json = raw_anchor
         
     db.commit()
     return {"ok": True}
@@ -725,6 +857,21 @@ def delete_highlight(
     db.commit()
     return {"ok": True}
 
+def _serialize_progress_payload(progress: ReadingProgress) -> dict:
+    payload = {
+        "page": progress.page,
+        "viewMode": progress.view_mode,
+        "lastRead": progress.last_read,
+    }
+    loc = getattr(progress, "locator", None) or ""
+    if loc:
+        payload["locator"] = loc
+    prog_val = getattr(progress, "progression", None)
+    if prog_val is not None:
+        payload["progression"] = float(prog_val)
+    return payload
+
+
 # --- Reading Progress Sync APIs ---
 @router.get("/{slug}/progress")
 def get_reading_progress(
@@ -743,11 +890,7 @@ def get_reading_progress(
     if not progress:
         return {"page": 1, "viewMode": "en"}
         
-    return {
-        "page": progress.page,
-        "viewMode": progress.view_mode,
-        "lastRead": progress.last_read
-    }
+    return _serialize_progress_payload(progress)
 
 @router.post("/{slug}/progress")
 def save_reading_progress(
@@ -770,6 +913,22 @@ def save_reading_progress(
     page = progress_data.get("page", 1)
     view_mode = progress_data.get("viewMode", "en")
 
+    locator_supplied = "locator" in progress_data
+    locator_val: Optional[str] = None
+    if locator_supplied and progress_data.get("locator") is not None:
+        raw_loc = progress_data.get("locator")
+        if not isinstance(raw_loc, str) or len(raw_loc) > 2048:
+            raise HTTPException(status_code=422, detail="Invalid locator")
+        locator_val = raw_loc.strip()
+
+    progression_supplied = "progression" in progress_data
+    progression_val: Optional[float] = None
+    if progression_supplied and progress_data.get("progression") is not None:
+        raw_prog = progress_data.get("progression")
+        if isinstance(raw_prog, bool) or not isinstance(raw_prog, (int, float)):
+            raise HTTPException(status_code=422, detail="Invalid progression")
+        progression_val = max(0.0, min(1.0, float(raw_prog)))
+
     now = int(time.time())
     last_read = progress_data.get("lastRead")
     if isinstance(last_read, (int, float)) and not isinstance(last_read, bool) and last_read > 0:
@@ -788,11 +947,7 @@ def save_reading_progress(
         return {
             "ok": True,
             "stored": False,
-            "progress": {
-                "page": progress.page,
-                "viewMode": progress.view_mode,
-                "lastRead": progress.last_read,
-            },
+            "progress": _serialize_progress_payload(progress),
         }
 
     if not progress:
@@ -801,17 +956,23 @@ def save_reading_progress(
             book_slug=slug,
             page=page,
             view_mode=view_mode,
+            locator=locator_val or "",
+            progression=progression_val,
             last_read=last_read
         )
         db.add(progress)
     else:
         progress.page = page
         progress.view_mode = view_mode
+        if locator_supplied:
+            progress.locator = locator_val or ""
+        if progression_supplied:
+            progress.progression = progression_val
         progress.last_read = last_read
 
     db.commit()
     return {
         "ok": True,
         "stored": True,
-        "progress": {"page": page, "viewMode": view_mode, "lastRead": last_read},
+        "progress": _serialize_progress_payload(progress),
     }

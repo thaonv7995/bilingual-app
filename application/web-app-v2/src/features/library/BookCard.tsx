@@ -16,10 +16,17 @@ export function BookCard({
 }) {
   const navigate = useNavigate();
   const progress = getLocalProgress(book.slug);
-  const hasProgress = !!(progress && progress.page > 1 && book.pageCount);
-  const progressPercent = hasProgress
-    ? Math.min(100, Math.round((progress!.page / book.pageCount) * 100))
-    : 0;
+  const format = book.format ?? 'bkb';
+  const hasEpubProgression =
+    format === 'epub' && typeof progress?.progression === 'number' && progress.progression > 0.005;
+  const hasPageProgress = !!(progress && progress.page > 1 && book.pageCount);
+  const hasProgress = hasEpubProgression || hasPageProgress;
+  const progressPercent = hasEpubProgression
+    ? Math.min(100, Math.round(progress!.progression! * 100))
+    : hasPageProgress
+      ? Math.min(100, Math.round((progress!.page / book.pageCount) * 100))
+      : 0;
+  const formatBadge = format === 'pdf' ? 'PDF' : format === 'epub' ? 'EPUB' : 'EN · VI';
 
   // Resume route (no explicit page): the reader seeds from local progress
   // instantly, then reconciles with the backend copy. A page in the URL would
@@ -79,13 +86,15 @@ export function BookCard({
         <h3 className={styles.cardTitle}>{book.title}</h3>
         <div className={styles.meta}>
           <span>
-            {hasProgress
-              ? `${progress!.page}/${book.pageCount} trang`
-              : book.pageCount
-                ? `${book.pageCount} trang`
-                : ''}
+            {hasEpubProgression
+              ? `${progressPercent}%`
+              : hasPageProgress
+                ? `${progress!.page}/${book.pageCount} trang`
+                : book.pageCount
+                  ? `${book.pageCount} trang`
+                  : ''}
           </span>
-          <span className={styles.langs}>EN · VI</span>
+          <span className={styles.langs}>{formatBadge}</span>
         </div>
       </div>
     </div>

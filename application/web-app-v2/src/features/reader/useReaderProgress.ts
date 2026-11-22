@@ -48,17 +48,36 @@ export function useSaveProgress(slug: string | undefined) {
   const queryClient = useQueryClient();
 
   return useCallback(
-    (page: number, viewMode: ViewMode, at?: number) => {
+    (
+      page: number,
+      viewMode: ViewMode,
+      at?: number,
+      extra?: { locator?: string; progression?: number },
+    ) => {
       if (!slug) return;
       const lastReadMs = at ?? Date.now();
-      saveLocalProgress(slug, { page, viewMode, lastRead: lastReadMs });
+      saveLocalProgress(slug, {
+        page,
+        viewMode,
+        ...(extra?.locator !== undefined ? { locator: extra.locator } : {}),
+        ...(extra?.progression !== undefined ? { progression: extra.progression } : {}),
+        lastRead: lastReadMs,
+      });
 
       window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => {
+        const body: Record<string, unknown> = {
+          page,
+          viewMode,
+          lastRead: Math.floor(lastReadMs / 1000),
+        };
+        if (extra?.locator !== undefined) body.locator = extra.locator;
+        if (extra?.progression !== undefined) body.progression = extra.progression;
+
         void apiFetch(`/api/books/${encodeURIComponent(slug)}/progress`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ page, viewMode, lastRead: Math.floor(lastReadMs / 1000) }),
+          body: JSON.stringify(body),
         })
           .then(() => invalidateBooks(queryClient))
           .catch(() => {

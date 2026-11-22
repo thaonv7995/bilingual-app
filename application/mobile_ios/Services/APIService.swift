@@ -531,11 +531,28 @@ class APIService: ObservableObject {
     /// server keeps whichever copy is newest, so a delayed save can no longer
     /// overwrite fresher progress from another device. Nil lets the server
     /// stamp its own clock (legacy behaviour).
-    func saveProgress(slug: String, page: Int, viewMode: String, lastRead: Int64? = nil) async {
+    func saveProgress(
+        slug: String,
+        page: Int,
+        viewMode: String,
+        lastRead: Int64? = nil,
+        locator: String? = nil,
+        progression: Double? = nil
+    ) async {
         let effectiveLastRead = lastRead ?? Int64(Date().timeIntervalSince1970)
         func enqueueProgress() {
+            let op: OfflinePendingOp = (locator != nil || progression != nil)
+                ? .saveDocumentProgress(
+                    slug: slug,
+                    page: page,
+                    viewMode: viewMode,
+                    locator: locator,
+                    progression: progression,
+                    lastRead: effectiveLastRead
+                )
+                : .saveProgress(slug: slug, page: page, viewMode: viewMode, lastRead: effectiveLastRead)
             BookCacheManager.shared.enqueuePendingOp(
-                .saveProgress(slug: slug, page: page, viewMode: viewMode, lastRead: effectiveLastRead),
+                op,
                 serverUrl: normalizedServerUrl,
                 username: username
             )
@@ -552,15 +569,19 @@ class APIService: ObservableObject {
             return
         }
 
+        var body: [String: Any] = [
+            "page": page,
+            "viewMode": viewMode,
+            "lastRead": effectiveLastRead
+        ]
+        if let locator, !locator.isEmpty { body["locator"] = locator }
+        if let progression { body["progression"] = progression }
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 10.0
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "page": page,
-            "viewMode": viewMode,
-            "lastRead": effectiveLastRead
-        ])
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         do {
             let (_, response) = try await sendRequest(request)
@@ -581,6 +602,20 @@ class APIService: ObservableObject {
             }
             enqueueProgress()
         }
+    }
+
+    func fetchBookSourceData(slug: String) async throws -> Data {
+        guard let encodedSlug = encodedPathSegment(slug),
+              let url = URL(string: "\(normalizedServerUrl)/books/\(encodedSlug)/source") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 300
+        let (data, response) = try await sendRequest(request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        return data
     }
     
     func fetchProgress(slug: String) async throws -> ReadingProgress {
@@ -847,6 +882,25 @@ class APIService: ObservableObject {
             ])
             return req
 
+        case .saveDocumentProgress(let slug, let page, let viewMode, let locator, let progression, let lastRead):
+            guard let encodedSlug = encodedPathSegment(slug),
+                  let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/progress") else {
+                return nil
+            }
+            var body: [String: Any] = [
+                "page": page,
+                "viewMode": viewMode,
+                "lastRead": lastRead
+            ]
+            if let locator, !locator.isEmpty { body["locator"] = locator }
+            if let progression { body["progression"] = progression }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.timeoutInterval = 10.0
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            return req
+
         case .patchBookState(let slug, let isFinished, let isPriority, let readerFont, let readerTheme):
             guard let encodedSlug = encodedPathSegment(slug),
                   let url = URL(string: "\(normalizedServerUrl)/api/books/\(encodedSlug)/state") else {
@@ -919,6 +973,13 @@ class APIService: ObservableObject {
                 let status = (resp as? HTTPURLResponse)?.statusCode ?? 500
                 if (200..<300).contains(status) || status == 404 {
                     if case .saveProgress(let slug, _, _, let lastRead) = op {
+                        BookCacheManager.shared.removePendingProgress(
+                            slug: slug,
+                            upToLastRead: lastRead,
+                            serverUrl: normalizedServerUrl,
+                            username: username
+                        )
+                    } else if case .saveDocumentProgress(let slug, _, _, _, _, let lastRead) = op {
                         BookCacheManager.shared.removePendingProgress(
                             slug: slug,
                             upToLastRead: lastRead,

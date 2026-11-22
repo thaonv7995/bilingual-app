@@ -1,7 +1,7 @@
 import os
 import time
 from typing import Optional, List
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Text, UniqueConstraint, event
+from sqlalchemy import create_engine, Column, Integer, Float, String, Boolean, ForeignKey, Text, UniqueConstraint, event
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 from sqlalchemy.pool import NullPool
@@ -47,6 +47,8 @@ class Book(Base):
     page_count = Column(Integer, default=0)
     cover_path = Column(String, nullable=True)
     is_published = Column(Boolean, default=True)
+    format = Column(String, nullable=True, default="bkb", server_default="bkb")
+    source_filename = Column(String, nullable=True, default="", server_default="")
     default_font = Column(String, nullable=True, default="default")
     default_theme = Column(String, nullable=True, default="default")
     # Import time (unix seconds). NULLABLE on purpose: rows that predate this
@@ -85,6 +87,7 @@ class Highlight(Base):
     start_offset = Column(Integer, default=0)
     end_offset = Column(Integer, default=0)
     paragraph_index = Column(Integer, default=0)
+    anchor_json = Column(Text, nullable=True, default="")
     note = Column(Text, nullable=True, default="")
     created_at = Column(Integer, default=lambda: int(time.time()))
     username = Column(String, nullable=True) # highlight linked to user (optional)
@@ -97,6 +100,8 @@ class ReadingProgress(Base):
     book_slug = Column(String, index=True, nullable=False)
     page = Column(Integer, default=1)
     view_mode = Column(String, default="en")
+    locator = Column(Text, nullable=True, default="")
+    progression = Column(Float, nullable=True, default=None)
     last_read = Column(Integer, default=lambda: int(time.time()))
 
 class UserBookState(Base):
@@ -324,6 +329,49 @@ def _migrate_add_book_appearance_columns():
                         print(f"[Migration] user_book_states.{col_name} skipped: {error}")
 
 
+def _migrate_add_multiformat_columns():
+    """Idempotently add multi-format book (pdf/epub), highlight anchor, and progress locator columns."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    with engine.begin() as connection:
+        if "books" in table_names:
+            cols = {col["name"] for col in inspector.get_columns("books")}
+            for col_name, col_def in [
+                ("format", "TEXT NOT NULL DEFAULT 'bkb'"),
+                ("source_filename", "TEXT DEFAULT ''"),
+            ]:
+                if col_name not in cols:
+                    try:
+                        connection.execute(text(f"ALTER TABLE books ADD COLUMN {col_name} {col_def}"))
+                    except Exception as error:
+                        print(f"[Migration] books.{col_name} skipped: {error}")
+
+        if "highlights" in table_names:
+            cols = {col["name"] for col in inspector.get_columns("highlights")}
+            if "anchor_json" not in cols:
+                try:
+                    connection.execute(text("ALTER TABLE highlights ADD COLUMN anchor_json TEXT DEFAULT ''"))
+                except Exception as error:
+                    print(f"[Migration] highlights.anchor_json skipped: {error}")
+
+        if "reading_progress" in table_names:
+            cols = {col["name"] for col in inspector.get_columns("reading_progress")}
+            for col_name, col_def in [
+                ("locator", "TEXT DEFAULT ''"),
+                ("progression", "REAL"),
+            ]:
+                if col_name not in cols:
+                    try:
+                        connection.execute(
+                            text(f"ALTER TABLE reading_progress ADD COLUMN {col_name} {col_def}")
+                        )
+                    except Exception as error:
+                        print(f"[Migration] reading_progress.{col_name} skipped: {error}")
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_voca_config_to_user_settings()
@@ -331,6 +379,7 @@ def init_db():
     _migrate_add_audio_settings()
     _migrate_add_unified_user_settings()
     _migrate_add_book_appearance_columns()
+    _migrate_add_multiformat_columns()
 
 def get_db():
     db = SessionLocal()

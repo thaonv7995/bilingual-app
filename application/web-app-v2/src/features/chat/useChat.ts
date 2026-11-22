@@ -58,8 +58,12 @@ export function useChat({ book, page, highlights, open }: UseChatArgs) {
 
   useEffect(() => cleanupOldChatHistories(), []);
 
-  // Preload full book text for AI context.
+  // Preload full book text for AI context (BKB books ship output/book.html).
   useEffect(() => {
+    if ((book.format ?? 'bkb') !== 'bkb') {
+      fullBookTextRef.current = '';
+      return;
+    }
     fullBookTextRef.current = 'Loading book context...';
     apiFetch(`/books/${encodeURIComponent(book.slug)}/output/book.html`)
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error('no book.html'))))
@@ -70,7 +74,7 @@ export function useChat({ book, page, highlights, open }: UseChatArgs) {
       .catch(() => {
         fullBookTextRef.current = 'Unable to load full book context.';
       });
-  }, [book.slug]);
+  }, [book.slug, book.format]);
 
   // Page-specific suggested prompts (debounced), only while the panel is open.
   useEffect(() => {

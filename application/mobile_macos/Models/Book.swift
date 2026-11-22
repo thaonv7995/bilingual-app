@@ -35,6 +35,8 @@ struct Book: Codable, Identifiable, Equatable, Hashable {
     let author: String?
     let pageCount: Int?
     let cover: String?
+    let format: String?
+    let sourceUrl: String?
     let isPublished: Bool?
     var createdAt: Int?
     var lastRead: Int?
@@ -46,6 +48,11 @@ struct Book: Codable, Identifiable, Equatable, Hashable {
     var readerFont: String?
     var readerTheme: String?
 
+    var resolvedFormat: String {
+        let f = (format ?? "bkb").lowercased()
+        return (f == "pdf" || f == "epub") ? f : "bkb"
+    }
+
     init(
         bookId: Int? = nil,
         slug: String,
@@ -53,6 +60,8 @@ struct Book: Codable, Identifiable, Equatable, Hashable {
         author: String? = nil,
         pageCount: Int? = nil,
         cover: String? = nil,
+        format: String? = "bkb",
+        sourceUrl: String? = nil,
         isPublished: Bool? = true,
         createdAt: Int? = nil,
         lastRead: Int? = nil,
@@ -70,6 +79,8 @@ struct Book: Codable, Identifiable, Equatable, Hashable {
         self.author = author
         self.pageCount = pageCount
         self.cover = cover
+        self.format = format
+        self.sourceUrl = sourceUrl
         self.isPublished = isPublished
         self.createdAt = createdAt
         self.lastRead = lastRead
@@ -84,7 +95,7 @@ struct Book: Codable, Identifiable, Equatable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case bookId = "id"
-        case slug, title, author, pageCount, cover, isPublished
+        case slug, title, author, pageCount, cover, format, sourceUrl, isPublished
         case createdAt, lastRead, isFinished, onShelf, isPriority
         case defaultFont, defaultTheme, readerFont, readerTheme
     }
@@ -164,14 +175,109 @@ struct Highlight: Codable, Identifiable, Equatable {
     let startOffset: Int
     let endOffset: Int
     let paragraphIndex: Int
+    var anchorJson: String?
     var note: String?
     let createdAt: Int?
+
+    init(
+        id: String,
+        page: Int,
+        lang: String,
+        color: String,
+        text: String,
+        startOffset: Int,
+        endOffset: Int,
+        paragraphIndex: Int,
+        anchorJson: String? = nil,
+        note: String? = nil,
+        createdAt: Int? = nil
+    ) {
+        self.id = id
+        self.page = page
+        self.lang = lang
+        self.color = color
+        self.text = text
+        self.startOffset = startOffset
+        self.endOffset = endOffset
+        self.paragraphIndex = paragraphIndex
+        self.anchorJson = anchorJson
+        self.note = note
+        self.createdAt = createdAt
+    }
+}
+
+struct NormalizedPdfRect: Codable, Equatable {
+    let x: Double
+    let y: Double
+    let w: Double
+    let h: Double
+}
+
+struct DocumentHighlightAnchor: Codable, Equatable {
+    let kind: String // "pdf" | "epub"
+    let rects: [NormalizedPdfRect]?
+    let cfi: String?
+    let chapterTitle: String?
+    let href: String?
+    let prefix: String?
+    let suffix: String?
+
+    static func parse(_ raw: String?) -> DocumentHighlightAnchor? {
+        guard let raw, !raw.isEmpty, let data = raw.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(DocumentHighlightAnchor.self, from: data)
+    }
+
+    static func encodePdf(rects: [NormalizedPdfRect]) -> String {
+        let anchor = DocumentHighlightAnchor(
+            kind: "pdf",
+            rects: rects,
+            cfi: nil,
+            chapterTitle: nil,
+            href: nil,
+            prefix: nil,
+            suffix: nil
+        )
+        guard let data = try? JSONEncoder().encode(anchor),
+              let str = String(data: data, encoding: .utf8) else { return "" }
+        return str
+    }
+
+    static func encodeEpub(cfi: String, chapterTitle: String? = nil) -> String {
+        let anchor = DocumentHighlightAnchor(
+            kind: "epub",
+            rects: nil,
+            cfi: cfi,
+            chapterTitle: chapterTitle,
+            href: nil,
+            prefix: nil,
+            suffix: nil
+        )
+        guard let data = try? JSONEncoder().encode(anchor),
+              let str = String(data: data, encoding: .utf8) else { return "" }
+        return str
+    }
 }
 
 struct ReadingProgress: Codable {
     let page: Int
     let viewMode: String
+    let locator: String?
+    let progression: Double?
     let lastRead: Int?
+
+    init(
+        page: Int,
+        viewMode: String,
+        locator: String? = nil,
+        progression: Double? = nil,
+        lastRead: Int? = nil
+    ) {
+        self.page = page
+        self.viewMode = viewMode
+        self.locator = locator
+        self.progression = progression
+        self.lastRead = lastRead
+    }
 }
 
 struct ChatMessage: Identifiable, Codable, Equatable {

@@ -62,6 +62,8 @@ import { getLocalProgress, saveLocalProgress } from './localProgress';
 import { resolveProgressOnOpen } from './progressSync';
 import { useSaveProgress, useServerProgress } from './useReaderProgress';
 import { READER_ZOOM_STEP, clampReaderZoom, padPage, type ZoomMode } from './readerConstants';
+import { PdfReaderView } from './PdfReaderView';
+import { EpubReaderView } from './EpubReaderView';
 import './reader.css';
 
 export function ReaderView() {
@@ -74,6 +76,12 @@ export function ReaderView() {
   if (!book) {
     navigate('/', { replace: true });
     return null;
+  }
+  if (book.format === 'pdf') {
+    return <PdfReaderView key={slug} book={book} initialPageParam={pageParam} />;
+  }
+  if (book.format === 'epub') {
+    return <EpubReaderView key={slug} book={book} />;
   }
   return <Reader key={slug} book={book} initialPageParam={pageParam} />;
 }

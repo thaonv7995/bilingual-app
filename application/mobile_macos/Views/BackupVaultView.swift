@@ -262,22 +262,32 @@ struct BackupVaultView: View {
             } else {
                 let entries = backup.vaultIndex.booksBySlug.values.sorted { $0.slug < $1.slug }
                 if entries.isEmpty {
-                    ContentUnavailableView("Chưa có sách .bkb", systemImage: "books.vertical", description: Text("Các file .bkb và thư mục đọc ngoại tuyến sẽ xuất hiện ở đây sau khi đồng bộ."))
+                    ContentUnavailableView("Chưa có sách trong Vault", systemImage: "books.vertical", description: Text("Các tệp sách (.bkb, .pdf, .epub) và dữ liệu đọc ngoại tuyến sẽ xuất hiện ở đây sau khi đồng bộ."))
                 } else {
                     VStack(spacing: 8) {
                         ForEach(entries) { entry in
+                            let fmt = entry.resolvedFormat
+                            let iconName = fmt == "pdf" ? "doc.richtext" : (fmt == "epub" ? "book.closed" : "doc.zipper")
                             HStack(spacing: 12) {
-                                Image(systemName: "doc.zipper").foregroundStyle(.indigo)
+                                Image(systemName: iconName).foregroundStyle(.indigo)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(entry.title).font(.subheadline.weight(.semibold))
+                                    HStack(spacing: 6) {
+                                        Text(entry.title).font(.subheadline.weight(.semibold))
+                                        Text(fmt.uppercased())
+                                            .font(.caption2.bold())
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(Color.indigo.opacity(0.25), in: Capsule())
+                                    }
                                     Text("slug: \(entry.slug) • SHA-256: \(entry.bkbSha256.prefix(16))… • \(ByteCountFormatter.string(fromByteCount: entry.bkbSizeBytes, countStyle: .file))")
                                         .font(.caption.monospaced())
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Text(backup.hasOfflineBook(slug: entry.slug) ? "✓ Đọc Offline" : "Thiếu output/")
+                                let ready = backup.hasOfflineBook(slug: entry.slug, format: fmt)
+                                Text(ready ? "✓ Đọc Offline" : "Thiếu tệp")
                                     .font(.caption)
-                                    .foregroundStyle(backup.hasOfflineBook(slug: entry.slug) ? .green : .orange)
+                                    .foregroundStyle(ready ? .green : .orange)
                             }
                             .padding(10)
                             .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))

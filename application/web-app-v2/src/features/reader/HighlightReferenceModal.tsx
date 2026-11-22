@@ -237,21 +237,22 @@ export function HighlightReferenceModal({
         }
         authRetriesRef.current.delete(retryKey);
 
+        const paneKey: 'en' | 'vi' = lang === 'vi' ? 'vi' : 'en';
         const prep = prepareBookIframeDocument(iframeEl, {
           slug: book.slug,
-          lang,
+          lang: paneKey,
           page: previewPage,
           fontId: effectiveFontId,
           themeId: effectiveThemeId,
           onScale: scaleModalIframes,
-          previousObserver: observersRef.current[lang],
+          previousObserver: observersRef.current[paneKey],
           onBindHighlights: (win, boundDoc) =>
-            registerIframeHighlightListeners(win, boundDoc, lang, {
+            registerIframeHighlightListeners(win, boundDoc, paneKey, {
               iframeSelector: REF_IFRAME_SELECTOR,
               getContext: () => modalContextRef.current,
             }),
         });
-        if (prep?.resizeObserver) observersRef.current[lang] = prep.resizeObserver;
+        if (prep?.resizeObserver) observersRef.current[paneKey] = prep.resizeObserver;
 
         if (!pulsedInitialRef.current && previewPage === initialHighlight.page && lang === initialHighlight.lang) {
           pulsedInitialRef.current = true;
@@ -364,7 +365,7 @@ export function HighlightReferenceModal({
                   setPreviewPage(clampReaderPage(initialHighlight.page, book.pageCount));
                 } else {
                   if (previewViewMode !== 'split' && previewViewMode !== initialHighlight.lang) {
-                    setPreviewViewMode(initialHighlight.lang);
+                    setPreviewViewMode(initialHighlight.lang === 'vi' ? 'vi' : 'en');
                   }
                   pulseTargetHighlight();
                 }

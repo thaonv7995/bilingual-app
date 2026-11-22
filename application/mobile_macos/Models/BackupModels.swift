@@ -71,6 +71,7 @@ struct ManifestBookEntry: Codable, Identifiable, Equatable {
     let slug: String
     let title: String
     let author: String
+    let format: String?
     let pageCount: Int
     let coverPath: String
     let isPublished: Bool
@@ -81,6 +82,43 @@ struct ManifestBookEntry: Codable, Identifiable, Equatable {
     let outputFileCount: Int
     let outputSizeBytes: Int
     let contentFingerprint: String
+
+    var resolvedFormat: String {
+        let f = (format ?? "bkb").lowercased()
+        return (f == "pdf" || f == "epub") ? f : "bkb"
+    }
+
+    init(
+        slug: String,
+        title: String,
+        author: String,
+        format: String? = "bkb",
+        pageCount: Int,
+        coverPath: String,
+        isPublished: Bool,
+        defaultFont: String,
+        defaultTheme: String,
+        createdAt: Int,
+        hasOutputDir: Bool,
+        outputFileCount: Int,
+        outputSizeBytes: Int,
+        contentFingerprint: String
+    ) {
+        self.slug = slug
+        self.title = title
+        self.author = author
+        self.format = format
+        self.pageCount = pageCount
+        self.coverPath = coverPath
+        self.isPublished = isPublished
+        self.defaultFont = defaultFont
+        self.defaultTheme = defaultTheme
+        self.createdAt = createdAt
+        self.hasOutputDir = hasOutputDir
+        self.outputFileCount = outputFileCount
+        self.outputSizeBytes = outputSizeBytes
+        self.contentFingerprint = contentFingerprint
+    }
 }
 
 struct BackupManifest: Codable, Equatable {
@@ -122,8 +160,39 @@ struct SnapshotHighlight: Codable, Identifiable, Equatable {
     let startOffset: Int
     let endOffset: Int
     let paragraphIndex: Int
+    let anchorJson: String?
     let note: String
     let createdAt: Int
+
+    init(
+        id: String,
+        bookSlug: String,
+        username: String,
+        page: Int,
+        lang: String,
+        color: String,
+        text: String,
+        startOffset: Int,
+        endOffset: Int,
+        paragraphIndex: Int,
+        anchorJson: String? = nil,
+        note: String,
+        createdAt: Int
+    ) {
+        self.id = id
+        self.bookSlug = bookSlug
+        self.username = username
+        self.page = page
+        self.lang = lang
+        self.color = color
+        self.text = text
+        self.startOffset = startOffset
+        self.endOffset = endOffset
+        self.paragraphIndex = paragraphIndex
+        self.anchorJson = anchorJson
+        self.note = note
+        self.createdAt = createdAt
+    }
 }
 
 struct SnapshotReadingProgress: Codable, Equatable {
@@ -131,7 +200,27 @@ struct SnapshotReadingProgress: Codable, Equatable {
     let bookSlug: String
     let page: Int
     let viewMode: String
+    let locator: String?
+    let progression: Double?
     let lastRead: Int
+
+    init(
+        username: String,
+        bookSlug: String,
+        page: Int,
+        viewMode: String,
+        locator: String? = nil,
+        progression: Double? = nil,
+        lastRead: Int
+    ) {
+        self.username = username
+        self.bookSlug = bookSlug
+        self.page = page
+        self.viewMode = viewMode
+        self.locator = locator
+        self.progression = progression
+        self.lastRead = lastRead
+    }
 }
 
 struct SnapshotUserBookState: Codable, Equatable {
@@ -260,11 +349,37 @@ struct LocalBookIndexEntry: Codable, Equatable, Identifiable {
     var id: String { slug }
     let slug: String
     var title: String
+    var format: String?
     var contentFingerprint: String
     var bkbSizeBytes: Int64
     var bkbSha256: String
     var downloadedAt: Int
     var extractedAt: Int
+
+    var resolvedFormat: String {
+        let f = (format ?? "bkb").lowercased()
+        return (f == "pdf" || f == "epub") ? f : "bkb"
+    }
+
+    init(
+        slug: String,
+        title: String,
+        format: String? = "bkb",
+        contentFingerprint: String,
+        bkbSizeBytes: Int64,
+        bkbSha256: String,
+        downloadedAt: Int,
+        extractedAt: Int
+    ) {
+        self.slug = slug
+        self.title = title
+        self.format = format
+        self.contentFingerprint = contentFingerprint
+        self.bkbSizeBytes = bkbSizeBytes
+        self.bkbSha256 = bkbSha256
+        self.downloadedAt = downloadedAt
+        self.extractedAt = extractedAt
+    }
 }
 
 struct LocalVaultIndex: Codable, Equatable {

@@ -158,7 +158,7 @@ export function reapplyHighlightsInIframes(slug: string, pageNum: number, lang: 
     });
     segmentDocSentences(doc);
     applyStoredHighlights(doc, slug, pageNum, lang);
-    if (wasInterlinear) {
+    if (wasInterlinear && (lang === 'en' || lang === 'vi')) {
       void applyInterlinearToDoc(doc, {
         slug,
         page: pageNum,

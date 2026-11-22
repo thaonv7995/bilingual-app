@@ -73,7 +73,9 @@ export function useHighlights(slug: string, page: number) {
       ref.current = next;
       saveHighlights(slug, next);
       setHighlights(next);
-      if (repaint) reapplyHighlightsInIframes(slug, repaint.page, repaint.lang);
+      if (repaint && (repaint.lang === 'en' || repaint.lang === 'vi')) {
+        reapplyHighlightsInIframes(slug, repaint.page, repaint.lang);
+      }
       removeAllReaderHighlightUI();
     },
     [slug],
@@ -102,6 +104,35 @@ export function useHighlights(slug: string, page: number) {
     [commit, slug],
   );
 
+  const createDocumentHighlight = useCallback(
+    (params: {
+      page: number;
+      lang: HighlightLang;
+      color: string;
+      text: string;
+      anchorJson: string;
+      note?: string;
+    }): Highlight => {
+      const h: Highlight = {
+        id: generateHighlightId(),
+        page: params.page,
+        lang: params.lang,
+        color: params.color,
+        text: params.text,
+        startOffset: 0,
+        endOffset: params.text.length,
+        paragraphIndex: 0,
+        anchorJson: params.anchorJson,
+        note: params.note || '',
+        createdAt: Date.now(),
+      };
+      commit([...ref.current, h], null);
+      void post(slug, h);
+      return h;
+    },
+    [commit, slug],
+  );
+
   const updateHighlight = useCallback(
     (id: string, updates: Partial<Highlight>) => {
       const next = ref.current.map((h) => (h.id === id ? { ...h, ...updates } : h));
@@ -126,5 +157,11 @@ export function useHighlights(slug: string, page: number) {
     [commit, slug],
   );
 
-  return { highlights, createHighlight, updateHighlight, deleteHighlight };
+  return {
+    highlights,
+    createHighlight,
+    createDocumentHighlight,
+    updateHighlight,
+    deleteHighlight,
+  };
 }

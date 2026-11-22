@@ -134,6 +134,11 @@ final class BackupManager: ObservableObject {
         bookRootDir(slug: slug).appendingPathComponent("\(slug).bkb")
     }
 
+    func localSourceURL(slug: String, format: String) -> URL {
+        let ext = (format == "pdf" || format == "epub") ? format : "bkb"
+        return bookRootDir(slug: slug).appendingPathComponent("\(slug).\(ext)")
+    }
+
     func localOutputDir(slug: String) -> URL {
         bookRootDir(slug: slug).appendingPathComponent("output", isDirectory: true)
     }
@@ -150,23 +155,35 @@ final class BackupManager: ObservableObject {
     }
 
     func localCoverURL(slug: String, coverPath: String?) -> URL? {
-        guard let safeSlug = try? BookArchiveExtractor.validateSlug(slug),
-              let coverPath, !coverPath.isEmpty else {
-            return nil
+        guard let safeSlug = try? BookArchiveExtractor.validateSlug(slug) else { return nil }
+        let fm = FileManager.default
+        if let coverPath, !coverPath.isEmpty {
+            var rel = coverPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let prefix = "books/\(safeSlug)/output/"
+            if rel.hasPrefix(prefix) {
+                rel = String(rel.dropFirst(prefix.count))
+            }
+            if !rel.contains("..") {
+                let file = localOutputDir(slug: safeSlug).appendingPathComponent(rel)
+                if fm.fileExists(atPath: file.path) { return file }
+            }
         }
-        var rel = coverPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let prefix = "books/\(safeSlug)/output/"
-        if rel.hasPrefix(prefix) {
-            rel = String(rel.dropFirst(prefix.count))
-        }
-        guard !rel.contains("..") else { return nil }
-        let file = localOutputDir(slug: safeSlug).appendingPathComponent(rel)
-        return FileManager.default.fileExists(atPath: file.path) ? file : nil
+        let cachedCover = bookRootDir(slug: safeSlug).appendingPathComponent("cover_cache.img")
+        if fm.fileExists(atPath: cachedCover.path) { return cachedCover }
+        return nil
     }
 
-    func hasOfflineBook(slug: String) -> Bool {
-        let outDir = localOutputDir(slug: slug)
-        return FileManager.default.fileExists(atPath: outDir.path)
+    func hasOfflineBook(slug: String, format: String? = nil) -> Bool {
+        let fm = FileManager.default
+        let resolvedFmt = format ?? vaultIndex.booksBySlug[slug]?.resolvedFormat ?? "bkb"
+        if resolvedFmt == "pdf" || resolvedFmt == "epub" {
+            return fm.fileExists(atPath: localSourceURL(slug: slug, format: resolvedFmt).path)
+        }
+        if fm.fileExists(atPath: localOutputDir(slug: slug).path) {
+            return true
+        }
+        return fm.fileExists(atPath: localSourceURL(slug: slug, format: "pdf").path)
+            || fm.fileExists(atPath: localSourceURL(slug: slug, format: "epub").path)
     }
 
     func ensureVaultStructure() throws {
@@ -305,14 +322,18 @@ final class BackupManager: ObservableObject {
                     continue
                 }
 
-                let bkbDest = localBKBURL(slug: safeSlug)
+                let fmt = entry.resolvedFormat
+                let archiveDest = localSourceURL(slug: safeSlug, format: fmt)
                 let outputDest = localOutputDir(slug: safeSlug)
                 let existing = updatedIndex.booksBySlug[safeSlug]
+                let hasLocalContent = (fmt == "bkb")
+                    ? (FileManager.default.fileExists(atPath: archiveDest.path) && FileManager.default.fileExists(atPath: outputDest.path))
+                    : FileManager.default.fileExists(atPath: archiveDest.path)
                 let alreadyUpToDate = existing != nil
+                    && existing?.resolvedFormat == fmt
                     && !entry.contentFingerprint.isEmpty
                     && existing?.contentFingerprint == entry.contentFingerprint
-                    && FileManager.default.fileExists(atPath: bkbDest.path)
-                    && FileManager.default.fileExists(atPath: outputDest.path)
+                    && hasLocalContent
 
                 if alreadyUpToDate {
                     skipped += 1
@@ -320,34 +341,48 @@ final class BackupManager: ObservableObject {
                     continue
                 }
 
-                syncPhase = "\(stepPrefix) Đang tải '\(entry.title)' (.bkb)…"
-                let tempBKB = vaultURL.appendingPathComponent(".tmp_\(safeSlug)_\(UUID().uuidString).bkb")
-                defer { try? FileManager.default.removeItem(at: tempBKB) }
+                syncPhase = "\(stepPrefix) Đang tải '\(entry.title)' (.\(fmt))…"
+                let tempFile = vaultURL.appendingPathComponent(".tmp_\(safeSlug)_\(UUID().uuidString).\(fmt)")
+                defer { try? FileManager.default.removeItem(at: tempFile) }
 
                 do {
                     let bookFolder = bookRootDir(slug: safeSlug)
                     try FileManager.default.createDirectory(at: bookFolder, withIntermediateDirectories: true)
-                    try await client.downloadBookArchive(slug: safeSlug, to: tempBKB)
+                    try await client.downloadBookArchive(slug: safeSlug, to: tempFile)
 
-                    syncPhase = "\(stepPrefix) Đang giải nén & kiểm tra SHA-256 '\(entry.title)'…"
+                    syncPhase = fmt == "bkb"
+                        ? "\(stepPrefix) Đang giải nén & kiểm tra SHA-256 '\(entry.title)'…"
+                        : "\(stepPrefix) Đang lưu & kiểm tra SHA-256 '\(entry.title)'…"
                     let fileResult = try await Task.detached(priority: .utility) {
                         let fm = FileManager.default
-                        try BookArchiveExtractor.extractBKB(archiveURL: tempBKB, into: bookFolder)
-
-                        if fm.fileExists(atPath: bkbDest.path) {
-                            try fm.removeItem(at: bkbDest)
+                        if fmt == "bkb" {
+                            try BookArchiveExtractor.extractBKB(archiveURL: tempFile, into: bookFolder)
                         }
-                        try fm.moveItem(at: tempBKB, to: bkbDest)
 
-                        let sha = try BookArchiveExtractor.sha256Hex(fileURL: bkbDest)
-                        let attrs = try? fm.attributesOfItem(atPath: bkbDest.path)
+                        if fm.fileExists(atPath: archiveDest.path) {
+                            try fm.removeItem(at: archiveDest)
+                        }
+                        try fm.moveItem(at: tempFile, to: archiveDest)
+
+                        let sha = try BookArchiveExtractor.sha256Hex(fileURL: archiveDest)
+                        let attrs = try? fm.attributesOfItem(atPath: archiveDest.path)
                         let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
                         return (sha: sha, size: size)
                     }.value
 
+                    if fmt != "bkb", !entry.coverPath.isEmpty {
+                        let fullCoverPath = entry.coverPath.hasPrefix("books/")
+                            ? entry.coverPath
+                            : "books/\(safeSlug)/output/\(entry.coverPath)"
+                        if let coverData = await APIService.shared.fetchBookCoverData(coverPath: fullCoverPath), !coverData.isEmpty {
+                            try? coverData.write(to: bookFolder.appendingPathComponent("cover_cache.img"), options: .atomic)
+                        }
+                    }
+
                     updatedIndex.booksBySlug[safeSlug] = LocalBookIndexEntry(
                         slug: safeSlug,
                         title: entry.title,
+                        format: fmt,
                         contentFingerprint: entry.contentFingerprint,
                         bkbSizeBytes: fileResult.size,
                         bkbSha256: fileResult.sha,
@@ -514,7 +549,7 @@ final class BackupManager: ObservableObject {
             if let allowed = permittedSlugs, !allowed.contains(entry.slug) {
                 return nil
             }
-            guard hasOfflineBook(slug: entry.slug) else { return nil }
+            guard hasOfflineBook(slug: entry.slug, format: entry.resolvedFormat) else { return nil }
             let prog = progressMap[entry.slug]
             let st = stateMap[entry.slug]
             return Book(
@@ -524,6 +559,8 @@ final class BackupManager: ObservableObject {
                 author: entry.author,
                 pageCount: entry.pageCount,
                 cover: entry.coverPath,
+                format: entry.resolvedFormat,
+                sourceUrl: entry.resolvedFormat == "bkb" ? nil : "books/\(entry.slug)/source",
                 isPublished: entry.isPublished,
                 createdAt: entry.createdAt,
                 lastRead: prog?.lastRead,
@@ -553,6 +590,7 @@ final class BackupManager: ObservableObject {
                     startOffset: $0.startOffset,
                     endOffset: $0.endOffset,
                     paragraphIndex: $0.paragraphIndex,
+                    anchorJson: $0.anchorJson,
                     note: $0.note,
                     createdAt: $0.createdAt
                 )
@@ -564,7 +602,13 @@ final class BackupManager: ObservableObject {
               let p = snap.readingProgress.first(where: { $0.username == username && $0.bookSlug == slug }) else {
             return nil
         }
-        return ReadingProgress(page: p.page, viewMode: p.viewMode, lastRead: p.lastRead)
+        return ReadingProgress(
+            page: p.page,
+            viewMode: p.viewMode,
+            locator: p.locator,
+            progression: p.progression,
+            lastRead: p.lastRead
+        )
     }
 
     // MARK: - Emergency Push Restore (Mac -> Server)
@@ -593,17 +637,19 @@ final class BackupManager: ObservableObject {
         var uploaded: [String] = []
         var failedUploads: [String] = []
 
+        let formatBySlug = Dictionary(uniqueKeysWithValues: snapshot.books.map { ($0.slug, $0.resolvedFormat) })
         if !slugsToUpload.isEmpty {
-            onLog("Bắt đầu tải lên \(slugsToUpload.count) file .bkb…")
+            onLog("Bắt đầu tải lên \(slugsToUpload.count) tệp sách (.bkb/.pdf/.epub)…")
             for (idx, slug) in slugsToUpload.enumerated() {
-                let archive = localBKBURL(slug: slug)
+                let fmt = formatBySlug[slug] ?? vaultIndex.booksBySlug[slug]?.resolvedFormat ?? "bkb"
+                let archive = localSourceURL(slug: slug, format: fmt)
                 guard FileManager.default.fileExists(atPath: archive.path) else {
-                    onLog("[\(idx + 1)/\(slugsToUpload.count)] Bỏ qua '\(slug)': không có file .bkb trong Mac Vault.")
+                    onLog("[\(idx + 1)/\(slugsToUpload.count)] Bỏ qua '\(slug)': không có file .\(fmt) trong Mac Vault.")
                     failedUploads.append(slug)
                     continue
                 }
                 do {
-                    onLog("[\(idx + 1)/\(slugsToUpload.count)] Đang upload \(slug).bkb…")
+                    onLog("[\(idx + 1)/\(slugsToUpload.count)] Đang upload \(slug).\(fmt)…")
                     _ = try await client.uploadBookArchive(fileURL: archive)
                     uploaded.append(slug)
                     onLog("✓ Upload thành công '\(slug)'.")
@@ -613,7 +659,7 @@ final class BackupManager: ObservableObject {
                 }
             }
         } else {
-            onLog("Không cần upload thêm file .bkb.")
+            onLog("Không cần upload thêm tệp sách.")
         }
 
         onLog("Đang đẩy dữ liệu Database (Users, Permissions, Highlights, Progress, States, Settings) lên server [mode=\(selection.mode.rawValue)]…")

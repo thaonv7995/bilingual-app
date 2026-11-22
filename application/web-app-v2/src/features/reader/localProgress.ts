@@ -5,6 +5,10 @@ import type { ViewMode } from '@/types/api';
 export interface LocalProgress {
   page: number;
   viewMode: ViewMode;
+  /** Optional EPUB CFI or document locator string. */
+  locator?: string;
+  /** Optional 0..1 global reading progress fraction. */
+  progression?: number;
   /** Epoch MILLISECONDS of the last local save — the client-side half of the
    * shelf order's effectiveLastRead (features/library/bookOrder.ts). Absent on
    * entries written by v1 and by builds before the shelf order landed; that
@@ -19,8 +23,8 @@ export function getLocalProgress(slug: string): LocalProgress | null {
   if (!value || typeof value.page !== 'number') return null;
   // Drop a non-numeric lastRead so callers can trust the type on legacy entries.
   if (typeof value.lastRead !== 'number' || !Number.isFinite(value.lastRead)) {
-    const { page, viewMode } = value;
-    return { page, viewMode };
+    const { page, viewMode, locator, progression } = value;
+    return { page, viewMode, locator, progression };
   }
   return value;
 }

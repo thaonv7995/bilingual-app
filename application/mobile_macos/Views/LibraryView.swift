@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import UniformTypeIdentifiers
 
 enum LibraryFilter: String, CaseIterable, Identifiable {
     case all = "Tất cả"
@@ -303,7 +304,7 @@ struct LibraryView: View {
                             .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 1))
                     }
                     .buttonStyle(.macCircle())
-                    .help("Thêm sách .bkb lên Server")
+                    .help("Thêm sách (.bkb, .pdf, .epub) lên Server")
                 }
 
                 Button {
@@ -525,10 +526,14 @@ struct LibraryView: View {
 
     private func pickAndUploadBKB() {
         let panel = NSOpenPanel()
-        panel.title = "Chọn file sách .bkb để tải lên Server"
+        panel.title = "Chọn file sách (.bkb, .pdf, .epub) để tải lên Server"
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
+        var types: [UTType] = [.pdf]
+        if let epubType = UTType(filenameExtension: "epub") { types.append(epubType) }
+        if let bkbType = UTType(filenameExtension: "bkb") { types.append(bkbType) }
+        panel.allowedContentTypes = types
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task {
             do {
@@ -536,7 +541,7 @@ struct LibraryView: View {
                 statusBanner = "Đã thêm sách '\(slug)' lên server thành công."
                 try await api.fetchBooks()
             } catch {
-                statusBanner = "Lỗi upload .bkb: \(error.localizedDescription)"
+                statusBanner = "Lỗi upload sách: \(error.localizedDescription)"
             }
         }
     }
@@ -658,6 +663,20 @@ private struct BookCardMac: View {
                         .background(.black.opacity(0.55), in: Circle())
                         .padding(7)
                         .help("Đã lưu bản đọc ngoại tuyến")
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if book.resolvedFormat != "bkb" {
+                    Text(book.resolvedFormat.uppercased())
+                        .font(.system(size: 9.5, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(
+                            (book.resolvedFormat == "pdf" ? Color(hex: "ef4444") : Color(hex: "6366f1")).opacity(0.9),
+                            in: Capsule()
+                        )
+                        .padding(7)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
